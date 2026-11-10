@@ -95,7 +95,19 @@ class ExampleBundleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             fresh = Path(example_data.build(os.path.join(directory, "x")))
             for name in ("vco_results.csv", "replica_results.csv", "workpoint.csv", "metadata.json"):
-                self.assertEqual((fresh / name).read_text(), (shipped / name).read_text(), name)
+                _assert_same_numbers(self, (fresh / name).read_text(), (shipped / name).read_text(), name)
+
+
+def _assert_same_numbers(case, fresh, shipped, name, rel=1e-9):
+    """Equal up to floating-point formatting: NumPy versions may differ in the last printed digit."""
+    import math
+    import re as _re
+    tok = _re.compile(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?")
+    a, b = tok.split(fresh), tok.split(shipped)
+    case.assertEqual(a, b, name + ": non-numeric content differs")
+    for x, y in zip(tok.findall(fresh), tok.findall(shipped)):
+        if x != y:
+            case.assertTrue(math.isclose(float(x), float(y), rel_tol=rel, abs_tol=1e-15), "%s: %s != %s" % (name, x, y))
 
 
 if __name__ == "__main__":

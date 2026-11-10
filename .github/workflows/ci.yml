@@ -40,5 +40,3 @@ jobs:
         env:
           ISF_GUI_TEST: '1'
         run: xvfb-run -a python -B -m unittest discover -s tests
-      - name: Synthetic example rebuild
-        run: python -B examples/generate_example.py examples/ideal_lc && git diff --exit-code -- examples
