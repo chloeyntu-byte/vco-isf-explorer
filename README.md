@@ -80,9 +80,15 @@ python3.11 -m unittest discover -s tests
 ISF_GUI_TEST=1 python3.11 -m unittest discover -s tests   # also runs the GUI tests (needs a display)
 ```
 
-## Related tools
+## RF-FIELDWORK
 
-RF-FIELDWORK: Flux Studio, Cap Array Lab, Layout 3D Viewer, VCO Design Studio.
+Product page: https://rf-fieldwork.pages.dev/isf/?lang=en
+
+Other open-source tools:
+
+- [Flux Studio](https://github.com/chloeyntu-byte/flux-studio): parametric RF passives, EMX sweeps, multi-objective search and SNPFit
+- [Cap Array Lab](https://github.com/chloeyntu-byte/cap-array-lab): capacitor-array C/Q, parasitic paths, resonance and Z11
+- [Layout 3D Viewer](https://github.com/chloeyntu-byte/layout-3d-viewer): read IC layouts in 3D, locate pins and trace connections
 
 ## License
 
