@@ -1,0 +1,3 @@
+point,sample,time_s,wt_rad,VG_V,VD_V,VS_V,VB_V,ID_main_A,ID_replica_A,m_DC_A_rtHz,m_dyn_A_rtHz,isf,product,isf_i,isf_q,product_i,product_q
+demo,0,0,0,0.8,0.7,0,0,-0.003,-0.003,2.0e-10,2.1e-10,0.1,2.1e-11,0.1,0.05,2.1e-11,1.05e-11
+demo,1,5e-11,1.5707963267948966,1.1,0.4,0,0,0.004,0.004,3.0e-10,2.8e-10,-0.2,-5.6e-11,-0.2,0.08,-5.6e-11,2.24e-11

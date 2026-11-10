@@ -1,0 +1,343 @@
+{
+  "schema_version": 1,
+  "catalog_id": "isf-portable-error-codes",
+  "updated": "2026-08-08",
+  "entries": [
+    {
+      "code": "ISF-E1001",
+      "severity": "error",
+      "title": "配置格式错误",
+      "summary": "配置字段类型、取值范围或必填关系不合法。",
+      "causes": ["JSON 格式错误", "布尔值、路径或数值字段类型不正确", "互斥选项同时启用"],
+      "actions": ["在设置页运行预检", "检查错误详情中的 field 或 label", "恢复最近的 config.json.bak-* 备份"]
+    },
+    {
+      "code": "ISF-E1002",
+      "severity": "error",
+      "title": "Profile 无效或不完整",
+      "summary": "环境、PDK 或设计 Profile 无法解析为可执行配置。",
+      "causes": ["Profile schema_version 不支持", "显式指定的 Profile 文件不存在", "高级设置覆盖了必需字段"],
+      "actions": ["切换为自动识别后重新预检", "检查 Profile 路径和 schema_version", "仅保留当前 PDK 必需的高级覆盖项"]
+    },
+    {
+      "code": "ISF-E1003",
+      "severity": "error",
+      "title": "配置文件读写失败",
+      "summary": "配置目录不可写、配置文件损坏或原子替换失败。",
+      "causes": ["工作目录权限不足", "磁盘空间不足", "JSON 文件被截断"],
+      "actions": ["检查 workspace 权限和剩余空间", "从 config.json.bak-* 恢复", "不要把 workspace 放在只读 PDK 目录"]
+    },
+    {
+      "code": "ISF-E1101",
+      "severity": "error",
+      "title": "预检未通过",
+      "summary": "至少一个正式运行所需能力缺失。",
+      "causes": ["项目根目录无效", "Live 模式缺少仿真配置或提交命令", "结果链路不满足 signoff 条件"],
+      "actions": ["查看预检矩阵中的 FAIL 项", "先使用 Dry run 验证配置", "在高级设置中只补充未自动识别的字段"]
+    },
+    {
+      "code": "ISF-E1102",
+      "severity": "error",
+      "title": "自动识别未找到结果",
+      "summary": "在限定目录和深度内没有找到 Maestro、RDB、PSF 或 canonical bundle。",
+      "causes": ["项目根目录选择错误", "结果位于扫描深度之外", "结果目录命名或结构与当前规则不同"],
+      "actions": ["确认项目根目录", "在高级设置中增加扫描深度", "直接指定 RDB、PSF 或 canonical bundle 路径"]
+    },
+    {
+      "code": "ISF-E1103",
+      "severity": "error",
+      "title": "自动识别存在歧义",
+      "summary": "发现多个同等可信的 VCO 或 replica 候选，系统拒绝猜测。",
+      "causes": ["同一目录保留多个历史 run", "多个 test 名称同时匹配", "主/replica 命名缺少区分"],
+      "actions": ["在候选列表中手动选择一次", "缩小项目根目录", "在高级设置中填写主 TB 和 replica TB 匹配规则"]
+    },
+    {
+      "code": "ISF-E1104",
+      "severity": "error",
+      "title": "禁止输入链路降级",
+      "summary": "首选 RDB/PSF 链路不可用，并且配置不允许自动降级到 CSV 或普通 bundle。",
+      "causes": ["RDB 不完整", "PSF 缺少完成标志", "只发现未审计 CSV"],
+      "actions": ["修复首选链路", "明确选择手动 canonical 模式", "仅在非 signoff 任务中允许 degraded fallback"]
+    },
+    {
+      "code": "ISF-E1105",
+      "severity": "error",
+      "title": "物理 Profile 不一致",
+      "summary": "器件局部实例/PSF 层级、四端节点、注入方向、模型 include/section、频偏或 source points 与执行引擎不一致。",
+      "causes": ["沿用了其他 PDK/拓扑的 engine config", "把网表局部实例名当成完整 PSF hierarchy", "corner 文件的 include 链中找不到目标 MOS subckt", "UI 频偏或谐波数与仿真配置不同", "physical_profile 缺失或仍为 legacy 隐式值"],
+      "actions": ["查看预检详情中的 field 和第一处 mismatch", "层级器件分别核对 target_instance、instance_path 和 drain_probe.trace", "先让 Preflight 自动解析 include；失败时才设置 device_subckt_file", "在 engine JSON 中加入显式 physical_profile", "确认 source_root 下每个 point 的 VCO netlist 存在"]
+    },
+    {
+      "code": "ISF-E1201",
+      "severity": "error",
+      "title": "Maestro 未选择或不可读",
+      "summary": "VCO 或 flicker-noise 角色没有绑定到有效的 maestro/maestro.sdb。",
+      "causes": ["选中了 library/cell 的错误层级", "maestro.sdb 或 active.state 缺失/损坏", "当前用户没有读取权限"],
+      "actions": ["在首页手动选择两个现有 Maestro", "路径可指向 cell、maestro 目录或 maestro.sdb", "不要复制或修改 OA 来规避读取错误"]
+    },
+    {
+      "code": "ISF-E1202",
+      "severity": "error",
+      "title": "Maestro 主链能力缺失",
+      "summary": "所选 test 缺少该角色必需的 analysis、变量或输出映射。",
+      "causes": ["VCO 缺少已启用的 HB、HBNOISE 或差分输出", "VCO 只有 PSS/PNOISE；本版能检测但 bundled runner 尚不执行该链", "flicker TB 未保留普通 noise analysis，或缺少 VGS/VDS/10 kHz 覆盖", "多个 test 同分且未手动选择"],
+      "actions": ["按 UI 缺失列表只补对应项", "bundled runner 使用 VCO HB/HBNOISE，并从 flicker 普通 noise TB 的私有副本生成周期 replica", "多个 test 时仅手动选择 test 名", "保持原两个 TB 框架，不新建泛化流程；PSS/PNOISE 需接入已验证的自定义 adapter"]
+    },
+    {
+      "code": "ISF-E1203",
+      "severity": "error",
+      "title": "双 Maestro 配对错误",
+      "summary": "两个角色指向同一设置，或其 model/PDK 根目录不一致。",
+      "causes": ["VCO 与 flicker 误选了同一个 Maestro", "沿用了另一 PDK 的 flicker TB", "modelSetup 仍引用旧机器/旧 PDK"],
+      "actions": ["重新选择同一 PDK 下的两个独立 TB", "检查 Maestro Model Libraries/Sections", "不要用最终相位噪声数值掩盖 PDK 不一致"]
+    },
+    {
+      "code": "ISF-E1204",
+      "severity": "error",
+      "title": "Maestro 绑定未确认或已变化",
+      "summary": "变量名、输出表达式、analysis、design 或 model section 的 fingerprint 与保存值不同。",
+      "causes": ["首次选择后尚未点击检测并绑定", "迁移时变量或输出被改名", "Maestro test/design/model section 被修改"],
+      "actions": ["先查看 UI 的变化与缺失提示", "确认修改符合预期后点击重新绑定当前设置", "非预期变化应恢复 TB，而不是删除 fingerprint"]
+    },
+    {
+      "code": "ISF-E1205",
+      "severity": "error",
+      "title": "本机缺少可执行 Maestro history",
+      "summary": "Live 运行找不到同时完成且含生成网表/PSF 的 VCO 或 flicker history。",
+      "causes": ["RDB rawDir 仍指向旧机器路径", "只复制了 rdb/log，未复制 point/test 结果", "本机尚未运行所选 VCO 或 flicker Maestro", "只准备了 contract fixture，未提供生产 flicker Maestro/history"],
+      "actions": ["在当前机器分别运行 UI 中所选的 VCO 与 flicker Maestro/test", "刷新检测并确认两个角色都显示完整 run 数量和 history fingerprint", "不要手工改 RDB rawDir、复制不完整 point 目录或伪造 .simDone"]
+    },
+    {
+      "code": "ISF-E2001",
+      "severity": "error",
+      "title": "Maestro/RDB/PSF 发现失败",
+      "summary": "结果目录不可读、RDB 不是有效 SQLite 文件或只读查询失败。",
+      "causes": ["路径不存在或无权限", "RDB 文件损坏", "Cadence 版本使用了未识别的 schema"],
+      "actions": ["确认路径和读取权限", "用 Maestro 打开对应 history 检查完整性", "改用明确的 PSF 或 canonical 路径并保留原始结果"]
+    },
+    {
+      "code": "ISF-E2002",
+      "severity": "error",
+      "title": "仿真结果未完成",
+      "summary": "精确 point/test PSF 缺少 .simDone、spectre.out 或零错误结束标志。",
+      "causes": ["仿真仍在运行", "集群结果尚未同步", "Spectre 非零错误结束"],
+      "actions": ["检查对应 point/test 的 spectre.out", "等待集群 collect 完成", "不要手工补写 .simDone"]
+    },
+    {
+      "code": "ISF-E3001",
+      "severity": "error",
+      "title": "结果 Bundle 导入失败",
+      "summary": "canonical CSV、metadata 或谐波关系不满足计算契约。",
+      "causes": ["缺少列或设计点", "谐波重复", "主 VCO 与 replica 点集不一致"],
+      "actions": ["检查错误详情中的 path、point 和 missing", "重新执行 extract 阶段", "不要手动修改 formal bundle"]
+    },
+    {
+      "code": "ISF-E3002",
+      "severity": "error",
+      "title": "Provenance 或哈希校验失败",
+      "summary": "Bundle 不属于当前任务、文件被修改、结果过旧或 PSF 日志不可信。",
+      "causes": ["复用了旧 bundle", "文件在 manifest 生成后被修改", "PSF 位于当前 run_root 之外"],
+      "actions": ["使用当前 job 的私有输出目录", "重新执行 extract 阶段", "检查 manifest.json 和 spectre.out 的 SHA-256"]
+    },
+    {
+      "code": "ISF-E3003",
+      "severity": "error",
+      "title": "物理单位或归一化契约失败",
+      "summary": "PSD/ASD、峰值/RMS、SSB/DSB、电流方向或共享噪声源定义不一致。",
+      "causes": ["PSD 被重复开平方", "载波幅度定义不一致", "各谐波没有共享 sqrt(Sxi)"],
+      "actions": ["检查 metadata.json 的单位字段", "核对 drain_to_source 方向", "先比较物理单位 Vout=sum(Hk*Ink)"]
+    },
+    {
+      "code": "ISF-E3004",
+      "severity": "error",
+      "title": "正式导出质量门失败",
+      "summary": "请求 signoff 导出，但设计点数量、Spectre 数值质量、PM 投影前提或显式启用的 HBAC 门不满足合同。",
+      "causes": ["少于六个设计点", "spectre.out 含稳态未检测、模型结果不可信或不收敛警告", "目标器件 AM 相对 PM 过大，不能把输出总幅度当作 PM", "配置要求 HBAC 二次验证且相位差超限"],
+      "actions": ["单点/冒烟运行使用 --smoke 或 --non-signoff，保留 job ID 并导出 replay 证据", "只有至少六个真实设计点且确实要签核时才传 --formal-signoff；formal 还必须有 job ID", "查看 summary.csv 的 numerical_quality_*、pm_magnitude_* 与 hbac_* 字段", "修复仿真质量并重新运行，不要手改 metadata 或删除质量告警"]
+    },
+    {
+      "code": "ISF-E4001",
+      "severity": "error",
+      "title": "提交 Adapter 配置错误",
+      "summary": "本地或集群提交适配器缺少命令、环境或阶段定义。",
+      "causes": ["adapter kind 不支持", "命令为空", "环境变量名非法"],
+      "actions": ["在高级设置中选择 bundled/local/cluster", "检查 adapter 配置", "查看预检列出的执行命令"]
+    },
+    {
+      "code": "ISF-E4002",
+      "severity": "error",
+      "title": "命令模板错误",
+      "summary": "命令使用了未允许、缺失或格式错误的模板变量。",
+      "causes": ["模板变量拼写错误", "使用了点号或位置参数", "变量不在固定白名单"],
+      "actions": ["查看错误详情中的 variable 和 allowed", "使用 UI 生成的默认命令", "不要在模板中嵌入未转义的动态 shell 片段"]
+    },
+    {
+      "code": "ISF-E4003",
+      "severity": "error",
+      "title": "外部命令无法启动",
+      "summary": "仿真或调度器命令不存在、无执行权限或工作目录无效。",
+      "causes": ["PATH 未包含命令", "脚本不可执行", "cwd 不存在"],
+      "actions": ["运行预检确认 executable", "在环境 Profile 中填写绝对路径", "检查工作目录权限"]
+    },
+    {
+      "code": "ISF-E4004",
+      "severity": "error",
+      "title": "外部命令超时",
+      "summary": "本地命令或集群轮询超过配置的超时时间。",
+      "causes": ["仿真未收敛", "调度器队列过长", "poll 命令无法识别完成状态"],
+      "actions": ["检查阶段日志和调度器状态", "修复仿真后再恢复任务", "必要时在高级设置中增加 timeout"]
+    },
+    {
+      "code": "ISF-E4005",
+      "severity": "error",
+      "title": "外部命令返回失败",
+      "summary": "仿真、交换、提取或验证阶段返回非零退出码。",
+      "causes": ["Spectre 语法、模型、license 或收敛错误", "自动 DC-noise 样本的 contributor trace/器件参数不匹配", "主 VCO 层级 probe 或 HBXF trace 不存在", "集群 wrapper 失败", "结果复制或提取失败"],
+      "actions": ["查看该阶段 stdout/stderr 和最早的 Spectre error", "若发生在 exchange，检查 dc_flicker/sample_*/psf/spectre.out 与 traces.dc_noise", "若发生在 VCO/replica，核对 Profile 层级、模型 include 和器件参数", "使用错误详情中的 returncode 定位", "合同未变才恢复；改 Profile/网表后新建任务"]
+    },
+    {
+      "code": "ISF-E4101",
+      "severity": "error",
+      "title": "集群阶段协议失败",
+      "summary": "submit/poll/collect/verify 协议未得到有效 job ID 或完成状态。",
+      "causes": ["job_id_pattern 不匹配", "poll 状态既非成功也非失败", "collect/verify 命令缺失"],
+      "actions": ["检查预检列出的阶段命令", "调整 job ID 和状态正则", "优先使用已有同步集群 wrapper"]
+    },
+    {
+      "code": "ISF-E5001",
+      "severity": "error",
+      "title": "任务无法恢复",
+      "summary": "任务没有可恢复快照、状态不允许恢复或运行目录已丢失。",
+      "causes": ["旧版本任务未保存 request snapshot", "任务已经成功", "私有 run_root 被删除"],
+      "actions": ["检查 job.json 和 .isf_run_state.json", "保留原 job 作为证据并新建任务", "不要移动运行中的私有目录"]
+    },
+    {
+      "code": "ISF-E5002",
+      "severity": "error",
+      "title": "恢复契约不一致",
+      "summary": "当前配置、命令或输入与原任务快照不同，禁止跳过已完成阶段。",
+      "causes": ["修改了 Profile 或命令", "更换了输入路径", "在另一环境使用了同一 run_root"],
+      "actions": ["恢复原配置后重试", "使用新 run_root 启动新任务", "比较 job.json 中的 contract_sha256"]
+    },
+    {
+      "code": "ISF-E6001",
+      "severity": "error",
+      "title": "任务不存在",
+      "summary": "请求的 job ID 不在当前 workspace。",
+      "causes": ["输入了其他环境的 job ID", "workspace 路径不同", "任务目录被删除"],
+      "actions": ["从任务列表重新选择", "确认启动 UI 时使用的 workspace", "不要跨环境复用 job ID"]
+    },
+    {
+      "code": "ISF-E6002",
+      "severity": "warning",
+      "title": "任务结果尚未就绪",
+      "summary": "任务仍在排队、运行或等待结果收集。",
+      "causes": ["后台任务未完成", "集群 poll 仍在等待", "页面刷新早于结果写入"],
+      "actions": ["查看运行页阶段状态", "等待自动刷新", "若长期不变则检查对应阶段日志"]
+    },
+    {
+      "code": "ISF-E6003",
+      "severity": "error",
+      "title": "任务执行失败",
+      "summary": "任务已经失败，具体原因保存在 cause_code 和阶段日志中。",
+      "causes": ["预检、提交、提取或计算阶段失败"],
+      "actions": ["优先查看 cause_code", "修复后使用恢复任务", "不要删除原始日志"]
+    },
+    {
+      "code": "ISF-E9000",
+      "severity": "error",
+      "title": "未分类内部错误",
+      "summary": "出现尚未归类的异常；工具不会把它当成可用结果。",
+      "causes": ["未覆盖的文件格式", "代码缺陷", "运行时环境异常"],
+      "actions": ["保存 job.json、错误详情和日志", "在本地错误码目录中记录环境信息", "不要继续使用该任务做 signoff"]
+    },
+    {
+      "code": "ISF-W1101",
+      "severity": "warning",
+      "title": "NumPy 不可用",
+      "summary": "UI、配置和轻量检查可运行，但自动 PSF 提取/FFT 功能可能不可用。",
+      "causes": ["当前 Python 环境未安装 NumPy", "NumPy wheel 与 glibc 不兼容"],
+      "actions": ["使用已有兼容 Python 环境", "改用手动 canonical bundle", "不要在 Cadence 子进程环境中启动 Python"]
+    },
+    {
+      "code": "ISF-W1102",
+      "severity": "warning",
+      "title": "PDK 未自动识别",
+      "summary": "未找到明确的 PDK 标识；只读检查和手动导入仍可继续。",
+      "causes": ["PDK 环境变量未设置", "PDK 位于非标准路径", "项目目录不包含模型线索"],
+      "actions": ["在高级设置中填写 PDK 名称或根目录", "不需要把整个 PDK 复制到工具目录", "正式运行前确认 model include"]
+    },
+    {
+      "code": "ISF-W1103",
+      "severity": "warning",
+      "title": "正在使用降级输入链路",
+      "summary": "当前使用 CSV 或普通 bundle，而不是首选的 RDB/PSF provenance 链路。",
+      "causes": ["只提供了手动输出", "RDB/PSF 不可访问", "任务类型为 replay"],
+      "actions": ["报告中保留 NON-SIGNOFF 标记", "需要正式证据时重新使用 RDB/PSF", "确认单位和时间原点 metadata 完整"]
+    },
+    {
+      "code": "ISF-W1201",
+      "severity": "warning",
+      "title": "Maestro 映射需要确认",
+      "summary": "主分析存在，但 VBS、10 kHz output 或其他非必需逻辑名未能唯一自动映射。",
+      "causes": ["变量名与常见 VGS/VDS/VBS 命名不同", "output 表达式没有显式 10 kHz", "bulk/source 在原 TB 中默认短接"],
+      "actions": ["优先从检测候选中选择现有变量/输出", "VBS 恒为零时记录该假设", "只在高级映射中补无法自动识别的字段"]
+    },
+    {
+      "code": "ISF-W1202",
+      "severity": "warning",
+      "title": "Maestro 需要私有 analysis 覆盖",
+      "summary": "所选 TB 未直接保存 10 kHz、HBXF/PXF 或 HBAC/PAC；runner 会在私有复制网表中补充。",
+      "causes": ["VCO HBNOISE 起点高于 10 kHz", "原 Maestro 没有 HBXF/PXF", "flicker TB 只有 DC noise"],
+      "actions": ["允许工具只在私有 run_root 中补 analysis", "若要直接读取 Maestro history，再把频点/analysis 加回 TB", "HBAC/PAC 仅作二次验证，不反向拟合"]
+    },
+    {
+      "code": "ISF-W1203",
+      "severity": "warning",
+      "title": "Maestro history 路径已失效",
+      "summary": "RDB 元数据可读，但 rawDir、point/test PSF 或生成网表仍指向旧主机。",
+      "causes": ["迁移时只复制了 OA/Maestro 元数据", "用户名或 simulation 根目录改变", "旧 history 位于未挂载共享盘"],
+      "actions": ["只读检查可继续核对 TB 合同", "仿真前在本机重新运行所选 Maestro", "保留旧 RDB 作为历史证据，不修改其路径字段"]
+    },
+    {
+      "code": "ISF-W3101",
+      "severity": "warning",
+      "title": "热噪声计算不可用",
+      "summary": "独立 thermal 路径缺少可验证的数据或遇到不支持的模型/约定；保留原 flicker 结果，不用零值冒充热噪声。",
+      "causes": ["缺失正负边带或源噪声 PSD", "仿真器或 primitive 不在独立验证范围", "MOS 白噪声/周期或来源检查未通过", "thermal 私有仿真失败"],
+      "actions": ["查看 thermal_noise.reason 和私有 thermal 日志", "核对真实端子、保存项及模型支持范围", "修复后创建新任务；不要用总 HBNoise 反推计算增益"]
+    },
+    {
+      "code": "ISF-W3001",
+      "severity": "warning",
+      "title": "跨设计点趋势未通过",
+      "summary": "绝对闭合可能通过，但误差相对中位数的变化超过趋势门限。",
+      "causes": ["AM/PM 相位候选误差", "高阶谐波相消敏感", "器件内部噪声源位置差异"],
+      "actions": ["查看 Qk 累计和与相位敏感度", "增加设计点和谐波阶数", "使用 HBAC/PAC 做二次验证"]
+    },
+    {
+      "code": "ISF-W3002",
+      "severity": "warning",
+      "title": "Spectre 数值质量警告",
+      "summary": "Spectre 虽以 0 error 结束，但日志含会使数值 signoff 不可信的明确警告。",
+      "causes": ["HB 未检测到稳态", "模型因越界被线性化并声明结果不正确", "分析未收敛"],
+      "actions": ["查看 numerical_quality_issues 指向的阶段和 spectre.out", "调整 tstab、初值、模型适用范围或工作点后重跑", "只把当前结果用于跑通/可移植性 smoke"]
+    },
+    {
+      "code": "ISF-W3003",
+      "severity": "warning",
+      "title": "HBAC 二次相位验证偏差",
+      "summary": "HBAC/PAC 确定性注入与 HBNOISE AM/PM 经验候选的相对相位差超过配置门限。",
+      "causes": ["AM/PM 候选象限不唯一", "注入位置与真实内部 flicker source 不完全等效", "高阶相位或时间参考不一致"],
+      "actions": ["保留全部 phase_candidates.csv", "复核 HBAC 注入位置、sideband 和共同时间参考", "不要用最终 VCO noise 反向选象限；HBAC 默认只作二次诊断"]
+    },
+    {
+      "code": "ISF-W3004",
+      "severity": "warning",
+      "title": "输出 PM 投影前提不足",
+      "summary": "目标器件的 AM 不再远小于 PM，不能把复数输出边带的模长直接标记为 PM-noise ASD。",
+      "causes": ["输出 AM/PM 混合明显", "载波或差分输出参考选择错误", "需要完整 AM/PM 协方差或确定的 PM 投影"],
+      "actions": ["检查 spectre_am_to_pm_dB 与配置门限", "复核 differential carrier、PM/SSB 输出和载波相位", "在完成真实 PM 投影前仅保留物理输出噪声模长并禁止 formal signoff"]
+    }
+  ]
+}

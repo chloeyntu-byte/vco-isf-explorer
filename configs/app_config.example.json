@@ -1,0 +1,39 @@
+{
+  "schema_version": 2,
+  "source_mode": "maestro_pair",
+  "project_root": "",
+  "profiles": {
+    "auto_detect": true,
+    "environment": {"mode": "auto", "executables": {}},
+    "pdk": "auto",
+    "design": {"mode": "auto"}
+  },
+  "discovery": {
+    "roots": [],
+    "max_depth": 6,
+    "max_results": 100,
+    "include_hidden": false,
+    "follow_symlinks": false,
+    "strict": false
+  },
+  "analysis": {
+    "offset": {"value": 10.0, "unit": "kHz", "hz": 10000.0},
+    "max_harmonic": 3,
+    "phase_samples": 512,
+    "period_count": 8,
+    "enforce_common_time_origin": true,
+    "allow_manual_shift": false
+  },
+  "execution": {
+    "dry_run": true,
+    "allow_execute": false,
+    "background": true,
+    "adapter_mode": "bundled",
+    "resume_enabled": true,
+    "require_preflight": true
+  },
+  "testbenches": {
+    "vco": {"name": "vco", "role": "vco"},
+    "replica": {"name": "replica", "role": "flicker"}
+  }
+}

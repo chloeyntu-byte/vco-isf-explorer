@@ -1,0 +1,3 @@
+point,k,Id_real_A,Id_imag_A,Mdc_real_A_rtHz,Mdc_imag_A_rtHz,AM_A_rtHz,PM_A_rtHz,USB_A_rtHz,LSB_A_rtHz,Dk_real,Dk_imag,sqrt_Sxi_A_rtHz,Mdyn_real_A_rtHz,Mdyn_imag_A_rtHz,phase_candidate,phase_score
+demo,0,0.006,0.0,2.5e-10,0.0,,,2.5e-10,,1.0,0.0,2.5e-10,2.5e-10,0.0,+,0.0
+demo,1,-0.01,0.0,-5.0e-11,-1.0e-10,5.0e-11,1.0e-10,1.11803398875e-10,1.11803398875e-10,-0.2,-0.4,2.5e-10,-5.0e-11,-1.0e-10,+,0.0

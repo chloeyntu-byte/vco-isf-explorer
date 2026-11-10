@@ -1,0 +1,4 @@
+point,k,corner,f0_Hz,carrier_real_V,carrier_imag_V,H_real_ohm,H_imag_ohm,spectre_pm_asd_V_rtHz
+demo,-1,typ,5000000000,1.7,0.0,0.3,0.2,1e-5
+demo,0,typ,5000000000,1.7,0.0,-0.1,0.4,1e-5
+demo,1,typ,5000000000,1.7,0.0,0.7,-0.5,1e-5

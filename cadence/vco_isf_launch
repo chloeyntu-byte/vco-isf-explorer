@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -euo pipefail
+isf_script_dir="$(cd -- "$(dirname -- "$0")" && pwd)"
+if [[ $# -ne 1 || ! -f "$1" ]]; then
+  printf '%s\n' 'Usage: vco_isf_launch <Maestro context file>' >&2
+  exit 2
+fi
+# Python/Tk must not inherit Cadence libraries. DISPLAY, XAUTHORITY and the
+# license variables stay intact; the context carries the Cadence child env.
+unset LD_LIBRARY_PATH PYTHONPATH PYTHONHOME TCL_LIBRARY TK_LIBRARY QT_PLUGIN_PATH
+
+isf_timeout="$(type -P timeout || type -P gtimeout || true)"
+if [[ ! "$isf_timeout" ]]; then
+  printf '%s\n' 'The ISF launcher requires the timeout command to check Python safely.' >&2
+  exit 2
+fi
+isf_probe='import sys
+if sys.version_info < (3, 11):
+    raise SystemExit(2)
+import tkinter
+tkinter.Tcl()
+try:
+    import numpy
+except ImportError:
+    print("basic")
+else:
+    print("ready")'
+
+if [[ ${VCO_ISF_PYTHON+x} ]]; then
+  isf_python_bin="$VCO_ISF_PYTHON"
+  if [[ "$isf_python_bin" != */* ]]; then
+    isf_python_bin="$(type -P -- "$isf_python_bin" || true)"
+  fi
+  if [[ ! -f "$isf_python_bin" || ! -x "$isf_python_bin" ]]; then
+    printf '%s\n' 'VCO_ISF_PYTHON does not identify an executable Python.' >&2
+    exit 2
+  fi
+  isf_result="$("$isf_timeout" 2s "$isf_python_bin" -I -B -c "$isf_probe" 2>/dev/null || true)"
+  if [[ "$isf_result" != ready && "$isf_result" != basic ]]; then
+    printf '%s\n' 'VCO_ISF_PYTHON failed the Python 3.11+/Tcl check. Run the interpreter directly for details.' >&2
+    exit 2
+  fi
+else
+  shopt -s nullglob
+  isf_candidates=("$isf_script_dir/../.venv/bin/python")
+  if [[ ${VIRTUAL_ENV:-} ]]; then
+    isf_candidates+=("$VIRTUAL_ENV/bin/python")
+  fi
+  for isf_name in python3.13 python3.12 python3.11 python3; do
+    isf_candidates+=("$(type -P "$isf_name" || true)")
+  done
+  if [[ ${HOME:-} ]]; then
+    isf_candidates+=("$HOME"/.venvs/*/bin/python "$HOME"/miniforge3/envs/*/bin/python)
+  fi
+  isf_candidates+=(/opt/miniforge3/envs/*/bin/python /opt/conda/envs/*/bin/python)
+
+  isf_python_bin=""
+  isf_basic_python=""
+  isf_deadline=$((SECONDS + 10))
+  for isf_candidate in "${isf_candidates[@]:0:24}"; do
+    if (( SECONDS >= isf_deadline )); then
+      break
+    fi
+    if [[ -f "$isf_candidate" && -x "$isf_candidate" ]]; then
+      isf_result="$("$isf_timeout" 2s "$isf_candidate" -I -B -c "$isf_probe" 2>/dev/null || true)"
+      case "$isf_result" in
+        ready) isf_python_bin="$isf_candidate"; break ;;
+        basic) isf_basic_python="${isf_basic_python:-$isf_candidate}" ;;
+      esac
+    fi
+  done
+  isf_python_bin="${isf_python_bin:-$isf_basic_python}"
+  if [[ ! "$isf_python_bin" ]]; then
+    printf '%s\n' 'No compatible Python 3.11+ with Tcl/Tk was found. Set VCO_ISF_PYTHON to an existing compatible interpreter.' >&2
+    exit 2
+  fi
+fi
+exec "$isf_python_bin" -B "$isf_script_dir/../run.py" --maestro-context-file "$1"

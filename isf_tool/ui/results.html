@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ISF Portable Tool 分析结果">
+  <title>分析结果 · ISF Workbench</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body data-page="results">
+  <header class="topbar">
+    <a class="brand" href="index.html" aria-label="ISF Workbench 首页">
+      <span class="brand-mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 13.5c2.1 0 2.1-7 4.3-7s2.2 7 4.4 7 2.2-7 5.3-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+      <span class="brand-copy">ISF Workbench<small>Portable analysis</small></span>
+    </a>
+    <nav class="step-nav" aria-label="分析步骤">
+      <ol>
+        <li data-nav-page="setup"><a class="step-link" href="index.html"><span class="step-number">01</span><span class="step-label">项目设置</span></a></li>
+        <li data-nav-page="discover"><a class="step-link" href="discover.html"><span class="step-number">02</span><span class="step-label">发现与运行</span></a></li>
+        <li data-nav-page="results"><a class="step-link" href="results.html"><span class="step-number">03</span><span class="step-label">分析结果</span></a></li>
+        <li data-nav-page="inspect"><a class="step-link" href="inspect.html"><span class="step-number">04</span><span class="step-label">检查与导出</span></a></li>
+      </ol>
+    </nav>
+    <div class="topbar-tools">
+      <span class="api-badge" id="api-status" data-state="checking"><span class="status-dot"></span><span class="api-label-long">正在检查 API</span><span class="sr-only" id="api-status-detail"></span></span>
+      <button class="icon-button" type="button" data-action="refresh-health" aria-label="重新检查 API"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.2 5.7A5.5 5.5 0 1 0 13 10.8M13.2 2.8v2.9h-2.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    <header class="page-heading">
+      <div class="page-heading-copy">
+        <div class="eyebrow">Step 03 / Results</div>
+        <h1>ISF 闭环分析结果</h1>
+        <p>对比 VCO 总仿真相噪与双器件 flicker、thermal 及两者功率和。通过频偏和工况分别筛选，源明细用于同口径核对。</p>
+      </div>
+      <div class="heading-actions">
+        <label class="sr-only" for="result-job-select">选择任务</label>
+        <select id="result-job-select" style="width:auto;min-width:190px"><option value="">等待任务</option></select>
+        <label for="result-point-select">工况</label>
+        <select id="result-point-select" style="width:auto;min-width:150px"><option value="">工况</option></select>
+        <label for="result-offset-select">表格频偏</label>
+        <select id="result-offset-select" style="width:auto;min-width:140px"><option value="">等待频偏</option></select>
+        <button class="btn" type="button" id="reload-results"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.46-3.54M13 2.5v3.2H9.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>刷新结果</button>
+        <button class="btn" type="button" id="print-report">打印 / PDF</button>
+        <a class="btn primary" href="inspect.html">检查并导出<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m6 3 5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+      </div>
+    </header>
+
+    <details class="card workspace-state-panel">
+      <summary>保存 / 加载工作状态</summary>
+      <div class="card-body">
+        <div class="workspace-state-controls">
+          <label class="field">状态名称<input id="workspace-state-name" maxlength="120" placeholder="例如：Class F · 多频偏"></label>
+          <button class="btn" id="workspace-state-save" type="button">保存当前状态</button>
+          <label class="field">工作区已保存状态<select id="workspace-state-list"><option value="">选择已保存状态</option></select></label>
+          <button class="btn" id="workspace-state-refresh" type="button">刷新列表</button>
+          <button class="btn" id="workspace-state-load" type="button">加载所选状态</button>
+        </div>
+        <p class="caption" id="workspace-state-status" role="status">保存在工作区 states 目录。仅在同一任务、工况和真实频点仍可核验时恢复结果选择；不保存执行授权，不自动预检或仿真。</p>
+      </div>
+    </details>
+
+    <div class="result-stack">
+      <div class="notice-box" id="sweep-result-note" role="status" hidden></div>
+      <section class="card"><div class="card-body"><div class="form-grid three">
+        <div class="field"><label for="noise-kind">显示的计算噪声类型</label><select id="noise-kind"><option value="both">Flicker + thermal</option><option value="flicker">Flicker</option><option value="thermal">Thermal</option></select></div>
+        <div class="field"><label for="noise-x-scale">频偏横轴</label><select id="noise-x-scale"><option value="log">对数轴</option><option value="linear">线性轴</option></select></div>
+        <div class="field"><label for="cumulative-k-select">Flicker 附加相干累计曲线（双器件）</label><select id="cumulative-k-select"><option value="">不显示累计曲线</option></select></div>
+      </div><p class="caption" id="noise-scope-note">VCO 仿真包含所有噪声源；ISF 计算覆盖范围由实际采集的源证据确定。缺失数据不补零。</p><p class="caption" id="result-operating-parameters"></p><p class="caption" id="sample-quality-note" role="status"></p></div></section>
+      <section class="metrics-grid" aria-label="关键指标">
+        <div class="metric"><button type="button" class="metric-label metric-help-button" id="calculated-dbc-help" data-metric-key="thermal_noise">ISF 计算相噪 ⓘ</button><strong class="metric-value" id="metric-calculated-dbc">N/A</strong><span class="metric-sub">当前工况 / 频偏 / 比较口径</span></div>
+        <div class="metric"><button type="button" class="metric-label metric-help-button" id="spectre-dbc-help" data-metric-key="spectre_total_dBc_Hz">VCO 总仿真相噪 ⓘ</button><strong class="metric-value" id="metric-spectre-dbc">N/A</strong><span class="metric-sub">全部噪声机制 · PM-SSB</span></div>
+        <div class="metric"><button type="button" class="metric-label metric-help-button" data-metric-key="f0_Hz">振荡基频 ⓘ</button><strong class="metric-value" id="metric-frequency">N/A</strong><button type="button" class="metric-sub metric-help-button" id="metric-period" data-metric-key="period_s">等待后端结果</button></div>
+        <div class="metric"><button type="button" class="metric-label metric-help-button" data-metric-key="mDC_cycle_mean_A_rtHz">mDC 周期均值 ⓘ</button><strong class="metric-value" id="metric-mdc">N/A</strong><span class="metric-sub">噪声幅度周期均值</span></div>
+        <div class="metric"><button type="button" class="metric-label metric-help-button" data-metric-key="mDyn_rms_A_rtHz">mDyn RMS ⓘ</button><strong class="metric-value" id="metric-mdyn">N/A</strong><span class="metric-sub">动态噪声调制</span></div>
+        <div class="metric"><button type="button" class="metric-label metric-help-button" data-metric-key="cum_real_V_rtHz">Σ Qk ⓘ</button><strong class="metric-value mono" id="metric-qsum">N/A</strong><span class="metric-sub">复数相干累计</span></div>
+        <div class="metric"><span class="metric-label">Thermal 同源误差</span><strong class="metric-value" id="metric-thermal-error">N/A</strong><span class="metric-sub">已计算源与相同器件/机制的仿真功率和比较</span></div>
+        <div class="metric"><button type="button" class="metric-label metric-help-button" data-metric-key="pair_error_dB">独立双器件误差 ⓘ</button><strong class="metric-value" id="metric-pair-error">N/A</strong><span class="metric-sub" id="metric-pair-detail">对称、独立假设需核对</span></div>
+      </section>
+
+      <div class="notice-box" id="result-source-note">
+        <svg width="17" height="17" viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.3"/><path d="M9 8.2v4M9 5.5v.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span>等待经过后端 provenance 验证的 <code>GET /api/results/{id}</code> 结果。</span>
+      </div>
+
+      <section class="results-grid" aria-label="波形与频域图表">
+        <article class="card chart-card wide"><div class="chart-header"><div><h2>VCO 总仿真相噪与 ISF 计算</h2><p>同一工况的真实频偏采样点；点击曲线或图例突出显示，悬停标记查看数值。缺值断线，不外推噪声底或 corner。</p></div></div><div class="chart-wrap" id="phase-noise-chart"></div></article>
+        <article class="card wide"><div class="card-body"><h2>当前频点的独立噪声源贡献</h2><p class="caption">工况和频偏跟随顶部选择。计算与仿真饼图分别按已列独立源的线性 PSD 归一化；未建模、未采集或不明确的来源显示 N/A，不填零，也不混入汇总行。</p><div class="noise-pie-grid" id="noise-contribution-pies"></div><div id="noise-contribution-table">等待真实 VCO 仿真结果</div></div></article>
+        <article class="card chart-card wide"><div class="chart-header"><div><h2>按阶贡献与真实计算总和</h2><p>both：每个 k 把 flicker 单阶等效 PSD 与 thermal 的 |m|=k 独立频带 PSD 合并成一条线，仅合并两分量都有明确数据的阶数。各 k 合计仍不能相加得到总线，因为 flicker 谐波之间存在相干干涉；粗线保留原始正确计算总和。Flicker / thermal 可单独筛选；缺项断线，不按零补齐。</p></div></div><div class="chart-wrap" id="harmonic-noise-chart"></div></article>
+        <article class="card chart-card wide">
+          <div class="chart-header">
+            <div><h2>当前频偏的工况误差对比</h2><p>相对同口径 Spectre flicker · <span id="comparison-offset">offset 未提供</span> · dB；双管按独立源功率相加</p></div>
+            <div class="chart-legend"><span class="legend-item"><i class="legend-swatch" style="--swatch:#333"></i>双器件 flicker</span></div>
+          </div>
+          <div class="chart-wrap" id="comparison-chart" data-chart="comparison" aria-label="当前频偏各工况相对 Spectre 的 flicker 误差图"></div>
+        </article>
+        <article class="card chart-card wide">
+          <div class="chart-header">
+            <div><h2>节点电压 · VG / VD / VS / VB</h2><p>归一化相位 θ / 2π · voltage (V)</p></div>
+            <div class="chart-legend">
+              <span class="legend-item"><i class="legend-swatch" style="--swatch:#176c68"></i>VG</span>
+              <span class="legend-item"><i class="legend-swatch" style="--swatch:#dc7140"></i>VD</span>
+              <span class="legend-item"><i class="legend-swatch" style="--swatch:#3d6f91"></i>VS</span>
+              <span class="legend-item"><i class="legend-swatch" style="--swatch:#7660a5"></i>VB</span>
+            </div>
+          </div>
+          <div class="chart-wrap" id="voltage-chart" data-chart="voltage" aria-label="VG、VD、VS、VB 电压波形图"></div>
+        </article>
+
+        <article class="card chart-card">
+          <div class="chart-header">
+            <div><h2>器件漏极电流 · I<sub>D</sub></h2><p>主振荡器与 replica · current (A)</p></div>
+            <div class="chart-legend"><span class="legend-item"><i class="legend-swatch" style="--swatch:#176c68"></i>Main I<sub>D</sub></span><span class="legend-item"><i class="legend-swatch" style="--swatch:#dc7140"></i>Replica I<sub>D</sub></span></div>
+          </div>
+          <div class="chart-wrap" id="current-chart" data-chart="current" aria-label="主与 replica 漏极电流图"></div>
+        </article>
+
+        <article class="card chart-card">
+          <div class="chart-header">
+            <div><h2>Impulse sensitivity · carrier-referenced signed-H ISF</h2><p>Γ<sub>I/Q</sub>(θ) · C⁻¹；两分支 RSS 与物理单位求和等价，独立于 m/M<sub>dyn</sub></p></div>
+            <div class="chart-legend"><span class="legend-item"><i class="legend-swatch" style="--swatch:#3d6f91"></i>Carrier-I</span><span class="legend-item"><i class="legend-swatch" style="--swatch:#7660a5"></i>Carrier-Q</span></div>
+          </div>
+          <div class="chart-wrap" id="isf-chart" data-chart="isf" aria-label="ISF 波形图"></div>
+        </article>
+
+        <article class="card chart-card">
+          <div class="chart-header">
+            <div><h2>噪声调制 · mDC / mDyn</h2><p>同一底层 flicker source 归一化 · A/√Hz</p></div>
+            <div class="chart-legend"><span class="legend-item"><i class="legend-swatch" style="--swatch:#7660a5"></i>mDyn</span><span class="legend-item"><i class="legend-swatch" style="--swatch:#b97a21"></i>mDC</span></div>
+          </div>
+          <div class="chart-wrap" id="modulation-chart" data-chart="modulation" aria-label="mDC 与 mDyn 图"></div>
+        </article>
+
+        <article class="card chart-card">
+          <div class="chart-header">
+            <div><h2>调制乘积 · ISF × mDyn</h2><p>I/Q 两分支谐波积分前的时域贡献 · s⁻¹/√Hz</p></div>
+            <div class="chart-legend"><span class="legend-item"><i class="legend-swatch" style="--swatch:#dc7140"></i>Γ<sub>I</sub> · mDyn</span><span class="legend-item"><i class="legend-swatch" style="--swatch:#7660a5"></i>Γ<sub>Q</sub> · mDyn</span></div>
+          </div>
+          <div class="chart-wrap" id="product-chart" data-chart="product" aria-label="ISF 与 mDyn 乘积图"></div>
+        </article>
+
+        <article class="card chart-card wide">
+          <div class="chart-header">
+            <div><h2>Q<sub>k</sub> 复平面累计</h2><p>从 k = 0 开始的 cumulative phasor · 点号为谐波阶数</p></div>
+            <div class="chart-legend"><span class="legend-item"><i class="legend-swatch" style="--swatch:#176c68"></i>ΣQ<sub>0…k</sub></span><span class="legend-item"><i class="legend-swatch" style="--swatch:#dc7140"></i>Final</span></div>
+          </div>
+          <div class="chart-wrap phasor" id="qk-chart" data-chart="phasor" aria-label="Qk 累计复平面图"></div>
+        </article>
+      </section>
+
+      <section class="card">
+        <div class="card-header">
+          <div class="card-title"><span class="section-index">Σ</span><div><h2>逐阶动态修正与相干累计</h2><p>M<sub>k</sub><sup>DC</sup>、M<sub>k</sub><sup>dyn</sup>、C<sub>k</sub>、Q<sub>k</sub> 保留代表侧原始诊断，不冒称双器件振幅；末两列为对称 gm pair 的 flicker 单阶与累计相噪。</p></div></div>
+        </div>
+        <div class="card-body flush">
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead><tr><th><button type="button" class="metric-help-button" data-metric-key="k">k ⓘ</button></th><th class="numeric"><button type="button" class="metric-help-button" data-metric-key="Mdc_mag_A_rtHz">|Mdc,k| ⓘ</button></th><th class="numeric"><button type="button" class="metric-help-button" data-metric-key="Mdyn_mag_A_rtHz">|Mdyn,k| ⓘ</button></th><th class="numeric"><button type="button" class="metric-help-button" data-metric-key="A_k">Ak ⓘ</button></th><th class="numeric"><button type="button" class="metric-help-button" data-metric-key="delta_k_deg">δk (°) ⓘ</button></th><th class="numeric"><button type="button" class="metric-help-button" data-metric-key="Ck_real">Ck ⓘ</button></th><th class="numeric"><button type="button" class="metric-help-button" data-metric-key="Q_mag_V_rtHz">|Qk| ⓘ</button></th><th class="numeric"><button type="button" class="metric-help-button" data-metric-key="Q_phase_deg">∠Qk (°) ⓘ</button></th><th class="numeric"><button type="button" class="metric-help-button" data-metric-key="pair_harmonic_equivalent_dBc_Hz">双器件单阶 dBc/Hz ⓘ</button></th><th class="numeric"><button type="button" class="metric-help-button" data-metric-key="pair_cumulative_dBc_Hz">双器件累计 dBc/Hz ⓘ</button></th></tr></thead>
+              <tbody id="error-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card-footer"><span class="caption">同口径比较见上方 gm pair 与 thermal 误差；实际数值质量与辅助检查分别列示。</span><a class="btn small" href="inspect.html#files">查看原始 harmonic_closure.csv</a></div>
+      </section>
+      <details class="card result-detail-fields"><summary>当前采样点全部指标与质量证据 · 点击字段名查看用途</summary><div class="card-body" id="result-metric-tables"></div></details>
+    </div>
+  </main>
+  <div class="chart-tooltip" id="chart-tooltip" role="status"></div>
+  <dialog id="metric-help-dialog" aria-label="指标含义和用途"><div id="metric-help-content"></div><button type="button" class="btn" id="close-metric-help">关闭说明</button></dialog>
+  <div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>

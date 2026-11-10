@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "profile_id": "synthetic-flat-vco-v1",
+  "main": {
+    "target_instance": "M1",
+    "device_subckt": "generic_nmos",
+    "terminals": {
+      "drain": "VOUTP",
+      "gate": "VOUTN",
+      "source": "VCOMMON",
+      "bulk": "VCOMMON"
+    },
+    "output": {"positive": "VOUTP", "negative": "VOUTN"},
+    "drain_probe": {"node": "M1D", "source": "V_M1D"},
+    "injection": {
+      "source": "I_HBXF_M1",
+      "positive": "VOUTP",
+      "negative": "VCOMMON"
+    },
+    "traces": {
+      "gate": "VOUTN",
+      "drain": "VOUTP",
+      "source": "VCOMMON",
+      "bulk": "VCOMMON",
+      "current": "V_M1D:p",
+      "target_noise": "M1.device",
+      "peer_noise": "M0.device"
+    }
+  },
+  "replica": {
+    "instance": "MREP",
+    "dc_instance": "M1",
+    "dc_sense_source": "V_SENSE_DC",
+    "dc_sense_drain_terminal": "negative",
+    "dc_transducer": "H_NOISE",
+    "dc_noise_output": "NOISE_OUT",
+    "original_subckt": "generic_nmos",
+    "generated_subckt": "generic_nmos_dynprobe",
+    "device_parameters": "l=1u w=10u m=1",
+    "model_sections": ["typical"],
+    "sense_source": "V_SENSE",
+    "noise_trace": "MREP.device",
+    "intrinsic": {
+      "instance": "device",
+      "primitive": "generic_nmos_primitive",
+      "terminals": ["d", "g", "s", "b"],
+      "injection_source": "I_INJECT"
+    }
+  },
+  "contracts": {
+    "current_direction": "drain_to_source",
+    "carrier_amplitude": "differential_peak",
+    "output_noise": "PM_SSB",
+    "source_noise_quantity": "PSD_A2_per_Hz",
+    "canonical_noise_quantity": "ASD_A_per_sqrt_Hz",
+    "common_source_normalization": "Mdyn[k]=Dk*sqrt_Sxi",
+    "time_origin": "shared_unshifted_VCO_period",
+    "manual_waveform_shift": false
+  },
+  "qualification": {
+    "synthetic_only": true,
+    "dynamic_isf_ready": false
+  }
+}

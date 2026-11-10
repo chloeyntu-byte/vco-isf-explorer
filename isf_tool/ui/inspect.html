@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ISF Portable Tool 数据检查与导出">
+  <title>检查与导出 · ISF Workbench</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body data-page="inspect">
+  <header class="topbar">
+    <a class="brand" href="index.html" aria-label="ISF Workbench 首页">
+      <span class="brand-mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 13.5c2.1 0 2.1-7 4.3-7s2.2 7 4.4 7 2.2-7 5.3-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+      <span class="brand-copy">ISF Workbench<small>Portable analysis</small></span>
+    </a>
+    <nav class="step-nav" aria-label="分析步骤">
+      <ol>
+        <li data-nav-page="setup"><a class="step-link" href="index.html"><span class="step-number">01</span><span class="step-label">项目设置</span></a></li>
+        <li data-nav-page="discover"><a class="step-link" href="discover.html"><span class="step-number">02</span><span class="step-label">发现与运行</span></a></li>
+        <li data-nav-page="results"><a class="step-link" href="results.html"><span class="step-number">03</span><span class="step-label">分析结果</span></a></li>
+        <li data-nav-page="inspect"><a class="step-link" href="inspect.html"><span class="step-number">04</span><span class="step-label">检查与导出</span></a></li>
+      </ol>
+    </nav>
+    <div class="topbar-tools">
+      <span class="api-badge" id="api-status" data-state="checking"><span class="status-dot"></span><span class="api-label-long">正在检查 API</span><span class="sr-only" id="api-status-detail"></span></span>
+      <button class="icon-button" type="button" data-action="refresh-health" aria-label="重新检查 API"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.2 5.7A5.5 5.5 0 1 0 13 10.8M13.2 2.8v2.9h-2.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    <header class="page-heading">
+      <div class="page-heading-copy">
+        <div class="eyebrow">Step 04 / Inspect &amp; export</div>
+        <h1>检查数据，整理交付</h1>
+        <p>确认采样完整性、相位对齐和单位一致性，预览每个派生文件，再按需导出结构化结果。</p>
+      </div>
+      <div class="heading-actions">
+        <button class="btn" type="button" id="refresh-data"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.46-3.54M13 2.5v3.2H9.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>重新检查</button>
+        <button class="btn primary" type="button" id="export-all"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2v8m0 0 3-3m-3 3L5 7M3 12.5v1h10v-1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>导出所选</button>
+      </div>
+    </header>
+
+    <div class="content-stack">
+      <section class="quality-grid" aria-label="数据质量概览">
+        <article class="quality-card"><div class="quality-head"><span>Completeness</span><span class="status-pill" id="quality-complete-status">N/A</span></div><div class="quality-value" id="quality-complete">N/A</div><p id="quality-complete-copy">等待后端结果</p></article>
+        <article class="quality-card"><div class="quality-head"><span>Time origin</span><span class="status-pill" id="quality-phase-status">N/A</span></div><div class="quality-value" id="quality-phase">N/A</div><p id="quality-phase-copy">等待共同原点审计</p></article>
+        <article class="quality-card"><div class="quality-head"><span>NaN / Inf</span><span class="status-pill" id="quality-nan-status">N/A</span></div><div class="quality-value" id="quality-nan">N/A</div><p id="quality-nan-copy">等待数值检查</p></article>
+        <article class="quality-card"><div class="quality-head"><span>Unit system</span><span class="status-pill" id="quality-unit-status">N/A</span></div><div class="quality-value" id="quality-unit">N/A</div><p id="quality-unit-copy">等待单位合同</p></article>
+      </section>
+
+      <div class="content-grid">
+        <div class="content-stack">
+          <section class="card" id="files">
+            <div class="card-header">
+              <div class="card-title"><span class="section-index">01</span><div><h2>结果文件</h2><p>仅列出后端 provenance 验证过的文件；点击文件名通过 <code>GET /api/file?path=</code> 预览。</p></div></div>
+              <div class="card-actions"><button class="btn small" type="button" id="download-selected">下载所选</button></div>
+            </div>
+            <div class="card-body flush">
+              <div class="table-scroll">
+                <table class="data-table file-table">
+                  <thead><tr><th><input id="select-all-files" type="checkbox" checked aria-label="选择全部文件"></th><th>文件</th><th>类型</th><th class="numeric">记录</th><th class="numeric">大小</th><th>校验</th><th></th></tr></thead>
+                  <tbody id="file-table-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-header">
+              <div class="card-title"><span class="section-index">02</span><div><h2>数据预览</h2><p id="preview-path">请选择一个文件。</p></div></div>
+              <div class="card-actions"><button class="btn small" type="button" id="copy-preview" disabled>复制内容</button><button class="btn small" type="button" id="download-preview" disabled>下载文件</button></div>
+            </div>
+            <div class="preview-shell" id="preview-shell"><div class="preview-empty">Select a file to inspect its contents</div></div>
+          </section>
+        </div>
+
+        <aside class="side-stack sticky-stack" aria-label="质量检查与导出">
+          <section class="card">
+            <div class="card-header"><div><h3>验证清单</h3><p>本次运行的关键一致性检查。</p></div><span class="status-pill" id="validation-summary">N/A</span></div>
+            <div class="card-body">
+              <ul class="check-list" id="validation-list"><li class="check-item"><span class="check-copy"><strong>等待结果</strong><span>API 返回后生成实际验证项</span></span><span class="status-pill">N/A</span></li></ul>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-header"><div><h3>导出包</h3><p>浏览器直接生成，不需要构建工具。</p></div></div>
+            <div class="card-body content-stack">
+              <div class="export-options">
+                <label class="export-option"><input type="checkbox" name="export-format" value="json" checked><span><strong>JSON</strong><small>完整结构化结果</small></span></label>
+                <label class="export-option"><input type="checkbox" name="export-format" value="csv" checked><span><strong>CSV</strong><small>谐波误差表</small></span></label>
+                <label class="export-option"><input type="checkbox" name="export-format" value="manifest" checked><span><strong>Manifest</strong><small>路径与校验摘要</small></span></label>
+              </div>
+              <div class="field"><label for="export-prefix">文件名前缀</label><input class="mono-input" id="export-prefix" type="text" value="" placeholder="加载真实作业后生成"></div>
+              <button class="btn primary" type="button" id="build-export"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2v8m0 0 3-3m-3 3L5 7M3 12.5v1h10v-1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>生成导出文件</button>
+              <div class="mono caption">GET /api/results/{id}<br>GET /api/file?path=…</div>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </div>
+  </main>
+  <div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>

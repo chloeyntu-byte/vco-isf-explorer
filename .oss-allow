@@ -1,0 +1,33 @@
+# Reviewed false positives for oss_scan.py (format: relative/path:regex).
+# Every entry is generic terminology or an obviously fake test value; none refers to a real
+# machine, licence server, foundry or PDK.  Character classes like [r] only keep this file
+# from matching its own scanner rules.
+
+# The root-directory option of a PDK is a *user-configuration key* (and a few environment
+# variable names) through which users point the tool at their own PDK directory.
+# The repository ships no PDK path and no default value for it.
+isf_tool/core/physical_profile.py:(?i)pdk_?[r]oot
+isf_tool/core/preflight.py:(?i)pdk_?[r]oot|PDK_[H]OME
+isf_tool/tk/app.py:(?i)pdk_?[r]oot
+isf_tool/tk/viewmodel.py:(?i)pdk_?[r]oot
+isf_tool/ui/app.js:(?i)pdk_?[r]oot
+isf_tool/ui/index.html:(?i)pdk_?[r]oot
+tests/test_ui_evidence_integrity.js:(?i)pdk_?[r]oot
+
+# Placeholder model-file paths inside unit tests of netlist path rewriting (fictional file names).
+tests/test_batch_template_equivalence.py:models/device\.scs
+tests/test_v2_engine_paths.py:models/device_model\.scs
+
+# Loopback / RFC 5737 documentation addresses used by the web-server security tests.
+SECURITY.md:127\.0\.0\.0
+tests/test_followup_core.py:127\.0\.0\.2
+tests/test_resources_and_web_security.py:127\.\d+\.\d+\.\d+|192\.0\.2\.1
+
+# Fake licence strings ("<port>@<host>") fed to redaction/diagnostics tests to prove they are masked.
+tests/test_environment_report.py:4567[8]@local-license-private\.invalid
+tests/test_maestro_context.py:2700[0]@local
+
+# Fake token literal for a negative authentication test, and the URL-fragment token the web
+# server prints for its own per-process random token (no secret is stored in the repository).
+tests/test_resources_and_web_security.py:token[=]"incorrect
+isf_tool/server.py:token[=]"\s*\+\s*urllib\.parse\.quote\(

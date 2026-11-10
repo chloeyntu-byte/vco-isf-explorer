@@ -1,0 +1,9 @@
+`include "constants.vams"
+`include "disciplines.vams"
+module isf_known_white(out, stimulus);
+  output out;
+  input stimulus;
+  electrical out, stimulus;
+  parameter real psd = 1e-18;
+  analog V(out) <+ V(stimulus) + white_noise(psd, "known_white");
+endmodule

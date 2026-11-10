@@ -1,0 +1,18 @@
+{
+  "name": "Synthetic hierarchical Maestro-pair dynamic ISF template",
+  "pair_match": {
+    "model_basenames": ["device_model.scs"],
+    "pdk_tokens": ["pdk_a", "device_model"]
+  },
+  "offset_hz": 10000.0,
+  "max_harmonic": 3,
+  "hb_max_harmonic": 12,
+  "main_max_sideband": 10,
+  "dc_noise_samples": 16,
+  "physical_profile_path": "physical_profile_example_hierarchical.json",
+  "spectre": "spectre",
+  "psf": "psf",
+  "model_file": "device_model.scs",
+  "source_root": ".",
+  "points": []
+}

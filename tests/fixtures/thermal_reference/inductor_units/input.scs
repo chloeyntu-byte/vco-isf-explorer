@@ -1,0 +1,13 @@
+// Independent dimensional reference for Spectre inductor rn source.
+simulator lang=spectre
+global 0
+VT (vin 0) vsource dc=0 mag=1
+Lfixed (vin out_fixed) inductor l=200p r=10
+Lskin (vin out_skin) inductor l=200p mode=2 q=20 fq=5G rdc=0.01
+Rfixed (out_fixed 0) resistor r=50 isnoisy=no
+Rskin (out_skin 0) resistor r=50 isnoisy=no
+options options temp=27 tnom=27 reltol=1e-7
+nfixed (out_fixed 0) noise values=[1e4 1e6 5e9 1e10] separatenoise=yes
+nskin (out_skin 0) noise values=[1e4 1e6 5e9 1e10] separatenoise=yes
+ac ac values=[1e4 1e6 5e9 1e10]
+saveOptions options save=all

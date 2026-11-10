@@ -1,0 +1,24 @@
+// ISF independent PM/SSB reference: no PDK and no VCO result calibration.
+simulator lang=spectre
+global 0
+ahdl_include "white_source.va"
+parameters F0=1e6 OFFSET=1e3 A=1 G=1 WHITE_PSD=1e-18
+VC (carrier 0) vsource type=sine ampl=A freq=F0
+VQ (quadrature 0) vsource type=sine ampl=1 freq=F0 sinephase=90
+VSTIM (stimulus 0) vsource dc=0 pacmag=1
+W (noisy stimulus) isf_known_white psd=WHITE_PSD
+BAM (am_out 0) bsource v=V(carrier)+G*V(noisy)*V(carrier)/A
+BPM (pm_out 0) bsource v=V(carrier)+G*V(noisy)*V(quadrature)
+BPWM (pwm_out 0) bsource v=V(carrier)+G*V(noisy)*V(quadrature)*(1+0.5*V(carrier)/A)
+options options reltol=1e-6 vabstol=1e-10 iabstol=1e-15 temp=27
+hb hb fundfreqs=[F0] maxharms=[8] tstab=10u annotate=status
+noise_am (am_out 0) hbnoise sweeptype=relative relharmvec=[1] values=[OFFSET] maxsideband=8 noiseout=[usb lsb am pm] annotate=status
+noise_pm (pm_out 0) hbnoise sweeptype=relative relharmvec=[1] values=[OFFSET] maxsideband=8 noiseout=[usb lsb am pm] annotate=status
+noise_pwm (pwm_out 0) hbnoise sweeptype=relative relharmvec=[1] values=[OFFSET] maxsideband=8 noiseout=[usb lsb am pm] annotate=status
+am_upper (am_out 0) hbxf sweeptype=relative relharmvec=[1] values=[OFFSET] maxsideband=8 freqaxis=out annotate=status
+am_lower (am_out 0) hbxf sweeptype=relative relharmvec=[1] values=[-OFFSET] maxsideband=8 freqaxis=out annotate=status
+pm_upper (pm_out 0) hbxf sweeptype=relative relharmvec=[1] values=[OFFSET] maxsideband=8 freqaxis=out annotate=status
+pm_lower (pm_out 0) hbxf sweeptype=relative relharmvec=[1] values=[-OFFSET] maxsideband=8 freqaxis=out annotate=status
+pwm_upper (pwm_out 0) hbxf sweeptype=relative relharmvec=[1] values=[OFFSET] maxsideband=8 freqaxis=out annotate=status
+pwm_lower (pwm_out 0) hbxf sweeptype=relative relharmvec=[1] values=[-OFFSET] maxsideband=8 freqaxis=out annotate=status
+saveOptions options save=all
