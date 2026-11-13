@@ -154,7 +154,21 @@ class ProcessChart(tk.Canvas):
         tiny = y1 - y0 < 85
         # Legends and readouts get their own header rows, never cover titles.
         legend_x, legend_y = x0 + 10, y0 + 28
+        legend_step = max(17, self.small_font.metrics('linespace') + 3)
         full = panel.get('legend_full', False) and not compact
+        if full and not tiny:
+            # A wrapped legend must not eat the plot: with wide glyphs (for
+            # example Noto CJK) fall back to one truncated row when the full
+            # legend would leave the plot less than half of the panel height.
+            rows, cursor = 1, x0 + 10
+            for series in panel.get('series', []):
+                length = 26 + self.small_font.measure(series['name'])
+                if cursor + length > x1 - 10 and cursor > x0 + 10:
+                    rows, cursor = rows + 1, x0 + 10
+                cursor += length
+            plot_height = (y1 - y0) - (28 + (rows - 1) * legend_step + 36) - (34 if panel.get('show_xlabel', True) else 9)
+            if plot_height < (y1 - y0) / 2:
+                full = False
         for si, series in enumerate(panel.get('series', []) if not tiny else []):
             color = self._color(series, si)
             label = series['name']
@@ -163,7 +177,7 @@ class ProcessChart(tk.Canvas):
                 label=label[:-2]+'…'
             length=26+self.small_font.measure(label)
             if full and legend_x+length > x1-10 and legend_x>x0+10:
-                legend_x,legend_y=x0+10,legend_y+17
+                legend_x,legend_y=x0+10,legend_y+legend_step
             tag=f'legend:{index}:{si}'
             self.create_line(legend_x,legend_y,legend_x+12,legend_y,fill=color,width=series.get('width',2),
                              dash=(4,3) if series.get('dash') else (),tags=tag)

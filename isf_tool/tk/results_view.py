@@ -358,7 +358,9 @@ class ResultsView(ttk.Frame):
         style.configure('ResultActive.TButton', font=(family,10,'bold'), padding=(8,4), background=palette['grid'], foreground=palette['accent'])
         style.configure('Result.TCheckbutton', font=(family, 10), padding=4)
         style.configure('Result.TMenubutton', font=(family, 10), padding=(8, 4))
-        style.configure('Result.Treeview', font=(family, 10), rowheight=25)
+        # Row height follows the real font so tall CJK fonts never clip rows.
+        row_font = tkfont.Font(self, family=family, size=10)
+        style.configure('Result.Treeview', font=(family, 10), rowheight=max(25, row_font.metrics('linespace') + 8))
         style.configure('Result.Treeview.Heading', font=(family, 10, 'bold'), padding=(4, 4))
         def compact(widget):
             for child in widget.winfo_children():

@@ -711,7 +711,7 @@ class IsfApplication:
             fieldbackground=palette["surface"],
             foreground=palette["text"],
             bordercolor=palette["border"],
-            rowheight=max(28, self.body_font.metrics("linespace") + 10),
+            rowheight=max(28, self.body_font.metrics("linespace") + 12),
         )
         style.map(
             "Treeview",
