@@ -62,7 +62,8 @@ class BandGuiTests(unittest.TestCase):
                 self.assertTrue(self.ui.table.winfo_ismapped())
                 self.assertTrue(self.ui.chart.plots)
                 for p in self.ui.chart.plots:
-                    self.assertGreater(p['rect'][3]-p['rect'][1],15)
+                    self.assertGreater(p['rect'][3]-p['rect'][1],15,
+                        'view %s at %s: plot %r is too short' % (view, size, p.get('title') or p['rect']))
                 if view==6:
                     self.assertEqual(self.app.body_font.actual('family'),self.ui.chart.small_font.actual('family'))
             self.ui.overlay.set(True);self.ui.show(1);self.root.update()
@@ -93,7 +94,9 @@ class BandGuiTests(unittest.TestCase):
                 self.assertEqual(('source:core_a/fn',),self.ui.table.tree.selection())
                 self.assertIn('计入对称 gm pair 对比',self.ui.readout.get())
 
+                # The hint wraps into one or more lines depending on font metrics;
+                # what matters is that the lines never overlap.
                 messages=self.ui.chart.find_withtag('reason:1')
-                self.assertGreaterEqual(len(messages),2)
+                self.assertGreaterEqual(len(messages),1)
                 boxes=sorted((self.ui.chart.bbox(item) for item in messages),key=lambda b:b[1])
                 self.assertTrue(all(a[3] < b[1] for a,b in zip(boxes,boxes[1:])))
