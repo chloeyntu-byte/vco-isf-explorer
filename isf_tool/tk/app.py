@@ -1,4 +1,4 @@
-"""Native Tk front end for the portable VCO ISF workflow.
+"""Native Tk front end for the portable VCO ISF analysis procedure.
 
 The desktop UI talks to :class:`~isf_tool.core.service.ToolService` through
 ``IsfController`` directly.  No HTTP server is created.  Service calls that
@@ -27,7 +27,7 @@ from tkinter import filedialog, font as tkfont, messagebox, simpledialog, ttk
 from ..core.limits import MAX_PHASE_CANDIDATE_HARMONICS
 from ..core.metrics import metric_catalog, metric_definition
 from ..core.result_presentation import (
-    cumulative_noise_series, harmonic_noise_series, is_generated_flicker, operating_points, phase_noise_comparison_series, phase_noise_series,
+    is_generated_flicker, operating_points, phase_noise_comparison_series, phase_noise_series,
 )
 from ..core.ui_state import strip_retired_noise_objects
 from .charts import ContributionBars, LineChart, PhasorChart, contribution_bars
@@ -292,7 +292,7 @@ def history_provenance_rows(report: Mapping[str, Any]) -> list[dict[str, str]]:
             if isinstance(modified, (int, float)) and not isinstance(modified, bool):
                 try:
                     modified = datetime.fromtimestamp(modified).astimezone().isoformat(timespec="seconds")
-                except (ValueError, OverflowError, OSError):
+                except (ValueError, ArithmeticError, OSError):
                     modified = "未知"
             known = "未知" not in old and "未知" not in current
             status = "视图名一致；内容以 History 为准" if known and current == old else "与当前设计不一致；仍按 History 运行" if known else "来源未完整记录，不推测"
@@ -424,7 +424,7 @@ class IsfApplication:
         self.noise_scope_var = tk.StringVar(value="pair")
         self.noise_kind_var = tk.StringVar(value="both")
         self.log_offset_var = tk.BooleanVar(value=True)
-        self.harmonic_curve_var = tk.StringVar(value="全部各阶 + 相干总和")
+        self.harmonic_curve_var = tk.StringVar(value="")
         self.metric_choice_var = tk.StringVar()
         self.offset_preview_var = tk.StringVar(value="正在展开频偏点表…")
         self.show_all_mappings_var = tk.BooleanVar(value=False)
@@ -481,7 +481,7 @@ class IsfApplication:
 
     def _build_ui(self) -> None:
         self.root.geometry("1440x900")
-        self.root.minsize(760, 540)
+        self.root.minsize(1280, 800)
         fw.apply(self.root, product="isf")
         self._configure_fonts()
         self.style = ttk.Style(self.root)
@@ -516,7 +516,7 @@ class IsfApplication:
         self.notebook.pack(fill="both", expand=True)
         self.setup_tab = ttk.Frame(self.notebook, style="App.TFrame", padding=12)
         self.run_tab = ttk.Frame(self.notebook, style="App.TFrame", padding=12)
-        self.result_tab = ttk.Frame(self.notebook, style="App.TFrame", padding=12)
+        self.result_tab = ttk.Frame(self.notebook, style="App.TFrame", padding=8)
         self.error_tab = ttk.Frame(self.notebook, style="App.TFrame", padding=12)
         self.notebook.add(self.setup_tab, text="设置")
         self.notebook.add(self.run_tab, text="任务与预检")
@@ -778,6 +778,8 @@ class IsfApplication:
         }
         if palette["series"]:
             chart_palette["series"] = palette["series"]
+        if hasattr(self, "results_view"):
+            self.results_view.set_palette(chart_palette)
         for chart in (getattr(self, "isf_chart", None), getattr(self, "qk_chart", None), getattr(self, "phase_noise_chart", None), getattr(self, "phase_error_chart", None), getattr(self, "harmonic_noise_chart", None), getattr(self, "simulated_noise_pie", None), getattr(self, "calculated_noise_pie", None)):
             if chart is not None:
                 chart.set_palette(chart_palette)
@@ -2169,7 +2171,7 @@ class IsfApplication:
         persisted = self.controller.workspace / "config.json"
         if initial and not persisted.is_file():
             # Keep the backend fail-safe dry default for API/CLI callers, while
-            # making the desktop's ordinary workflow an explicitly authorised
+            # making the desktop's ordinary analysis procedure an explicitly authorised
             # real run. Formal signoff remains a separate advanced choice.
             config = deep_merge(
                 config,
@@ -2305,7 +2307,7 @@ class IsfApplication:
                 "point": self.point_var.get(), "operating_point_id": self.operating_point_var.get(),
                 "offset_hz": summary.get("offset_Hz"), "noise_kind": self.noise_kind_var.get(),
                 "x_scale": "log" if self.log_offset_var.get() else "linear",
-                "log_offset": self.log_offset_var.get(), "harmonic_curve": self.harmonic_curve_var.get(),
+                "log_offset": self.log_offset_var.get(),
                 "theme": self.theme_var.get(), "selected_tab": selected_tab,
                 "advanced_visible": self.advanced_visible_var.get()}
 
@@ -2427,7 +2429,6 @@ class IsfApplication:
             self.current_job_id = job_id
             self.current_job = _mapping(report.get("job"))
             self.operating_point_var.set(str(view.get("operating_point_id") or ""))
-            self.harmonic_curve_var.set(str(view.get("harmonic_curve") or "全部贡献 + 总和"))
             requested = str(view.get("point") or "")
             if not requested:
                 result = None
@@ -3155,7 +3156,7 @@ class IsfApplication:
         else:
             from ..example_data import build
             path = Path(build(str(Path(self.controller.workspace) / "examples" / "ideal_lc")))
-        self.noise_kind_var.set("flicker")  # the synthetic example carries no thermal source data
+        self.noise_kind_var.set("both")
         self._import_bundle_path(str(path), label="示例 ideal-LC")
 
     def _import_bundle_path(self, path: str, label: str = "") -> None:
@@ -3173,6 +3174,8 @@ class IsfApplication:
     # ---- results ----------------------------------------------------
 
     def _clear_loaded_result(self) -> None:
+        if hasattr(self, "results_view"):
+            self.results_view.clear()
         self._offset_point_choices = {}
         self.current_result = None
         self.current_result_job_id = ""
@@ -3210,172 +3213,8 @@ class IsfApplication:
             self._clear_tree(self.metric_values_tree)
 
     def _build_result_tab(self) -> None:
-        content = self._scrollable_page(self.result_tab, minimum_width=780, fit_width=True)
-        self.result_content = content
-        toolbar = ttk.Frame(content)
-        toolbar.pack(fill="x", pady=(0, 6))
-        ttk.Label(toolbar, text="工况").pack(side="left")
-        self.operating_point_box = ttk.Combobox(toolbar, textvariable=self.operating_point_var, state="readonly", width=24)
-        self.operating_point_box.pack(side="left", padx=(5, 12))
-        self.operating_point_box.bind("<<ComboboxSelected>>", self._operating_point_changed)
-        ttk.Label(toolbar, text="频偏").pack(side="left")
-        self.result_offset_box = ttk.Combobox(toolbar, textvariable=self.result_offset_var, state="readonly", width=15)
-        self.result_offset_box.pack(side="left", padx=(5, 12))
-        self.result_offset_box.bind("<<ComboboxSelected>>", self._result_offset_changed)
-        # Exports retain the exact selected sample.
-        self.point_box = ttk.Combobox(toolbar, textvariable=self.point_var, state="readonly")
-        ttk.Label(toolbar, text="噪声").pack(side="left")
-        self.noise_kind_box = ttk.Combobox(toolbar, textvariable=self.noise_kind_var,
-                                         state="readonly", values=("both", "flicker", "thermal"), width=9)
-        self.noise_kind_box.pack(side="left", padx=5)
-        self.noise_kind_box.bind("<<ComboboxSelected>>", self._point_changed)
-        exports = ttk.Menubutton(toolbar, text="导出数据…")
-        export_menu = tk.Menu(exports, tearoff=False)
-        exports.configure(menu=export_menu)
-        for label, command in (("结果 JSON…", self._export_result_json),
-                               ("Summary CSV…", self._export_summary_csv),
-                               ("当前采样点谐波 CSV…", self._export_harmonics_csv)):
-            export_menu.add_command(label=label, command=command)
-        exports.pack(side="right")
-        summary = ttk.Label(content, textvariable=self.metrics_var, style="Help.TLabel", justify="left")
-        summary.pack(fill="x", pady=(0, 5))
-        summary.bind("<Configure>", lambda event: summary.configure(wraplength=max(250, event.width - 12)))
-
-        charts = ttk.Notebook(content)
-        charts.pack(fill="both", expand=True)
-        tables = ttk.Notebook(charts)
-        self.result_tables = tables
-        self.result_charts = charts
-
-        summary_frame = ttk.Frame(tables, padding=4)
-        harmonic_frame = ttk.Frame(tables, padding=4)
-        tables.add(summary_frame, text="Summary")
-        tables.add(harmonic_frame, text="Flicker 原始谐波诊断")
-        contribution_frame = ttk.Frame(tables, padding=4)
-        tables.add(contribution_frame, text="单频点噪声贡献 · 仿算对比")
-        metric_frame = ttk.Frame(tables, padding=4)
-        tables.add(metric_frame, text="全部指标与质量")
-        self.summary_tree = self._tree(
-            summary_frame,
-            (
-                ("point", "工况 / 采样点", 170),
-                ("offset", "频偏 (Hz)", 100),
-                ("f0", "f0 (Hz)", 110),
-                ("calculated", "ISF 计算 (dBc/Hz)", 200),
-                ("spectre", "VCO 总仿真相噪 (dBc/Hz)", 195),
-                ("dynamic", "计算 − 总仿真 (dB)", 175),
-                ("pair", "gm pair flicker 同口径误差 (dB)", 220),
-            ),
-        )
-        self._with_scroll(summary_frame, self.summary_tree).pack(fill="both", expand=True)
-        self.harmonic_tree = self._tree(
-            harmonic_frame,
-            (
-                ("k", "k", 45),
-                ("mdc", "|Mdc|", 85),
-                ("mdyn", "|Mdyn|", 85),
-                ("a", "Ak", 75),
-                ("delta", "δk (deg)", 80),
-                ("qr", "Qk Re", 90),
-                ("qi", "Qk Im", 90),
-                ("qmag", "|Qk|", 90),
-                ("cumr", "ΣQ Re", 95),
-                ("cumi", "ΣQ Im", 95),
-                ("hdbc", "双器件单阶等效 dBc/Hz", 180),
-                ("cdbc", "双器件相干累计 dBc/Hz", 180),
-            ),
-        )
-        self._with_scroll(harmonic_frame, self.harmonic_tree).pack(fill="both", expand=True)
-        self._help(harmonic_frame, text="本表固定展示 flicker 原始诊断，不随噪声筛选变成 thermal。Mdc、Mdyn、Ak、Qk 保留目标器件原值；末两列为双器件 flicker 等效相噪。thermal 独立频带功率见曲线与噪声贡献页，不混入相干 Qk。").pack(fill="x", pady=(5, 0))
-        self.harmonic_tree.bind("<<TreeviewSelect>>", self._harmonic_selected)
-        self._bind_metric_columns(self.summary_tree, ("point", "offset_Hz", "f0_Hz", "thermal_noise", "spectre_total_dBc_Hz", "calculated_vs_total_db", "pair_error_dB"))
-        self._bind_metric_columns(self.harmonic_tree, ("k", "Mdc_mag_A_rtHz", "Mdyn_mag_A_rtHz", "A_k", "delta_k_deg", "Q_real_V_rtHz", "Q_imag_V_rtHz", "Q_mag_V_rtHz", "cum_real_V_rtHz", "cum_imag_V_rtHz", "pair_harmonic_equivalent_dBc_Hz", "pair_cumulative_dBc_Hz"))
-        ttk.Label(contribution_frame, text="跟随页面顶部的设计工况、固定频偏和噪声类型。", style="Help.TLabel").pack(anchor="w", pady=(0, 6))
-        pies = ttk.Frame(contribution_frame)
-        pies.pack(fill="x")
-        pies.columnconfigure(0, weight=1)
-        pies.columnconfigure(1, weight=1)
-        self.simulated_noise_pie = ContributionBars(pies, title="HBnoise · 仿真源", on_select=self._select_contribution)
-        self.calculated_noise_pie = ContributionBars(pies, title="ISF · 已建模源", on_select=self._select_contribution)
-        self.simulated_noise_pie.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        self.calculated_noise_pie.grid(row=0, column=1, sticky="nsew")
-        self._help(contribution_frame, textvariable=self.noise_pie_note_var).pack(fill="x", pady=(4, 6))
-        self.noise_contribution_tree = self._tree(contribution_frame, (
-            ("label", "仿真贡献 / 对比项", 250), ("device", "器件", 150),
-            ("mechanism", "噪声机制", 160), ("simulated", "仿真 (dBc/Hz)", 135),
-            ("calculated", "ISF 计算 (dBc/Hz)", 155), ("fraction", "占总仿真 PSD (%)", 155),
-            ("psd", "PSD (V²/Hz)", 140),
-        ))
-        self._with_scroll(contribution_frame, self.noise_contribution_tree).pack(fill="both", expand=True)
-        self._help(contribution_frame, textvariable=self.noise_contribution_note_var).pack(fill="x", pady=(4, 0))
-        self._help(contribution_frame, text="汇总行与器件明细有重叠，不能再次相加。占比按线性 PSD / VCO 总 PSD 计算；dB 数字不可相加。未建模或缺少数据的噪声不填 ISF 计算值。").pack(fill="x")
-        self.metric_values_tree = self._tree(metric_frame, (("field", "当前采样点 / 谐波指标", 240), ("value", "值", 320), ("unit", "单位", 130)))
-        self._with_scroll(metric_frame, self.metric_values_tree).pack(fill="both", expand=True)
-        self._help(metric_frame, textvariable=self.result_quality_var).pack(fill="x", pady=(6, 0))
-        self.metric_values_tree.bind("<Double-1>", self._show_selected_raw_metric)
-        self.metric_values_tree.bind("<Return>", self._show_selected_raw_metric)
-
-        noise_frame = ttk.Frame(charts, padding=4)
-        harmonic_plot_frame = ttk.Frame(charts, padding=4)
-        diagnostics = ttk.Panedwindow(charts, orient="horizontal")
-        charts.add(noise_frame, text="相噪与误差")
-        charts.add(tables, text="明细与贡献")
-        charts.add(harmonic_plot_frame, text="谐波 / 输入频带")
-        charts.add(diagnostics, text="Flicker ISF / 复数累计")
-        noise_controls = ttk.Frame(noise_frame)
-        noise_controls.pack(fill="x", pady=(2, 4))
-        ttk.Checkbutton(noise_controls, text="对数频偏轴", variable=self.log_offset_var, command=self._render_noise_curves).pack(side="left")
-        ttk.Button(noise_controls, text="复位视图", command=self._reset_phase_view).pack(side="left", padx=6)
-        series_button = ttk.Menubutton(noise_controls, text="曲线显隐")
-        self._phase_menu = tk.Menu(series_button, tearoff=False)
-        series_button.configure(menu=self._phase_menu)
-        series_button.pack(side="left")
-        figure_button = ttk.Menubutton(noise_controls, text="导出图…")
-        figure_menu = tk.Menu(figure_button, tearoff=False)
-        figure_button.configure(menu=figure_menu)
-        figure_button.pack(side="left", padx=6)
-        self.phase_noise_chart = LineChart(noise_frame, height=215)
-        self.phase_noise_chart.pack(fill="x")
-        self.phase_error_chart = LineChart(noise_frame, height=145, empty_text="无同口径 HBnoise 参考")
-        self.phase_error_chart.pack(fill="x", pady=(3, 0))
-        self._phase_visibility: dict[str, tk.BooleanVar] = {}
-        self._phase_full_x: tuple[float, float] | None = None
-        self._phase_view_x: tuple[float, float] | None = None
-        self._phase_data_key: tuple[str, str, str] | None = None
-        self._phase_log_x = True
-        self._phase_note = tk.StringVar(value="等待结果")
-        for title, chart in (("相噪图", self.phase_noise_chart), ("误差图", self.phase_error_chart)):
-            chart.enable_x_navigation(self._navigate_phase_view)
-            chart.bind("<Double-Button-1>", lambda event, plot=chart: self._select_plot_sample(plot, event), add="+")
-            figure_menu.add_command(label=f"{title}（EPS）…", command=lambda plot=chart: self._export_chart(plot))
-        self._help(noise_frame, textvariable=self._phase_note).pack(fill="x")
-        harmonic_controls = ttk.Frame(harmonic_plot_frame)
-        harmonic_controls.pack(fill="x")
-        ttk.Label(harmonic_controls, text="显示").pack(side="left")
-        self.harmonic_curve_box = ttk.Combobox(harmonic_controls, textvariable=self.harmonic_curve_var, state="readonly", width=33)
-        self.harmonic_curve_box.pack(side="left", padx=8)
-        self.harmonic_curve_box.bind("<<ComboboxSelected>>", lambda _event: self._render_noise_curves())
-        self.harmonic_noise_chart = LineChart(harmonic_plot_frame, height=285)
-        self.harmonic_noise_chart.pack(fill="both", expand=True)
-        self._help(harmonic_plot_frame, text="flicker：各阶 Qk 复数相干相加；thermal：同一独立输入频带内的路径先相干合成，再对独立频带与独立源加功率。两者不能混用相加规则；所有 dB 值均不可直接相加。").pack(fill="x")
-
-        isf_frame = ttk.LabelFrame(diagnostics, text="ISF vs normalized phase", padding=4)
-        qk_frame = ttk.LabelFrame(diagnostics, text="Flicker 目标器件原始 ΣQk", padding=4)
-        diagnostics.add(isf_frame, weight=1)
-        diagnostics.add(qk_frame, weight=1)
-        self.isf_chart = LineChart(isf_frame, height=270)
-        self.isf_chart.pack(fill="both", expand=True)
-        self.qk_chart = PhasorChart(qk_frame, height=270, on_select=self._select_harmonic)
-        self.qk_chart.pack(fill="both", expand=True)
-        glossary = ttk.Frame(content)
-        glossary.pack(fill="x", pady=(6, 0))
-        ttk.Label(glossary, text="指标说明").pack(side="left")
-        self._metric_choices = {f"{definition['label']} · {key}": key for key, definition in metric_catalog().items()
-                                if key not in LEGACY_DEVICE_COMPARISON_FIELDS}
-        self.metric_choice_box = ttk.Combobox(glossary, textvariable=self.metric_choice_var, state="readonly", values=tuple(self._metric_choices), width=43)
-        self.metric_choice_box.pack(side="left", padx=8)
-        self.metric_choice_box.bind("<Return>", lambda _event: self._show_metric(self._metric_choices.get(self.metric_choice_var.get(), "")))
-        ttk.Button(glossary, text="查看含义与用途", command=lambda: self._show_metric(self._metric_choices.get(self.metric_choice_var.get(), ""))).pack(side="left")
+        from .results_view import ResultsView
+        self.results_view = ResultsView(self, self.result_tab)
 
     def _result_loaded(self, value: Any, job_id: str) -> None:
         if getattr(self, "_result_load_pending_job_id", "") == str(job_id):
@@ -3604,35 +3443,9 @@ class IsfApplication:
                     item for item in comparison.values() if item is not None
                 ]
             self._render_phase_comparison(self._curve_cache[cache_key], self._curve_cache[comparison_key])
-            key = (identity, "harmonics:" + scope + ":" + noise_kind)
-            if key not in self._curve_cache:
-                self._curve_cache[key] = harmonic_noise_series(self.current_result, identity, scope=scope, noise_kind=noise_kind)
-            series = self._curve_cache[key]
-            orders = sorted({int(item["k"]) for item in series if item.get("k") is not None})
-            flicker_orders = sorted({int(item["k"]) for item in series
-                                    if str(item.get("id", "")).startswith("harmonic_") and item.get("k") is not None})
-            band_label = {"flicker": "k", "thermal": "|m|", "both": "k"}[noise_kind]
-            choices = {"全部贡献 + 总和": ("all", None)}
-            choices.update({f"仅 {band_label}={order} + 总和": ("one", order) for order in orders})
-            if noise_kind == "flicker":
-                choices.update({f"flicker 累计 0…k={order} + 总和": ("cumulative", order) for order in flicker_orders})
-            self.harmonic_curve_box.configure(values=tuple(choices))
-            if self.harmonic_curve_var.get() not in choices:
-                self.harmonic_curve_var.set("全部贡献 + 总和")
-            mode, order = choices[self.harmonic_curve_var.get()]
-            if mode == "one":
-                series = [item for item in series if item.get("k") == order or item.get("k") is None]
-            elif mode == "cumulative":
-                key = (identity, "cumulative:" + scope + ":" + noise_kind + ":" + str(order))
-                if key not in self._curve_cache:
-                    self._curve_cache[key] = cumulative_noise_series(self.current_result, identity, order, scope=scope, noise_kind=noise_kind)
-                series = self._curve_cache[key] + [item for item in series if item.get("k") is None]
-            self.harmonic_noise_chart.set_axes(x_label="频偏 (Hz)", y_label="等效相噪 (dBc/Hz)", log_x=self.log_offset_var.get())
-            self.harmonic_noise_chart.set_series(series)
         except Exception as exc:
             self.phase_noise_chart.clear("结果缺少明确的频偏 / 工况坐标")
             self.phase_error_chart.clear("无法构造同口径误差")
-            self.harmonic_noise_chart.clear("无法构造谐波频偏曲线")
             self.result_quality_var.set("结果曲线待核对：" + str(exc))
 
     def _point_changed(self, _event: tk.Event[Any] | None = None) -> None:
@@ -3648,9 +3461,7 @@ class IsfApplication:
         ):
             return
         generated = is_generated_flicker(self.current_result)
-        self.noise_kind_box.configure(values=("flicker",) if generated else ("both", "flicker", "thermal"))
-        if generated and self.noise_kind_var.get() != "flicker":
-            self.noise_kind_var.set("flicker")
+        self.noise_kind_box.configure(values=("both", "flicker", "thermal"))
         try:
             view = build_result_view(
                 self.current_result,
@@ -3757,6 +3568,7 @@ class IsfApplication:
             quality += " 当前仅展示已完成部分。"
         self.result_quality_var.set(quality)
         self._render_noise_curves()
+        self.results_view.refresh()
 
     def _select_harmonic(self, harmonic: Any) -> None:
         for iid in self.harmonic_tree.get_children():

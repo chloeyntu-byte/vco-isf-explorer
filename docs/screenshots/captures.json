@@ -1,0 +1,41 @@
+{
+  "captures": [
+    {
+      "file": "01-overview.png",
+      "view": 0,
+      "rows": 7,
+      "synthetic": true
+    },
+    {
+      "file": "02-process.png",
+      "view": 1,
+      "rows": 65,
+      "synthetic": true
+    },
+    {
+      "file": "03-harmonics.png",
+      "view": 2,
+      "rows": 5,
+      "synthetic": true
+    },
+    {
+      "file": "04-bands.png",
+      "view": 6,
+      "rows": 5,
+      "synthetic": true
+    },
+    {
+      "file": "05-contributions.png",
+      "view": 4,
+      "rows": 7,
+      "synthetic": true
+    },
+    {
+      "file": "06-thermal-bands.png",
+      "view": 7,
+      "rows": 9,
+      "synthetic": true
+    }
+  ],
+  "callback_errors": []
+}

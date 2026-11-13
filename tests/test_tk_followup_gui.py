@@ -53,34 +53,32 @@ class FollowupGuiTests(unittest.TestCase):
                 self.assertTrue(set(row["id"] for row in app.calculated_noise_pie._slices) <= labels)
         self.assertFalse(any("累计" in item for item in app.harmonic_curve_box["values"]))
 
-    def test_narrow_window_all_pages_keep_vertical_and_horizontal_reachability(self):
+    def test_supported_window_results_expand_and_other_pages_remain_reachable(self):
         self.load()
-        self.root.geometry("760x540")
         app = self.app
-        for tab in (app.setup_tab, app.run_tab, app.result_tab, app.error_tab):
-            app.notebook.select(tab)
+        for size in ("1100x700", "1280x800"):
+            self.root.geometry(size)
+            for tab in (app.setup_tab, app.run_tab, app.error_tab):
+                app.notebook.select(tab)
+                self.root.update_idletasks()
+                canvas = app._page_canvases[str(tab)]
+                canvas.yview_moveto(1)
+                canvas.xview_moveto(1)
+                self.root.update_idletasks()
+                self.assertAlmostEqual(1, canvas.yview()[1])
+                self.assertAlmostEqual(1, canvas.xview()[1])
+            app.notebook.select(app.result_tab)
+            app.results_view.show(1)
             self.root.update_idletasks()
-            canvas = app._page_canvases[str(tab)]
-            bounds = canvas.bbox("all")
-            if tab == app.setup_tab:
-                self.assertEqual((0.0, 1.0), canvas.xview())
-            else:
-                self.assertGreater(bounds[2], canvas.winfo_width())
-            self.assertGreater(bounds[3], canvas.winfo_height())
-            canvas.yview_moveto(1)
-            canvas.xview_moveto(1)
+            self.assertNotIn(str(app.result_tab), app._page_canvases)
+            self.assertTrue(app.results_view.chart.winfo_ismapped())
+            self.assertGreater(app.results_view.chart.winfo_height(), 200)
+            self.assertGreater(app.results_view.chart.winfo_width(), 700)
+            before = app.results_view.chart.winfo_height()
+            app.results_view.toggle_drawer()
             self.root.update_idletasks()
-            self.assertAlmostEqual(1, canvas.yview()[1])
-            self.assertAlmostEqual(1, canvas.xview()[1])
-        app.notebook.select(app.result_tab)
-        canvas = app._page_canvases[str(app.result_tab)]
-        canvas.yview_moveto(0)
-        event = SimpleNamespace(widget=app.phase_noise_chart, num=5, delta=0, state=0)
-        app._scroll_setup(event)
-        self.assertGreater(canvas.yview()[0], 0)
-        before = canvas.yview()
-        app._scroll_setup(SimpleNamespace(widget=app.save_state_button, num=5, delta=0, state=0))
-        self.assertEqual(before, canvas.yview())
+            self.assertGreater(app.results_view.chart.winfo_height(), before)
+            app.results_view.toggle_drawer()
 
     def test_state_snapshot_and_restore_exact_sample_without_execution(self):
         self.load()

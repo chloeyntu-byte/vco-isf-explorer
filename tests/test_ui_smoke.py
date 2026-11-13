@@ -78,6 +78,35 @@ class ExampleBundleTests(unittest.TestCase):
             result = service.get_result(job["job_id"])
             self.assertEqual("replay", result["run_kind"])
             self.assertFalse(result["signoff"])
+            from isf_tool.core.result_presentation import input_band_noise_series, harmonic_projection_fractions
+            from isf_tool.tk.viewmodel import build_result_view, contribution_projection
+            self.assertEqual(21, len(result["summary"]))
+            for identity in ("lc_ideal", "lc_mild_asym", "lc_strong_asym"):
+                bands = input_band_noise_series(result, identity, "both")
+                self.assertEqual([0, 1, 2], [x["n"] for x in bands["series"] if x.get("n") is not None])
+                independent = [x for x in bands["series"] if x.get("n") is not None]
+                import math
+                baseband = independent[0]["points"]
+                low = (baseband[1][1]-baseband[0][1])/math.log10(baseband[1][0]/baseband[0][0])
+                high = (baseband[-1][1]-baseband[-2][1])/math.log10(baseband[-1][0]/baseband[-2][0])
+                self.assertTrue(-31 < low < -28)
+                self.assertTrue(-24 < high < -20)
+
+                total = next(x for x in bands["series"] if x["id"] == "calculated_total")
+                for i in range(7):
+                    self.assertAlmostEqual(sum(x["fraction"][i] for x in independent), 1.)
+                    summary = sorted((s for s in result["summary"] if s["operating_point_id"] == identity), key=lambda s:s["offset_Hz"])[i]
+                    expected = summary["predicted_pair_pm_asd_V_rtHz"]**2 + summary["thermal_noise"]["predicted_psd_V2_Hz"]
+                    self.assertAlmostEqual(sum(x["power_V2_Hz"][i] for x in independent)/expected, 1.)
+            for summary in result["summary"]:
+                point = summary["point"]
+                projection = harmonic_projection_fractions(result["points"][point]["harmonics"])
+                self.assertAlmostEqual(1., sum(x["projection_fraction"] for x in projection))
+                view = build_result_view(result, point=point, noise_scope="pair", noise_kind="both")
+                rows = contribution_projection(view)["rows"]
+                self.assertEqual("comparison:flicker_pair", rows[0]["key"])
+                self.assertTrue(any(x["device"] == "aux_noise" and not x["modeled"] for x in rows))
+
             identities = [item["id"] for item in operating_points(result)]
             self.assertEqual(["lc_ideal", "lc_mild_asym", "lc_strong_asym"], identities)
             series = phase_noise_series(result, "lc_ideal", scope="pair", noise_kind="flicker")[0]

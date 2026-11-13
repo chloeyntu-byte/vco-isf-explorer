@@ -342,3 +342,45 @@ def write_closure_bundle(path, point_count=6):
         json.dump(canonical["metadata"], stream, indent=2, sort_keys=True)
         stream.write("\n")
     return path
+
+
+def make_band_result(offsets=(1e3, 1e4, 1e5, 1e6, 1e7, 1e8)):
+    """Fictional multi-offset Fig.12 data; never substitutes for measured results."""
+    base = recompute_dual_tb(make_canonical(signoff=False, point_count=1))
+    base_row = base['summary'][0]
+    base_data = base['points'][base_row['point']]
+    result = dict(summary=[], points={}, metadata={'fixture_origin':'SYNTHETIC multi-offset frequency bands'})
+    for offset in offsets:
+        point = 'synthetic@'+str(offset)
+        row = copy.deepcopy(base_row)
+        factor=(OFFSET_HZ/offset)**1.5
+        single=row['dynamic_pm_asd_V_rtHz']*factor
+        row.update(point=point, operating_point_id='SYNTHETIC', corner='synthetic',offset_Hz=offset,offset_hz=offset,
+                   dynamic_pm_asd_V_rtHz=single,predicted_pair_pm_asd_V_rtHz=math.sqrt(2)*single,
+                   pair_model='symmetric_independent',
+                   spectre_noise_reference=dict(schema_version=1,scope='whole_vco'))
+        for field in ('dc_pm_asd_V_rtHz','delay_pm_asd_V_rtHz'):
+            if field in row:row[field]*=factor
+        sources=[]
+        for si,(device,mechanism) in enumerate((('M0','id'),('M1','id'),('Rtank','rn'))):
+            parts=[]
+            for n,slope in enumerate((-20.,-18.,-22.)):
+                power=(si+1)*1e-11/(n+1)*(OFFSET_HZ/offset)**(-slope/10)
+                parts.extend([dict(input_band=m,psd_V2_Hz=power/(2 if n else 1)) for m in ((-n,n) if n else (0,))])
+            sources.append(dict(device=device,mechanism=mechanism,psd_V2_Hz=sum(p['psd_V2_Hz'] for p in parts),input_band_contributions=parts))
+        total=sum(s['psd_V2_Hz'] for s in sources)
+        row['thermal_noise']=dict(schema_version=1,status='available',scope='gm_pair_and_lc_network',passive_scope='passive_only_lc_roots_v1',
+            noise_quantity='PM_SSB',pm_validation='synthetic fixture only',pair_model='symmetric_independent',
+            carrier_peak_V=row['carrier_peak_V'],offset_Hz=offset,f0_Hz=row['f0_Hz'],sources=sources,predicted_psd_V2_Hz=total)
+        row['spectre_total_pm_asd_V_rtHz']=math.sqrt((2*single**2+total)*1.7)
+        data=copy.deepcopy(base_data)
+        for harmonic in data['harmonics']:
+            for field in list(harmonic):
+                if field.endswith('V_rtHz') and isinstance(harmonic[field],(int,float)):
+                    harmonic[field]*=factor
+        for table in ('harmonics','workpoint','phase_candidates'):
+            for record in data.get(table,[]):
+                record.update(point=point,offset_Hz=offset,offset_hz=offset,operating_point_id='SYNTHETIC')
+        data['summary']=[dict(row)]
+        result['summary'].append(row);result['points'][point]=data
+    return result

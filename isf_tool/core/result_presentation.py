@@ -1,4 +1,4 @@
-"""Result-owned units, aliases and plotting series; no simulation or fitting.
+"""Result-owned units, aliases and plotting series; no simulation or model fitting.
 
 Each sample is identified by (operating_point_id, offset_Hz).  A curve never
 joins different operating points, and missing samples are not interpolated.
@@ -113,6 +113,17 @@ def enrich_summary(row, *, offset_hz=None, pair_model=None):
     output["noise_scope"] = "target_device_flicker"
     output["pair_noise_scope"] = "independent_device_pair_flicker"
     output["pair_model"] = row.get("pair_model") or pair_model
+    # Retain explicit flicker pair identity before legacy thermal qualification
+    # drops its payload. This is display membership, never thermal eligibility
+    # or an invented per-device prediction. Repeated enrichment is lossless.
+    identity = row.get("flicker_pair_identity") or row.get("thermal_noise") or {}
+    output.pop("flicker_pair_identity", None)
+    if isinstance(identity, Mapping) and output["pair_model"] == "symmetric_independent":
+        target, peer = identity.get("target_noise_trace"), identity.get("peer_noise_trace")
+        if (identity.get("pair_model") == "symmetric_independent"
+                and all(isinstance(v, str) and v.strip() for v in (target, peer)) and target != peer):
+            output["flicker_pair_identity"] = dict(target_noise_trace=target,
+                peer_noise_trace=peer, pair_model="symmetric_independent")
     output["thermal_noise"] = thermal_evidence(output)
     output["thermal_dBc_Hz"] = calculated_noise_dbc(output, noise_kind="thermal")
     output["predicted_total_dBc_Hz"] = calculated_noise_dbc(output, noise_kind="both")
@@ -323,6 +334,10 @@ def noise_contribution_rows(summary, scope=None, noise_kind="both"):
         pair_label = "对称双管估算 · +3.01 dB" if generated else "对称 gm pair · flicker 对比"
         add(pair_label, "目标 + 配对器件", "fn", _value(row, "spectre_pair_pm_asd_V_rtHz"),
             row.get("spectre_pair_dBc_Hz"), row.get("predicted_pair_dBc_Hz"))
+        output[-1]["comparison_group"] = "flicker_pair"
+        identity = row.get("flicker_pair_identity") or {}
+        output[-1]["members"] = ([identity["target_noise_trace"], identity["peer_noise_trace"]]
+                                  if identity and not generated else [])
     thermal = row.get("thermal_noise") or {}
     predicted_sources = {(item["device"], item["mechanism"]): item
                          for item in thermal.get("sources", [])} if thermal.get("status") == "available" else {}
@@ -399,6 +414,10 @@ def noise_contribution_rows(summary, scope=None, noise_kind="both"):
             add(device + " · " + mechanism, device, mechanism, asd,
                 dBc_from_pm_asd(asd, carrier) if carrier is not None else None,
                 calculated=calculated, kind="source", psd=psd, calculated_psd=calculated_psd)
+            identity = row.get("flicker_pair_identity") or {}
+            if (not generated and mechanism == "fn"
+                    and device in (identity.get("target_noise_trace"), identity.get("peer_noise_trace"))):
+                output[-1]["comparison_group"] = "flicker_pair"
     if noise_kind != "flicker":
         for identity, source in sorted(predicted_sources.items()):
             matches = references_by_source.get(identity, [])
@@ -475,7 +494,7 @@ def _sample_harmonics(source, rows):
 
 
 def harmonic_noise_series(result, operating_point_id=None, scope="single", noise_kind="flicker"):
-    """Single-order equivalents plus coherent total; never stack their powers."""
+    """Legacy flicker equivalents for exports; other modes use input-noise bands."""
     source, groups = _grouped_samples(result)
     rows = _select_group(groups, operating_point_id)
     if not rows:
@@ -491,37 +510,9 @@ def harmonic_noise_series(result, operating_point_id=None, scope="single", noise
         series.append(_series("coherent_total", "flicker 全谐波相干总和 · " + ("对称 gm pair" if scope == "pair" else "单器件"), rows,
                               [row["predicted_pair_dBc_Hz" if scope == "pair" else "dynamic_dBc_Hz"] for row in rows], scope=scope))
     if noise_kind != "flicker":
-        band_powers = []
-        for row in rows:
-            budget = row.get("thermal_noise") or {}
-            powers = {}
-            if budget.get("status") == "available":
-                for item in budget["sources"]:
-                    for part in item["input_band_contributions"]:
-                        k = abs(part["input_band"])
-                        powers[k] = powers.get(k, 0.0) + part["psd_V2_Hz"]
-            band_powers.append(powers)
-        thermal_orders = {k for powers in band_powers for k in powers}
-        if noise_kind == "both":
-            for k in sorted(set(orders) & thermal_orders):
-                values = []
-                for sample, powers, row in zip(sample_harmonics, band_powers, rows):
-                    magnitude = _value(sample.get(k, {}), "Q_mag_V_rtHz")
-                    carrier = _value(row, "carrier_peak_V")
-                    power = (2 * magnitude ** 2 + powers[k]) if magnitude is not None and k in powers else None
-                    values.append(dBc_from_pm_asd(math.sqrt(power), carrier)
-                                  if power is not None and carrier is not None else None)
-                series.append(_series("combined_harmonic_" + str(k), "k={} · flicker + thermal".format(k),
-                                      rows, values, scope="pair", harmonic=k))
-            # Per-k curves are diagnostic equivalents. Flicker cross terms
-            # remain exclusively in the actual coherent total below.
-            series.append(_series("calculated_total", "计算合计 · flicker + thermal", rows,
-                                  [row["predicted_total_dBc_Hz"] for row in rows], scope="pair"))
-            return series
-        for k in sorted(thermal_orders):
-            values = [dBc_from_pm_asd(math.sqrt(powers[k]), row["carrier_peak_V"]) if k in powers else None for powers, row in zip(band_powers, rows)]
-            series.append(_series("thermal_band_" + str(k), "thermal |m|={} 输入带功率".format(k), rows, values, scope="pair", harmonic=k))
-        series.append(_series("thermal_total", "thermal 独立功率总和", rows, [row["thermal_dBc_Hz"] for row in rows], scope="pair"))
+        # k pairs belong to c0_eff. They must never be matched to input band m.
+        return input_band_noise_series(result, operating_point_id, noise_kind)["series"]
+
     return series
 
 
@@ -544,3 +535,103 @@ def cumulative_noise_series(result, operating_point_id=None, k=0, scope="single"
 
 __all__ = ["SUMMARY_QUALITY_FIELDS", "quality_fields", "enrich_summary", "enrich_harmonic", "enrich_result",
            "operating_points", "phase_noise_series", "noise_contribution_rows", "harmonic_noise_series", "cumulative_noise_series"]
+
+
+# Fixed categorical colors are shared by all presentation surfaces/themes.
+BAND_COLORS = ("#33D1DE", "#F2C230", "#EC5AA5", "#93D65E", "#9C8CFF",
+               "#F28C4B", "#7FB5FF", "#E6E6E6", "#7c9eeb", "#ad83a4")
+
+
+def band_color(order):
+    if order < len(BAND_COLORS):
+        return BAND_COLORS[order]
+    import colorsys
+    rgb = colorsys.hsv_to_rgb((order * .61803398875) % 1, .58, .82)
+    return "#{:02x}{:02x}{:02x}".format(*(round(v * 255) for v in rgb))
+
+
+def fit_noise_slope(points):
+    """OLS dB/dec over valid samples in the lowest two decades (no interpolation)."""
+    pairs = [(math.log10(x), y) for x, y in points
+             if _number(x) is not None and x > 0 and _number(y) is not None]
+    if len({x for x, _ in pairs}) < 2:
+        return None
+    low = min(x for x, _ in pairs)
+    pairs = [(x, y) for x, y in pairs if x <= low + 2 + 1e-12]
+    mx = math.fsum(x for x, _ in pairs) / len(pairs)
+    my = math.fsum(y for _, y in pairs) / len(pairs)
+    denominator = math.fsum((x - mx) ** 2 for x, _ in pairs)
+    return math.fsum((x - mx) * (y - my) for x, y in pairs) / denominator if denominator else None
+
+
+def input_band_noise_series(result, operating_point_id=None, noise_kind="both"):
+    """Fig.12 stationary-input bands; independent powers, not Fourier Qk pairs.
+
+    Uses result-owned pair flicker ASD (the coherent sum, sqrt(2)*|sum Qk|).
+    Missing mechanisms stay explicitly partial, never change calculated totals.
+    """
+    if noise_kind not in {"both", "flicker", "thermal"}:
+        raise ValueError("invalid noise kind")
+    _, groups = _grouped_samples(result)
+    rows = _select_group(groups, operating_point_id)
+    powers, missing = [], set()
+    for row in rows:
+        bands = {}
+        budget = row.get("thermal_noise") or {}
+        if noise_kind != "flicker":
+            if budget.get("status") == "available":
+                for source in budget["sources"]:
+                    for part in source["input_band_contributions"]:
+                        n = abs(part["input_band"])
+                        bands[n] = bands.get(n, 0.) + part["psd_V2_Hz"]
+            else:
+                missing.add("本结果没有有效 thermal 数据" + ("：" + str(budget["reason"]) if budget.get("reason") else ""))
+        if noise_kind != "thermal":
+            asd = _value(row, "predicted_pair_pm_asd_V_rtHz")
+            if asd is not None:
+                bands[0] = bands.get(0, 0.) + asd ** 2
+            else:
+                missing.add("本结果没有双器件 flicker 相干总和数据")
+        powers.append(bands)
+    orders = sorted({n for bands in powers for n in bands})
+    output = []
+    for n in orders:
+        values = [dBc_from_pm_asd(math.sqrt(bands[n]), row["carrier_peak_V"])
+                  if n in bands and row.get("carrier_peak_V") else None for bands, row in zip(powers, rows)]
+        label = "n=0 · DC 附近" if n == 0 else "n={} · {}f0 附近".format(n, "" if n == 1 else str(n)+"·")
+        trace = _series("input_band_"+str(n), label, rows, values, scope="pair", harmonic=n)
+        trace.update(n=n, color=band_color(n), row_key="band:"+str(n),
+                     power_V2_Hz=[bands.get(n) for bands in powers],
+                     fraction=[bands[n]/math.fsum(bands.values()) if n in bands and math.fsum(bands.values()) else None for bands in powers])
+        output.append(trace)
+    totals = [dBc_from_pm_asd(math.sqrt(math.fsum(bands.values())), row["carrier_peak_V"])
+              if bands and row.get("carrier_peak_V") else None for bands, row in zip(powers, rows)]
+    total = _series("calculated_total", "已纳入频带总和" if missing else "所有频带功率总和", rows, totals, scope="pair")
+    total.update(width=3.5, role="total", row_key="band:total")
+    if orders:
+        output.append(total)
+    reference = _series("hbnoise_total", "HBnoise 仿真总 PN", rows,
+                        [r.get("spectre_total_dBc_Hz") for r in rows], scope="whole_vco")
+    reference.update(dash=True, color="#9b8790", width=2, row_key="band:reference")
+    output.append(reference)
+    for trace in output:
+        trace["slope"] = fit_noise_slope(trace["points"])
+        trace["keys"] = [trace["row_key"]] * len(rows)
+        slope = trace["slope"]
+        trace["name"] += " · {:.1f} dB/dec".format(slope) if slope is not None else " · 斜率不可用"
+    notes = sorted(missing)
+    if len(rows) == 1:
+        notes.append("只有 1 个频偏，无法看斜率")
+    return {"series": output, "rows": rows, "powers": powers, "notes": notes,
+            "single_offset": len(rows) == 1, "partial": bool(missing)}
+
+
+def harmonic_projection_fractions(harmonics):
+    """Signed coherent projection; undefined total remains None, never zero-filled."""
+    values = [complex(r["Q_real_V_rtHz"], r["Q_imag_V_rtHz"])
+              if _number(r.get("Q_real_V_rtHz")) is not None and _number(r.get("Q_imag_V_rtHz")) is not None else None for r in harmonics]
+    total = sum(values, 0j) if values and all(q is not None for q in values) else None
+    denominator = abs(total)**2 if total is not None else 0
+    return [dict(r, projection_fraction=(q*total.conjugate()).real/denominator if q is not None and denominator else None,
+                 cancellation=bool(q is not None and total is not None and abs(q)>abs(total)))
+            for r, q in zip(harmonics, values)]

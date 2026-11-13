@@ -2,16 +2,19 @@
 
 [中文说明](README.zh-CN.md)
 
-Desktop workflow for LC-VCO impulse sensitivity function (ISF / PPV) and flicker-noise up-conversion analysis, with a dark instrument-style Tk interface.
+Desktop analysis procedure for LC-VCO impulse sensitivity function (ISF / PPV) and flicker-noise up-conversion analysis, with a dark instrument-style Tk interface.
 
-![VCO ISF Explorer: phase noise from the bundled ideal-LC example](docs/screenshots/02-phase-noise.png)
+![VCO ISF Explorer: overview from the bundled ideal-LC example](docs/screenshots/01-overview.png)
+
+
+Version 1.1.0 adds eight result views (00–07), a linked table drawer, the ISF process and Fig.14 overlay, signed Qk projection fractions, input-band phase noise with slopes, and per-source thermal bands. Source details rank by reference power; the flicker pair comparison remains an aggregate, never counted twice. The analytic example includes thermal and an unmodeled source; thermal scope is the gm pair and passive LC.
 
 ## What it does
 
 - **Flicker-noise up-conversion** from a completed VCO HB/HBNOISE Maestro history and one selected core MOS: the tool builds a private flicker fixture and reports the single-device result plus a symmetric independent two-device estimate (+3.01 dB).
-- **ISF and harmonic closure**: carrier-referenced signed-H ISF branches (I/Q), per-harmonic contributions, and complex cumulative sums (`Flicker ISF / 复数累计` tab).
+- **ISF and harmonic closure**: carrier-referenced signed-H ISF branches (I/Q), per-harmonic contributions, and complex cumulative sums (ISF process and harmonic decomposition views).
 - **Phase-noise views**: linked phase-noise and same-scope error plots over offset, source-contribution bars on a common PSD scale, zoom/pan/hide, and EPS export.
-- **Thermal branch** for the manual noise-testbench workflow (gm pair plus supported native LC loss sources); see [docs/THERMAL_NOISE.md](docs/THERMAL_NOISE.md).
+- **Thermal branch** for the manual noise-testbench analysis procedure (gm pair plus supported native LC loss sources); see [docs/THERMAL_NOISE.md](docs/THERMAL_NOISE.md).
 - **Offline replay**: import canonical CSV bundles ([formats/README.md](formats/README.md)) without any EDA tool. A synthetic ideal-LC example ships in [examples/ideal_lc](examples/ideal_lc).
 - **Maestro menu launcher** and a read-only environment report (`--diagnose`).
 
@@ -95,3 +98,13 @@ Other open-source tools:
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+Theory and synthetic examples: [ISF theory](docs/ISF_THEORY.md), [input bands](docs/input-noise-bands.md).
+
+![02-process](docs/screenshots/02-process.png)
+
+![03-harmonics](docs/screenshots/03-harmonics.png)
+
+![04-bands](docs/screenshots/04-bands.png)
+
+![05-contributions](docs/screenshots/05-contributions.png)

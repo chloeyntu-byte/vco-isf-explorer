@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vco-isf-explorer"
-version = "1.0.0"
-description = "Portable desktop workflow for VCO harmonic noise and ISF analysis"
+version = "1.1.0"
+description = "Portable desktop analysis procedure for VCO harmonic noise and ISF analysis"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"

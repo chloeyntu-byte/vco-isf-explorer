@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0 - 2026-11-13
+
+- Eight linked result views with a process navigator and table drawer.
+- ISF process and normalized Fig.14 overlay; harmonic projection fractions.
+- Input-noise-band phase noise, slopes, and per-source thermal bands.
+- Restored flicker pair comparison; source details sorted by reference power.
+- Expanded analytic example and theory documentation.
+
 ## 1.0.0 - 2026-11-10
 
 First public release.

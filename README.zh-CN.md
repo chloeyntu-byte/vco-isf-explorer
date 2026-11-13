@@ -4,12 +4,15 @@
 
 LC VCO 冲激敏感函数（ISF / PPV）与闪烁噪声上变频的桌面分析工作流，界面为深色仪器风格的 Tk 窗口。
 
-![VCO ISF Explorer：自带 ideal-LC 示例的相噪视图](docs/screenshots/02-phase-noise.png)
+![VCO ISF Explorer：自带 ideal-LC 示例的总览](docs/screenshots/01-overview.png)
+
+
+1.1.0：结果页提供 00–07 流程导航、表格抽屉与图表双向联动；新增 ISF 全过程与 Fig.14 叠加、Qk 投影占比、输入频带相噪及斜率、逐源 thermal 频带。噪声贡献恢复 pair 对比，并按参考功率排序。示例含合成 thermal 与未建模源；thermal 计算范围为 gm 对管与无源 LC。
 
 ## 功能
 
 - **闪烁噪声上变频**：从已完成的 VCO HB/HBNOISE Maestro history 和选定的一颗核心 MOS 生成私有闪烁夹具，给出单管结果和对称独立双管估算（+3.01 dB）。
-- **ISF 与谐波闭合**：以载波为参考的带符号 H（I/Q）ISF 分支、逐阶谐波贡献和复数累计（“Flicker ISF / 复数累计”页）。
+- **ISF 与谐波闭合**：以载波为参考的带符号 H（I/Q）ISF 分支、逐阶谐波贡献和复数累计（“ISF 全过程”和“谐波分解”视图）。
 - **相噪视图**：相噪与同口径误差随频偏联动，源贡献横条使用统一 PSD 分母，支持缩放、平移、显隐和 EPS 导出。
 - **热噪声支路**（手工噪声 TB 工作流）：gm 对管加受支持的原生 LC 损耗源，见 [docs/THERMAL_NOISE.md](docs/THERMAL_NOISE.md)。
 - **离线回放**：导入 canonical CSV bundle（[formats/README.md](formats/README.md)），无需任何 EDA 工具；仓库自带合成 ideal-LC 示例 [examples/ideal_lc](examples/ideal_lc)。
@@ -95,3 +98,13 @@ ISF_GUI_TEST=1 python3.11 -m unittest discover -s tests   # 同时运行 GUI 测
 ## 许可
 
 MIT，见 [LICENSE](LICENSE)。
+
+理论与示例: [ISF theory](docs/ISF_THEORY.md), [input bands](docs/input-noise-bands.md).
+
+![02-process](docs/screenshots/02-process.png)
+
+![03-harmonics](docs/screenshots/03-harmonics.png)
+
+![04-bands](docs/screenshots/04-bands.png)
+
+![05-contributions](docs/screenshots/05-contributions.png)

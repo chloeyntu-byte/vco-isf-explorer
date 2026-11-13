@@ -7,6 +7,8 @@ Everything here is an analytic or fictional model, not simulator output:
   point (so the ISF is a pure sine) and gains a small second-harmonic part for
   the two "asymmetric" points,
 * a cyclostationary current-noise modulation ``D[k]`` that decays with k,
+* independent white-noise input bands n=0..2 (gm pair and ideal tank loss),
+* a fictional unmodeled active source, kept outside the prediction,
 * a reference phase noise defined as the model prediction shifted by a fixed
   dB offset, so the error plot has something to show.
 
@@ -48,12 +50,15 @@ def _periodic(coefficients, phase):
 
 
 def _point(name, op_id, second, shift_db, offset):
+    # Phase is an integral of injected current: H scales as 1/offset.
+    # Combined with the white + 1/f source, output power is 1/f² + 1/f³.
+    integrator = 1e4 / offset
     transfer = {0: 0j}
     for k in range(1, MAX_K + 1):
         if k == 1:
-            h = complex(0.0, -R_TANK_OHM / 2.0)
+            h = complex(0.0, -R_TANK_OHM / 2.0 * integrator)
         elif k == 2:
-            h = complex(0.0, -R_TANK_OHM / 2.0) * second
+            h = complex(0.0, -R_TANK_OHM / 2.0 * integrator) * second
         else:
             h = 0j
         transfer[k] = h
@@ -65,7 +70,8 @@ def _point(name, op_id, second, shift_db, offset):
         dyn_norm[k] = 0.45 * math.exp(-0.7 * k) * complex(math.cos(phase), math.sin(phase))
     source_asd = WHITE_ASD * math.sqrt(1.0 + CORNER_HZ / offset)
     mdyn = {k: v * source_asd for k, v in dyn_norm.items()}
-    mdc = dict(mdyn)
+    # Fictional dynamic correction: twice the quasi-static modulation.
+    mdc = {k: .5 * value for k, value in mdyn.items()}
     bias = 4.0e-3
     id_h = {0: complex(bias, 0.0)}
     for k in range(1, MAX_K + 1):
@@ -76,6 +82,29 @@ def _point(name, op_id, second, shift_db, offset):
     )["methods"]["dynamic"]["pm_asd_V_rtHz"]
     reference = pred / (10.0 ** (shift_db / 20.0))
 
+    sources = []
+    for i, (device, mechanism) in enumerate((("core_a", "id"), ("core_b", "id"), ("tank_loss", "rn"))):
+        parts = []
+        for n in range(3):
+            # White source power transferred by an ideal integrator: f^-2.
+            power = (i + 1) * 1e-17 / (n + 1) * (1e4 / offset)**2
+            parts.extend(dict(input_band=m, psd_V2_Hz=power/(2 if n else 1))
+                         for m in ((-n, n) if n else (0,)))
+        sources.append(dict(device=device, mechanism=mechanism,
+                            psd_V2_Hz=sum(x["psd_V2_Hz"] for x in parts), input_band_contributions=parts))
+    thermal_power = sum(x["psd_V2_Hz"] for x in sources)
+    thermal = dict(schema_version=1, status="available", noise_quantity="PM_SSB",
+        scope="gm_pair_and_lc_network", passive_scope="passive_only_lc_roots_v1",
+        pm_validation="synthetic analytic example", pair_model="symmetric_independent",
+        target_noise_trace="core_a", peer_noise_trace="core_b", carrier_peak_V=abs(CARRIER_V),
+        offset_Hz=offset, f0_Hz=F0_HZ, predicted_psd_V2_Hz=thermal_power, sources=sources)
+    contributions = [dict(device=d, mechanism="fn", psd_V2_Hz=reference**2)
+                     for d in ("core_a", "core_b")]
+    contributions += [dict(device=x["device"], mechanism=x["mechanism"], psd_V2_Hz=x["psd_V2_Hz"])
+                      for x in sources]
+    # A deliberately unmodeled independent source illustrates scope gaps.
+    extra = thermal_power * 0.2
+    contributions.append(dict(device="aux_noise", mechanism="id", psd_V2_Hz=extra))
     vco, replica, work = [], [], []
     for k in range(-MAX_K, MAX_K + 1):
         vco.append({
@@ -83,6 +112,10 @@ def _point(name, op_id, second, shift_db, offset):
             "carrier_real_V": CARRIER_V.real, "carrier_imag_V": CARRIER_V.imag,
             "H_real_ohm": transfer[k].real, "H_imag_ohm": transfer[k].imag,
             "spectre_pm_asd_V_rtHz": reference,
+            "thermal_noise_json": json.dumps(thermal),
+            "spectre_total_pm_asd_V_rtHz": math.sqrt(2*reference**2 + thermal_power + extra),
+            "spectre_noise_reference_json": json.dumps(dict(schema_version=1, scope="whole_vco")),
+            "spectre_noise_contributions_json": json.dumps(contributions),
             "second_device_predicted_pm_asd_V_rtHz": pred,
             "spectre_pair_pm_asd_V_rtHz": math.sqrt(2.0) * reference,
         })
@@ -154,3 +187,19 @@ def build(out):
         json.dump(metadata, stream, indent=2, sort_keys=True)
         stream.write("\n")
     return out
+
+
+def result():
+    """Recompute the bundled analytic canonical model without persistent files."""
+    import tempfile
+    from .core.dual_tb import recompute_dual_tb
+    with tempfile.TemporaryDirectory() as directory:
+        build(directory)
+        def read(name):
+            with open(os.path.join(directory, name), encoding="utf-8") as stream:
+                return list(csv.DictReader(stream))
+        with open(os.path.join(directory, "metadata.json"), encoding="utf-8") as stream:
+            metadata = json.load(stream)
+        return recompute_dual_tb(dict(vco_results=read("vco_results.csv"),
+            replica_results=read("replica_results.csv"), workpoint=read("workpoint.csv"),
+            metadata=metadata, options=dict(signoff=False)))

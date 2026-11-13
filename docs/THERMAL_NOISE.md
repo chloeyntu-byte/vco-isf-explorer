@@ -117,7 +117,7 @@ f_oscillator = η f_device
 
 这里的 c0 是简化理论中的**有效 ISF 均值**，不是命令 UI 只取第 `k=0` 行。现有 flicker 的各 `Q_k` 仍按已验证流程复数相干相加，不能把图 a 的独立 white 功率分解套到这些 `Q_k` 上，也不能把它们画成可相加的功率堆叠。
 
-理论出处为 Hajimiri 与 Lee 的周期时变 ISF 模型及其低频噪声上变频分析：[A General Theory of Phase Noise in Electrical Oscillators，JSSC 1998，作者 PDF](https://chic.caltech.edu/wp-content/uploads/2013/05/general.pdf)。该文用于解释理论关系，不用于直接搬用 Fourier 常数项、单/双边谱或载波幅值的数值约定；本工具常数仍以 [独立参考验算](THERMAL_REFERENCE.md) 为依据。
+理论出处为 Hajimiri 与 Lee 的周期时变 ISF 模型及其低频噪声上变频分析：[A General Theory of Phase Noise in Electrical Oscillators，JSSC 1998，作者 PDF](https://chic.caltech.edu/wp-content/uploads/2013/05/general.pdf)。该文用于解释理论关系，不用于直接搬用 Fourier 常数项、单/双边谱或载波幅值的数值约定；本工具常数仍以 [独立参考验算](THERMAL_REFERENCE.md) 为依据。文献推导与本地算法（Qk、Mdc/Mdyn 矫正、B_m 频带）的逐项对应、真实结果核验和界面展示约定见 [ISF 理论对应与核验](ISF_THEORY.md)。
 
 ## 6. 理论示意 b：−30 / −20 / floor
 

@@ -591,7 +591,7 @@ class ToolService(object):
         return {
             "status": "ok",
             "service": "isf-portable-tool-core",
-            "version": "1.0.0",
+            "version": "1.1.0",
             "jobs": counts,
             "capabilities": {
                 "discovery": ["maestro-pair", "maestro", "psf", "sqlite-rdb"],

@@ -168,17 +168,17 @@ class ThermalFiniteBandFollowupTests(unittest.TestCase):
 
 
 class CombinedHarmonicFollowupTests(unittest.TestCase):
-    def test_combined_orders_add_matching_powers_but_total_keeps_flicker_cross_terms(self):
+    def test_bands_put_coherent_flicker_in_baseband_only(self):
         fixture = _sample()
         before = copy.deepcopy(fixture)
         curves = harmonic_noise_series(fixture, "A", scope="pair", noise_kind="both")
-        self.assertEqual(["combined_harmonic_0", "combined_harmonic_1", "calculated_total"],
+        self.assertEqual(["input_band_0", "input_band_1", "calculated_total", "hbnoise_total"],
                          [row["id"] for row in curves])
-        for curve, power in zip(curves, (3e-12, 7e-12, 6e-12)):
+        for curve, power in zip(curves, (1e-12, 5e-12, 6e-12)):
             self.assertAlmostEqual(10 * math.log10(2 * power), curve["points"][0][1])
             self.assertEqual("pair", curve["scope"])
             self.assertIs(curve["samples"][0]["quality"]["numerical_quality_pass"], False)
-        self.assertNotAlmostEqual(curves[-1]["points"][0][1], 10 * math.log10(2 * 10e-12))
+        self.assertNotAlmostEqual(curves[-2]["points"][0][1], 10 * math.log10(2 * 10e-12))
         self.assertEqual(before, fixture)
 
     def test_measured_zero_branch_is_not_missing_branch(self):
@@ -189,8 +189,8 @@ class CombinedHarmonicFollowupTests(unittest.TestCase):
         ):
             with self.subTest(qs=qs, parts=parts):
                 curves = harmonic_noise_series(_sample(qs=qs, parts=parts), "A", scope="pair", noise_kind="both")
-                self.assertEqual(2, len(curves))
-                for curve in curves:
+                self.assertEqual(3, len(curves))
+                for curve in curves[:-1]:
                     if expected:
                         self.assertAlmostEqual(10 * math.log10(2 * expected), curve["points"][0][1])
                     else:
@@ -208,23 +208,23 @@ class CombinedHarmonicFollowupTests(unittest.TestCase):
                                        "A", scope="pair", noise_kind="both")
         self.assertEqual([1000, 10000, 100000, 1000000], [x for x, _ in curves[0]["points"]])
         self.assertIsNone(curves[0]["points"][1][1])
-        self.assertEqual([None, None, None], [point[1] for point in curves[1]["points"][1:]])
-        self.assertIsNone(curves[-1]["points"][1][1])
-        self.assertIsNotNone(curves[-1]["points"][2][1])
+        self.assertEqual([None, -110.0, None], [point[1] for point in curves[1]["points"][1:]])
+        self.assertIsNone(curves[-2]["points"][1][1])
+        self.assertIsNotNone(curves[-2]["points"][2][1])
 
-    def test_both_graph_intersects_available_orders_instead_of_inventing_zero(self):
+    def test_bands_union_input_bands_independently_of_flicker_pair_orders(self):
         curves = harmonic_noise_series(_sample(qs={0: 1e-6}, parts={-1: 2e-12, 1: 3e-12}),
                                        "A", scope="pair", noise_kind="both")
-        self.assertEqual(["calculated_total"], [row["id"] for row in curves])
-        self.assertAlmostEqual(10 * math.log10(14e-12), curves[0]["points"][0][1])
+        self.assertEqual(["input_band_0","input_band_1","calculated_total","hbnoise_total"], [row["id"] for row in curves])
+        self.assertAlmostEqual(10 * math.log10(14e-12), curves[-2]["points"][0][1])
 
     def test_identical_offsets_in_other_corners_cannot_supply_missing_values(self):
         fixture = _merge(_sample("B", 1000, qs={0: 99e-6}, parts={0: 99e-12}),
                          _sample("A", 100000, missing_thermal=True), _sample("A", 1000))
         curves = harmonic_noise_series(fixture, "A", scope="pair", noise_kind="both")
         self.assertEqual([1000, 100000], [x for x, _ in curves[-1]["points"]])
-        self.assertAlmostEqual(10 * math.log10(12e-12), curves[-1]["points"][0][1])
-        self.assertIsNone(curves[-1]["points"][1][1])
+        self.assertAlmostEqual(10 * math.log10(12e-12), curves[-2]["points"][0][1])
+        self.assertIsNone(curves[-2]["points"][1][1])
         self.assertTrue(all(sample["operating_point_id"] == "A" for curve in curves for sample in curve["samples"]))
         self.assertEqual([], harmonic_noise_series(fixture, "unknown", scope="pair", noise_kind="both"))
 

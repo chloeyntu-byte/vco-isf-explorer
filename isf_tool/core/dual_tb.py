@@ -932,6 +932,10 @@ def recompute_dual_tb(canonical):
         calculated = _calculate_point(
             transfer, mdc, mdyn, carrier_phasor, offset_hz, reference, f0_hz
         )
+        result.setdefault("derived_diagnostics", {})[point_name] = {
+            "label": "derived from canonical harmonics; diagnostic only",
+            "curves": calculated.get("curves", {}),
+        }
         single_dynamic_asd = calculated["methods"]["dynamic"]["pm_asd_V_rtHz"]
         signoff_pair_fields = (
             _validate_signoff_pair_fields(point_name, vrows) if signoff else {}

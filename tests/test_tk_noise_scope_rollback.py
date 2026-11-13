@@ -79,7 +79,8 @@ class NativeRollbackGuiTests(unittest.TestCase):
         self.assertEqual("MOS_MAIN", config["testbenches"]["vco"]["mapping_overrides"]["target_instance"])
         self.assertTrue(hasattr(self.app, "save_state_button"))
         self.assertTrue(hasattr(self.app, "simulated_noise_pie"))
-        self.assertEqual(4, len(self.app._page_canvases))
+        self.assertEqual(3, len(self.app._page_canvases))
+        self.assertNotIn(str(self.app.result_tab), self.app._page_canvases)
 
 
 if __name__ == "__main__":

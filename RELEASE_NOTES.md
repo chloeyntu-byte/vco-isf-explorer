@@ -1,9 +1,16 @@
-# VCO ISF Explorer 1.0.0
+# VCO ISF Explorer 1.1.0
 
-First public release of the desktop workflow for LC-VCO ISF and flicker up-conversion analysis.
+Explore eight result views through a process navigator, with linked tables and charts.
+Inspect operating waveforms, DC/dynamic modulation, signed ISF and their products,
+and enable the normalized Fig.14 overlay. Harmonic views show coherent sums and
+signed projection fractions; frequency-band views show independent power sums,
+fitted slopes and thermal source bands. Contribution details rank by reference
+power and retain the aggregate flicker pair comparison without double counting.
 
-- Native Tk interface in the shared RF-FIELDWORK dark style, with a status bar, a single primary action per page, and dark-matched charts.
-- Works offline out of the box: click **载入示例** to explore a synthetic ideal-LC bundle (three operating points, seven offsets).
-- Cadence integration is optional and uses *your* Cadence environment, PDK and license; the repository ships no PDK data, model files or simulator results. PDK paths, device names and corners are user configuration.
-- Requires Python 3.11+ with Tk 8.6. See the README for install steps and limitations.
-- Licensed under MIT.
+Load example includes three analytic operating points and seven offsets, thermal
+bands and an unmodeled source. All example references are synthetic. See
+`docs/ISF_THEORY.md` for theory and reproducible synthetic identities.
+
+Thermal scope remains the gm pair and passive LC. Other active devices are not
+modeled. Missing evidence stays unavailable; replay does not grant signoff.
+The UI is Chinese. Live analysis requires the user's licensed EDA environment.

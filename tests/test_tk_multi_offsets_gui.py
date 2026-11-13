@@ -22,7 +22,7 @@ class MultiOffsetGeometryTests(unittest.TestCase):
         self.root.update_idletasks()
         self.root.destroy()
 
-    def test_offset_modes_reflow_and_preview_actual_sites(self):
+    def test_offset_modes_rearrange_and_preview_actual_sites(self):
         app = self.app
         for mode in ("single", "list", "linear", "log"):
             app.vars["offset_mode"].set(mode)
@@ -46,7 +46,7 @@ class MultiOffsetGeometryTests(unittest.TestCase):
         app = self.app
         app.noise_kind_var.set("flicker")
         result = {"summary": [], "points": {}, "run_kind": "replay"}
-        for op in ("Fhigh-SW0", "Flow-SW1"):
+        for op in ("case_a-SW0", "case_b-SW1"):
             for hz in (1000, 10000):
                 point = f"{op}@{hz}Hz"
                 summary = {"point": point, "operating_point_id": op, "corner": "tt", "offset_Hz": hz, "operating_parameters": {"SW": int(op.endswith('1'))}, "carrier_peak_V": 1, "dynamic_pm_asd_V_rtHz": 1e-6, "spectre_fn_pm_asd_V_rtHz": 2e-6}
@@ -57,17 +57,18 @@ class MultiOffsetGeometryTests(unittest.TestCase):
         with mock.patch.object(app, "_show_error") as error:
             app._result_loaded(result, "fixture")
             error.assert_not_called()
-        app.operating_point_var.set("Flow-SW1")
+        app.operating_point_var.set("case_b-SW1")
         app._operating_point_changed()
         app.result_offset_var.set("10000 Hz")
         app._result_offset_changed()
-        self.assertEqual("Flow-SW1@10000Hz", app.point_var.get())
+        self.assertEqual("case_b-SW1@10000Hz", app.point_var.get())
         self.assertEqual(2, len(app.phase_noise_chart._series))
         self.assertTrue(app.phase_noise_chart._log_x)
         self.assertEqual(2, len(app.phase_noise_chart._series[0]["points"]))
-        app.harmonic_curve_var.set("flicker 累计 0…k=0 + 总和")
         app._render_noise_curves()
-        self.assertEqual(2, len(app.harmonic_noise_chart._series))
+        self.assertFalse(app.harmonic_curve_box["values"])
+        self.assertEqual([], app.harmonic_noise_chart._series)
+        self.assertFalse(app.harmonic_noise_chart.winfo_ismapped())
         for geometry in ("1020x720", "1240x860"):
             self.root.geometry(geometry)
             self.root.update_idletasks()
