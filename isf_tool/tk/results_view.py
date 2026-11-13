@@ -512,8 +512,12 @@ class ResultsView(ttk.Frame):
             panels = [dict(bands['panels'][0], layout=(0, 0, .62, .62), open=6),
                       dict(source_panel, layout=(.62, 0, 1, .62), open=4),
                       dict(phasor, layout=(0, .62, .55, 1), open=2)]
+            # Two stacked thumbnails need about 450 px of canvas; below that only
+            # the effective ISF (Γ×m_dyn) thumbnail is kept, at double height.
+            compact = ({'compact_layout': None}, {'compact_layout': (.55, .62, 1, 1)})
             for i, p in enumerate((process['panels'][2], process['panels'][3])):
-                panels.append(dict(p, layout=(.55, .6 + i*.2, 1, .8+i*.2), statistics={}, open=1))
+                panels.append(dict(p, layout=(.55, .6 + i*.2, 1, .8+i*.2), statistics={}, open=1,
+                                   compact_below=450, **compact[i]))
             rows, specs = self._offset_table(offsets)
             note = bands['note'] + ' · click a thumbnail to expand'
         elif self.view_id == 1:

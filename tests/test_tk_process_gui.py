@@ -276,6 +276,25 @@ finally:
                     self.assertTrue(0 <= left <= right <= self.ui.chart.winfo_width())
                     self.assertTrue(0 <= top <= bottom <= self.ui.chart.winfo_height())
 
+    def test_overview_keeps_thumbnails_readable_on_short_canvas(self):
+        # Real fonts (DejaVu, Noto) leave the overview canvas around 220 px
+        # tall at 1280x800; stacked thumbnails must collapse, not squeeze.
+        self.ui.show(0)
+        self.root.update()
+        chart = self.ui.chart
+        chart.winfo_height = lambda: 600
+        chart.draw()
+        full = len(chart.plots)
+        self.assertEqual(3, full)
+        for height in (220, 300, 449):
+            chart.winfo_height = lambda h=height: h
+            chart.draw()
+            self.assertEqual(full - 1, len(chart.plots))
+            for plot in chart.plots:
+                self.assertGreater(plot['rect'][3] - plot['rect'][1], 15, 'canvas %d px: %r' % (height, plot['rect']))
+        del chart.winfo_height
+        chart.draw()
+
     def test_all_six_views_switch_without_stale_columns(self):
         for view in (0,1,2,3,4,5,1,0):
             self.ui.show(view);self.root.update()

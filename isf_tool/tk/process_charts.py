@@ -116,6 +116,12 @@ class ProcessChart(tk.Canvas):
             return
         for index, panel in enumerate(self.panels):
             layout = panel.get('layout', (0, index / len(self.panels), 1, (index + 1) / len(self.panels)))
+            if height < panel.get('compact_below', 0):
+                # Short canvases (small windows, tall fonts) use the panel's
+                # compact layout; None hides the panel instead of squeezing it.
+                layout = panel.get('compact_layout')
+                if layout is None:
+                    continue
             box = (layout[0] * width, layout[1] * height, layout[2] * width, layout[3] * height)
             self._panel(index, panel, box)
         self._cursor()
