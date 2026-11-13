@@ -1801,13 +1801,18 @@ def isf_overlay_projection(process, summary):
         trace['points']=[(p[0],p[1]/peak if peak else 0) if p is not None else None for p in trace['points']]
         trace['unit']='峰值归一化';traces.append(trace)
     dc,dyn=means['product_dc'],means['product_overlay_dyn']
-    difference=20*math.log10(abs(dc/dyn)) if dc is not None and dyn else None
+    # A zero mean has no finite logarithmic ratio. Keep the raw means and
+    # report the ratio as unavailable, including the indeterminate 0/0 case.
+    # Subtract logarithms to preserve the numeric range without forming a quotient.
+    difference=20*(math.log10(abs(dc))-math.log10(abs(dyn))) if dc and dyn else None
     sd,sy=finite_number(summary.get('dc_dBc_Hz')),finite_number(summary.get('dynamic_dBc_Hz'))
     summary_difference=sd-sy if sd is not None and sy is not None else None
     note=('Hajimiri & Lee (1998), Fig.14 / 式(27)；各曲线按各自峰值归一化（α 原值未归一化）。'
           'c0_eff 周期均值：准静态 '+engineering(dc)+' / 动态 '+engineering(dyn)+
           '；20log10 均值比（原波形梯形积分） '+engineering(difference,'dB')+
           '；summary dc−dynamic（独立读取） '+engineering(summary_difference,'dB'))
+    if dc == 0 or dyn == 0:
+        note += '；周期均值为零，均值比无有限 dB 值'
     return dict(panels=[dict(title='Fig.14 · Γ / α / Γ·α 叠加',xlabel='归一化相位 φ (周期)',ylabel='各自峰值归一化',
                 group='phase',series=traces,legend_full=True,zero=True)],note=note,ratio_db=difference,summary_delta_db=summary_difference,
                 means=means)

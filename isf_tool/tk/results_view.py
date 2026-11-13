@@ -432,7 +432,8 @@ class ResultsView(ttk.Frame):
             if self.source_var.get() not in [s['id'] for s in sources]:
                 self.source_var.set(sources[0]['id'] if sources else '')
         if sources and kind in ('thermal', 'both'):
-            selected = next(s for s in sources if s['id'] == self.source_var.get())
+            # View 07 selects a display name; workpoint views select a source id.
+            selected = next((s for s in sources if s['id'] == self.source_var.get()), sources[0])
             series = thermal_workpoint_series(selected,process['rows'])
             process['panels'][1]['series'] = ([series] if kind == 'thermal' else process['panels'][1]['series'][:2] + [series])
         harmonic = harmonic_projection(view)

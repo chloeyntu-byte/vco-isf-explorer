@@ -7,6 +7,7 @@
 - Input-noise-band phase noise, slopes, and per-source thermal bands.
 - Restored flicker pair comparison; source details sorted by reference power.
 - Expanded analytic example and theory documentation.
+- Zero-mean overlays report unavailable ratios; thermal band views support loading new results.
 
 ## 1.0.0 - 2026-11-10
 

@@ -93,6 +93,24 @@ class InputBandPresentationTests(unittest.TestCase):
         self.assertAlmostEqual(2.5,changed['summary_delta_db']-overlay['summary_delta_db'])
         self.assertEqual(process,before)
 
+    def test_overlay_zero_means_are_explicitly_unavailable(self):
+        # Constant analytic waveforms isolate the zero numerator/denominator.
+        for dc, dyn in ((0., 1.), (1., 0.), (0., 0.)):
+            with self.subTest(dc=dc, dyn=dyn):
+                process = {'rows': [dict(key=str(i), phase=i, isf_i=1.,
+                    m_DC_A_rtHz=dc, m_dyn_A_rtHz=dyn) for i in (0, 1)]}
+                overlay = isf_overlay_projection(process, {})
+                self.assertEqual(dc, overlay['means']['product_dc'])
+                self.assertEqual(dyn, overlay['means']['product_overlay_dyn'])
+                self.assertIsNone(overlay['ratio_db'])
+                self.assertIn('周期均值为零', overlay['note'])
+
+    def test_overlay_signed_means_use_magnitudes(self):
+        process = {'rows': [dict(key=str(i), phase=i, isf_i=1.,
+            m_DC_A_rtHz=-2., m_dyn_A_rtHz=1.) for i in (0, 1)]}
+        overlay = isf_overlay_projection(process, {})
+        self.assertAlmostEqual(20 * math.log10(2), overlay['ratio_db'])
+
     def test_thermal_source_band_bars_are_independent(self):
         result=make_band_result();view=build_result_view(result,point=result['summary'][0]['point'],noise_kind='thermal',noise_scope='pair')
         data=thermal_band_projection(view)

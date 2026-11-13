@@ -74,7 +74,8 @@ finally:
     case.tearDown()
 """
         run = subprocess.run([sys.executable, '-c', script], cwd=str(Path(__file__).resolve().parents[1]),
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=25)
+                             stdout=subprocess.PIPE, # Allow slow virtual displays while retaining an external deadlock watchdog.
+                             stderr=subprocess.PIPE, text=True, timeout=120)
         self.assertEqual(0, run.returncode, run.stderr)
         self.assertIn('quality resize settled', run.stdout)
 
@@ -202,6 +203,38 @@ finally:
             self.assertEqual(4,len(lines))
             self.assertLess(max(c[0] for c in lines)-min(c[0] for c in lines),.01)
             self.assertEqual(3,len(self.ui.chart.panels[1]['series'][0]['points']))
+
+    def test_load_coefficients_while_empty_thermal_band_view_is_selected(self):
+        import json, tempfile
+        raw = copy.deepcopy(self.app.current_result)
+        with tempfile.TemporaryDirectory(prefix='isf-band-load-') as directory:
+            self.app.controller.workspace = Path(directory)
+            self.app.current_result = None
+            self.app.current_result_view = None
+            self.ui.clear()
+            self.ui.source_var.set('')
+            self.ui.show(7)
+            self.app.noise_kind_var.set('both')
+            for summary in raw['summary']:
+                identity = summary.get('operating_point_id') or summary['point']
+                target = Path(directory)/'jobs'/'fixture'/'simulation'/identity/'thermal'/'source_coefficients.json'
+                target.parent.mkdir(parents=True, exist_ok=True)
+                f0 = summary['f0_Hz']
+                target.write_text(json.dumps([dict(device='M0', mechanism='id',
+                    source_time_s=[0., .5/f0, 1/f0],
+                    source_psd_A2_Hz=[1e-24, 4e-24, 1e-24])]))
+            self.app._result_loaded(raw, 'fixture')
+            self.root.update()
+            self.assertTrue(self.ui._thermal['sources'])
+            options = self.ui.source_box['values']
+            self.assertTrue(options)
+            self.assertIn(self.ui.source_var.get(), options)
+            # Display-name selection survives refresh and converts to an id
+            # when returning to the workpoint view.
+            self.ui.refresh()
+            self.ui.show(1)
+            self.root.update()
+            self.assertIn(self.ui.source_var.get(), [s['id'] for s in self.ui._thermal['sources']])
 
     def test_eps_and_png_exports_have_actual_chart_dimensions(self):
         import tempfile
