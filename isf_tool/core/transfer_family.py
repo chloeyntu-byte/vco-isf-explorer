@@ -70,30 +70,30 @@ def build_transfer_families(outputs, records, record_errors):
             member.update(name=output_name, expression=output.get('expression', ''), suffix_sideband=suffix)
             members.append(member)
             if not record:
-                notes.append('%s 的表达式尚不能提取原始读取位置；没有把它作为读取代表项。' % output_name)
+                notes.append('%s raw read location cannot yet be extracted from this expression; not used as the read anchor. ' % output_name)
                 continue
             if output_name in record_errors:
-                notes.append('%s：%s' % (output_name, record_errors[output_name]))
+                notes.append('%s: %s' % (output_name, record_errors[output_name]))
             sideband = record['sideband']
             if suffix != sideband:
-                notes.append('%s 的名称后缀为 %s，表达式边带为 %s；读取信息采用表达式。' % (output_name, suffix, sideband))
+                notes.append('%s name suffix is %s, expression sideband is %s; read details use the expression. ' % (output_name, suffix, sideband))
             by_sideband.setdefault(sideband, []).append(output_name)
         for sideband, names in sorted(by_sideband.items()):
             if len(names) > 1:
-                notes.append('表达式边带 %s 对应多个名称：%s。' % (sideband, '、'.join(sorted(names))))
-        for key, label in (('source', '注入电流源'), ('analysis', '分析'), ('view', '幅值/相位类型')):
+                notes.append('Expression sidebands %s maps to multiple names: %s. ' % (sideband, ', '.join(sorted(names))))
+        for key, label in (('source', 'injected current source'), ('analysis', 'Analysis'), ('view', 'Magnitude/phase type')):
             values = {member[key] for member in members if member[key] is not None}
             if len(values) > 1:
-                notes.append('系列成员声明的%s有多个：%s；本次完整复数重测采用下方显示的代表项。' % (label, '、'.join(sorted(values))))
+                notes.append('Family members declare multiple values for %s: %s; full complex remeasurement uses the anchor shown below. ' % (label, ', '.join(sorted(values))))
         readable = [member for member in members if member['name'] in records and member['name'] not in record_errors]
         readable.sort(key=lambda member: (abs(member['sideband']), member['sideband'], member['name']))
         representative = readable[0]['name'] if readable else None
         if not representative:
-            errors.append('系列中无法提取本次结果读取所需的来源、分析及边带。')
+            errors.append('Cannot extract this result’s read source from the family, analysis and sideband. ')
         elif 0 not in by_sideband:
-            notes.append('没有边带 0 命名输出；使用 %s 定位来源，仍重新测量完整复数响应。' % representative)
+            notes.append('no sidebands 0 Named output; Use %s locate source, still remeasures the full complex response. ' % representative)
         if name in output_names:
-            errors.append('系列名 %s 与实际单个 output 重名，无法唯一选择。' % name)
+            errors.append('Family name %s and the actual single output duplicate name, Cannot select uniquely. ' % name)
         anchor = records.get(representative, {})
         family = {key: anchor.get(key) for key in ('source', 'analysis', 'view')}
         # Preserve the observed type even if a group has no readable member.
@@ -108,7 +108,7 @@ def build_transfer_families(outputs, records, record_errors):
                       errors=errors, notes=notes, valid=not errors,
                       eligible=any(records.get(item['name'], {}).get('mode') == 'existing_source' for item in members),
                       consumption_mode='source_binding_remeasured',
-                      index_meaning='名称后缀仅用于分组；表达式保留实际 HBXF 边带。当前算法使用 sideband=k-1，不直接按名称后缀作为 ISF 谐波阶数。')
+                      index_meaning='name suffixes are used only for grouping; expression retains actual HBXF Sideband. The current algorithm uses sideband=k-1, does not use the name suffix as ISF Harmonic order. ')
         families[name] = family
     return families
 
@@ -126,10 +126,10 @@ def transfer_choices(outputs, records, record_errors):
     for name, family in families.items():
         details[name] = copy.deepcopy(family)
         if family['errors']:
-            errors[name] = '系列 %s 无法绑定：%s' % (name, ' '.join(family['errors']))
+            errors[name] = 'Family %s Cannot bind: %s' % (name, ' '.join(family['errors']))
         else:
             choices[name] = dict(copy.deepcopy(records[family['anchor_output']]), family=copy.deepcopy(family))
-            choices[name]['notice'] += ' 已识别系列 %s，读取代表项 %s；表达式边带 %s，成员名不直接作为算法谐波阶数。' % (name, family['anchor_output'], ', '.join(map(str, family['sidebands'])))
+            choices[name]['notice'] += ' Detected family %s, Read anchor %s; Expression sidebands %s, member names are not used as algorithm harmonic orders. ' % (name, family['anchor_output'], ', '.join(map(str, family['sidebands'])))
     return choices, errors, details, families
 
 

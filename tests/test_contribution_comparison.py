@@ -34,29 +34,29 @@ class ContributionComparisonTests(unittest.TestCase):
             for kind in ('flicker','both'):
                 view=build_result_view(source, noise_scope='pair', noise_kind=kind)
                 rows=contribution_projection(view)['rows'];pair=rows[0]
-                self.assertEqual('对称 gm pair · flicker 对比',pair['label'])
+                self.assertEqual('symmetric gm pair · flicker comparison',pair['label'])
                 self.assertEqual('comparison:flicker_pair',pair['key'])
                 self.assertAlmostEqual(10*math.log10(2*5e-8),pair['simulated_dbc'],places=10)
                 self.assertAlmostEqual(10*math.log10(2*4e-8),pair['calculated_dbc'],places=10)
                 self.assertAlmostEqual(100*5/6,pair['fraction_pct'],places=10)
-                self.assertIn('不重复计数',pair['scope'])
+                self.assertIn('not counted twice',pair['scope'])
                 members=[r for r in rows[1:] if r.get('comparison_group')=='flicker_pair']
                 self.assertEqual({'core_a','core_b'},{r['device'] for r in members})
-                self.assertTrue(all(r['scope']=='计入对称 gm pair 对比' for r in members))
+                self.assertTrue(all(r['scope']=='included in symmetric gm pair comparison' for r in members))
                 self.assertAlmostEqual(pair['fraction_pct'],sum(r['fraction_pct'] for r in members))
                 # Only the aggregate comparison has a calculation. Do not
                 # invent individual predictions or rehabilitate old thermal.
                 self.assertTrue(all(r['calculated_dbc'] is None for r in members))
                 self.assertIsNone(view['selected_summary']['predicted_total_dBc_Hz'])
                 self.assertEqual('unavailable',view['selected_summary']['thermal_noise']['status'])
-                self.assertIn('未建模',rows[-1]['scope'])
+                self.assertIn('not modeled',rows[-1]['scope'])
                 self.assertEqual(len(rows),len({r['key'] for r in rows}))
         self.assertEqual(before,result)
 
     def test_unknown_members_are_never_guessed_from_device_names(self):
         raw=pair_snapshot_result();raw['summary'][0].pop('thermal_noise')
         rows=contribution_projection(build_result_view(raw,noise_scope='pair'))['rows']
-        self.assertTrue(all('未建模' in r['scope'] for r in rows[1:]))
+        self.assertTrue(all('not modeled' in r['scope'] for r in rows[1:]))
         self.assertEqual([],rows[0]['members'])
 
     def test_thermal_filter_omits_flicker_aggregate_and_fn_members(self):
@@ -83,7 +83,7 @@ class ContributionRankingTests(unittest.TestCase):
         self.assertEqual(['aux_b', 'aux_a', 'core_a', 'core_a', 'L0', 'missing'], [r['device'] for r in rows])
         self.assertFalse(rows[0]['modeled'])
         self.assertTrue(rows[2]['modeled'])
-        self.assertEqual('未建模 · 不参与 ISF 计算', rows[0]['scope'])
+        self.assertEqual('not modeled · outside ISF calculation', rows[0]['scope'])
 
 
 if __name__ == '__main__':

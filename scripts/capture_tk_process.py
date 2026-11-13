@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import tempfile
@@ -18,6 +19,22 @@ def pump(root, seconds=.25):
     while time.monotonic() < until:
         root.update()
         time.sleep(.01)
+
+
+def assert_english(widget):
+    for option in ('text', 'label', 'values'):
+        try:
+            text = str(widget.cget(option))
+        except tk.TclError:
+            continue
+        assert not re.search(r'[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]', text), text
+    if isinstance(widget, tk.Canvas):
+        for item in widget.find_all():
+            if widget.type(item) == 'text':
+                text = widget.itemcget(item, 'text')
+                assert not re.search(r'[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]', text), text
+    for child in widget.winfo_children():
+        assert_english(child)
 
 
 def main():
@@ -40,18 +57,20 @@ def main():
             app = IsfApplication(root, mock.Mock(workspace=Path(workspace)))
         try:
             root.geometry(args.size + '+0+0')
+            app.status_var.set('Load example to explore offline')
             pump(root)
             w, h = map(int, args.size.split('x'))
+            assert_english(root)
             ImageGrab.grab(bbox=(0,0,w,h), xdisplay=args.display).save(args.out/'01-empty-state.png')
             app.current_job_id = 'synthetic'
             app.current_job = dict(id='synthetic', status='succeeded')
             app.noise_kind_var.set('both')
             app._result_loaded(data, 'synthetic')
             app._set_window_title('Synthetic ideal LC')
-            app.status_var.set('合成示例 · Synthetic analytic LC · replay only')
+            app.status_var.set('Synthetic analytic LC · replay only')
             app.theme_var.set('dark'); app._apply_theme()
             pump(root)
-            records = []
+            records = [dict(file='01-empty-state.png', view='setup', rows=0, synthetic=True)]
             for name, view in [('01-overview',0), ('02-process',1), ('03-harmonics',2),
                                ('04-bands',6), ('05-contributions',4), ('06-thermal-bands',7)]:
                 ui = app.results_view
@@ -62,16 +81,21 @@ def main():
                     assert ui.chart.selected_key == key
                     assert ui.table.tree.bbox(key)
                 assert not errors, errors
+                assert_english(root)
                 w, h = map(int, args.size.split('x'))
                 assert (root.winfo_width(),root.winfo_height()) == (w,h)
                 ImageGrab.grab(bbox=(0,0,w,h), xdisplay=args.display).save(args.out/(name+'.png'))
                 records.append(dict(file=name+'.png',view=view,rows=len(ui.table.rows),synthetic=not bool(args.result)))
             ui.overlay.set(True);ui.show(1);pump(root)
+            assert_english(root)
             ImageGrab.grab(bbox=(0,0,w,h),xdisplay=args.display).save(args.out/'07-overlay.png')
-            app.status_var.set('运行中 · Synthetic replay demonstration')
+            records.append(dict(file='07-overlay.png', view=1, overlay=True, synthetic=not bool(args.result)))
+            app.status_var.set('Running · Synthetic replay demonstration…')
             pump(root)
+            assert_english(root)
             ImageGrab.grab(bbox=(0,0,w,h),xdisplay=args.display).save(args.out/'06-running.png')
-            (args.out/'captures.json').write_text(json.dumps(dict(captures=records,callback_errors=errors),indent=2))
+            records.append(dict(file='06-running.png', view=1, demonstration='running replay', synthetic=not bool(args.result)))
+            (args.out/'captures.json').write_text(json.dumps(dict(captures=records,callback_errors=errors,language="en",theme="dark",size=[w,h],cjk_text_items=0),indent=2))
         finally:
             app.queue.close()
             for timer in root.tk.call('after','info'):

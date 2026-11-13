@@ -11,7 +11,7 @@ from .process_charts import ProcessChart
 from .viewmodel import (engineering, finite_number, process_projection, harmonic_projection,
                         offset_projection, contribution_projection, noise_scope_note, load_thermal_coefficients, stored_thermal_diagnostic, thermal_workpoint_series, stored_thermal_series, offset_table_projection, band_noise_projection, thermal_band_projection, isf_overlay_projection, HARMONIC_NOTE)
 
-VIEWS = ('总览', 'ISF 全过程', '谐波分解', '相噪 vs 仿真', '噪声贡献', '指标与质量', '频带 → 相噪', 'thermal 频带')
+VIEWS = ('Overview', 'ISF process', 'Harmonic decomposition', 'Phase noise vs simulation', 'Noise contributions', 'Metrics & quality', 'Input noise band → phase noise', 'Thermal bands')
 
 
 def maximize(root):
@@ -58,8 +58,8 @@ class LinkedTable(ttk.Frame):
         self.bind('<Configure>', self._fit_columns, add='+')
         self._show_all = False
         menu = tk.Menu(self.tree, tearoff=False)
-        menu.add_command(label='复制选中行（完整精度）', command=self.copy)
-        menu.add_command(label='全部列 / 自适应列', command=self.show_all_columns)
+        menu.add_command(label='Copy selected row (full precision)', command=self.copy)
+        menu.add_command(label='All columns / Adaptive columns', command=self.show_all_columns)
         self.tree.bind('<Button-3>', lambda e: menu.tk_popup(e.x_root, e.y_root))
 
     def fill(self, rows, specs):
@@ -178,24 +178,24 @@ class ResultsView(ttk.Frame):
         self.rowconfigure(3, weight=1)
         toolbar = ttk.Frame(self)
         toolbar.grid(row=0, column=0, sticky='ew', pady=(0, 4))
-        ttk.Button(toolbar, text='☰ 流程', command=self.toggle_nav).pack(side='left', padx=(0, 8))
-        ttk.Label(toolbar, text='工况').pack(side='left')
+        ttk.Button(toolbar, text='☰ Workflow', command=self.toggle_nav).pack(side='left', padx=(0, 8))
+        ttk.Label(toolbar, text='Operating point').pack(side='left')
         app.operating_point_box = ttk.Combobox(toolbar, textvariable=app.operating_point_var, state='readonly', width=24)
         app.operating_point_box.pack(side='left', padx=(4, 8))
         app.operating_point_box.bind('<<ComboboxSelected>>', app._operating_point_changed)
-        ttk.Label(toolbar, text='频偏').pack(side='left')
+        ttk.Label(toolbar, text='Offset').pack(side='left')
         app.result_offset_box = ttk.Combobox(toolbar, textvariable=app.result_offset_var, state='readonly', width=13)
         app.result_offset_box.pack(side='left', padx=(4, 8))
         app.result_offset_box.bind('<<ComboboxSelected>>', app._result_offset_changed)
-        ttk.Label(toolbar, text='噪声').pack(side='left')
+        ttk.Label(toolbar, text='Noise').pack(side='left')
         app.noise_kind_box = ttk.Combobox(toolbar, textvariable=app.noise_kind_var, state='readonly', values=('both', 'flicker', 'thermal'), width=8)
         app.noise_kind_box.pack(side='left', padx=4)
         app.noise_kind_box.bind('<<ComboboxSelected>>', app._point_changed)
-        exports = ttk.Menubutton(toolbar, text='导出…')
+        exports = ttk.Menubutton(toolbar, text='Export…')
         menu = tk.Menu(exports, tearoff=False)
         exports.configure(menu=menu)
-        for label, command in (('结果 JSON…', app._export_result_json), ('Summary CSV…', app._export_summary_csv),
-                               ('当前谐波 CSV…', app._export_harmonics_csv), ('当前图 EPS…', self.export_eps), ('当前图 PNG…', self.export_png)):
+        for label, command in (('Result JSON…', app._export_result_json), ('Summary CSV…', app._export_summary_csv),
+                               ('Current harmonics CSV…', app._export_harmonics_csv), ('Current chart EPS…', self.export_eps), ('Current chart PNG…', self.export_png)):
             menu.add_command(label=label, command=command)
         exports.pack(side='right')
         self.chips = []
@@ -209,18 +209,18 @@ class ResultsView(ttk.Frame):
             self.chips.append(var)
         self.controls = ttk.Frame(self)
         self.controls.grid(row=2, column=0, sticky='ew', pady=(0, 4))
-        self.title = tk.StringVar(value='00 / 总览')
+        self.title = tk.StringVar(value='00 / Overview')
         ttk.Label(self.controls, textvariable=self.title, font=app.heading_font).pack(side='left', padx=(0, 8))
-        ttk.Button(self.controls, text='复位', command=lambda: self.chart.reset()).pack(side='right')
-        ttk.Button(self.controls, text='表格 ▾', command=self.toggle_drawer).pack(side='right', padx=4)
-        ttk.Button(self.controls, text='全部列 / 自适应', command=lambda: self.table.show_all_columns()).pack(side='right', padx=4)
+        ttk.Button(self.controls, text='Reset', command=lambda: self.chart.reset()).pack(side='right')
+        ttk.Button(self.controls, text='Table ▾', command=self.toggle_drawer).pack(side='right', padx=4)
+        ttk.Button(self.controls, text='All columns / Adaptive', command=lambda: self.table.show_all_columns()).pack(side='right', padx=4)
         self.overlay = tk.BooleanVar(value=False)
-        self.overlay_check = ttk.Checkbutton(self.controls, text='叠加显示 · Fig.14', variable=self.overlay, command=self.refresh)
+        self.overlay_check = ttk.Checkbutton(self.controls, text='Overlay · Fig.14', variable=self.overlay, command=self.refresh)
         self.reference_slopes = tk.BooleanVar(value=True)
-        self.slopes_check = ttk.Checkbutton(self.controls, text='−30 / −20 参考斜率', variable=self.reference_slopes, command=self.refresh)
+        self.slopes_check = ttk.Checkbutton(self.controls, text='−30 / −20 reference slopes', variable=self.reference_slopes, command=self.refresh)
         self.decompose = tk.BooleanVar(value=False)
-        self.decompose_check = ttk.Checkbutton(self.controls, text='dc / delay / dynamic（单管）', variable=self.decompose, command=self.refresh)
-        self.log_check = ttk.Checkbutton(self.controls, text='log 频偏', variable=app.log_offset_var, command=self.refresh)
+        self.decompose_check = ttk.Checkbutton(self.controls, text='dc / delay / dynamic (single device)', variable=self.decompose, command=self.refresh)
+        self.log_check = ttk.Checkbutton(self.controls, text='log Offset', variable=app.log_offset_var, command=self.refresh)
         self.source_var = tk.StringVar()
         self.source_box = ttk.Combobox(self.controls, textvariable=self.source_var, state='readonly', width=20)
         self.source_box.bind('<<ComboboxSelected>>', lambda e: self.refresh())
@@ -230,22 +230,22 @@ class ResultsView(ttk.Frame):
         body.columnconfigure(1, weight=1)
         self.nav = ttk.Frame(body, width=154)
         self.nav.grid(row=0, column=0, sticky='ns', padx=(0, 8))
-        ttk.Label(self.nav, text='分析流程', style='Help.TLabel').pack(anchor='w', pady=(4, 8))
+        ttk.Label(self.nav, text='Analysis workflow', style='Help.TLabel').pack(anchor='w', pady=(4, 8))
         self.nav_buttons = []
         for i, name in enumerate(VIEWS):
-            button = ttk.Button(self.nav, text=f'{i:02}  {name}', width=21, command=lambda v=i: self.show(v))
+            button = ttk.Button(self.nav, text=f'{i:02}  {name}', width=0, command=lambda v=i: self.show(v))
             button.pack(fill='x', pady=(0, 8))
             self.nav_buttons.append(button)
         helpbox = ttk.Frame(self.nav)
         helpbox.pack(anchor='w',pady=16)
-        for line in ('Ctrl+滚轮：缩放','中键拖动：平移','点图例：选中 / 显隐','悬停点选：联动','Ctrl+C：复制表行'):
+        for line in ('Ctrl+wheel: zoom','Middle-drag: pan','Click legend: Selected / toggle visibility','Hover/click: link','Ctrl+C: copy table row'):
             ttk.Label(helpbox,text=line,style='Help.TLabel').pack(anchor='w',pady=4)
         self.pane = ttk.Panedwindow(body, orient='vertical')
         self.pane.grid(row=0, column=1, sticky='nsew')
         self.plot_frame = ttk.Frame(self.pane)
         self.plot_frame.columnconfigure(0, weight=1)
         self.plot_frame.rowconfigure(1, weight=1)
-        self.note = tk.StringVar(value='选择结果后显示分析过程')
+        self.note = tk.StringVar(value='Select results to see the analysis process')
         self.note_label = ttk.Label(self.plot_frame, textvariable=self.note, style='Help.TLabel', width=1, anchor='w')
         self.note_label.grid(row=0, column=0, sticky='ew', pady=(0, 4))
         self.chart = ProcessChart(self.plot_frame, on_select=self.select_key, on_open=self.show)
@@ -260,17 +260,17 @@ class ResultsView(ttk.Frame):
         self.plot_frame.bind('<Configure>', self._wrap_notes, add='+')
         self.quality_table = LinkedTable(self.quality_frame, self._quality_selected)
         self.quality_table.grid(row=1, column=0, sticky='nsew', padx=(0, 4))
-        candidate_box = ttk.LabelFrame(self.quality_frame, text='AM/PM phase_candidates · chosen 高亮')
+        candidate_box = ttk.LabelFrame(self.quality_frame, text='AM/PM phase_candidates · chosen highlighted')
         candidate_box.grid(row=1, column=1, sticky='nsew')
         candidate_box.rowconfigure(0, weight=1)
         candidate_box.columnconfigure(0, weight=1)
         self.candidates = LinkedTable(candidate_box, lambda k,c: None)
         self.candidates.grid(row=0, column=0, sticky='nsew')
-        ttk.Label(candidate_box, text='选择候选只查看证据；不会重算或改变 chosen。', style='Help.TLabel', wraplength=270).grid(row=1, column=0, sticky='ew')
+        ttk.Label(candidate_box, text='Selecting a candidate only inspects evidence; does not recalculate or change chosen. ', style='Help.TLabel', wraplength=270).grid(row=1, column=0, sticky='ew')
         self.table = LinkedTable(self.pane, self.select_key)
         self.pane.add(self.plot_frame, weight=5)
         self.pane.add(self.table, weight=1)
-        self.readout = tk.StringVar(value='表格与图共用采样 key；悬停单元格查看完整精度')
+        self.readout = tk.StringVar(value='Table and chart share sample key; hover over a cell for full precision')
         self.footer = ttk.Label(self, textvariable=self.readout, style='Help.TLabel', anchor='w')
         self.footer.grid(row=4, column=0, sticky='ew', pady=(4, 0))
         self.bind('<Map>', self._initial_sash, add='+')
@@ -323,7 +323,7 @@ class ResultsView(ttk.Frame):
             ('noise_contribution_tree', ('label', 'device', 'mechanism', 'simulated', 'calculated', 'fraction', 'psd')),
             ('metric_values_tree', ('field', 'value', 'unit'))):
             setattr(app, name, ttk.Treeview(host, columns=cols, show='headings'))
-        app.summary_tree.heading('spectre', text='VCO 总仿真相噪 (dBc/Hz)')
+        app.summary_tree.heading('spectre', text='VCO simulated total phase noise (dBc/Hz)')
         app._bind_metric_columns(app.harmonic_tree, ('k', 'Mdc_mag_A_rtHz', 'Mdyn_mag_A_rtHz', 'A_k', 'delta_k_deg', 'Q_real_V_rtHz', 'Q_imag_V_rtHz', 'Q_mag_V_rtHz', 'cum_real_V_rtHz', 'cum_imag_V_rtHz', 'pair_harmonic_equivalent_dBc_Hz', 'pair_cumulative_dBc_Hz'))
         app.harmonic_tree.bind('<<TreeviewSelect>>', app._harmonic_selected)
         app.simulated_noise_pie = ContributionBars(host, title='HBnoise', on_select=app._select_contribution)
@@ -400,7 +400,7 @@ class ResultsView(ttk.Frame):
         self.quality_table.fill([], [])
         self.candidates.fill([], [])
         self._identity, self._thermal_identity = None, None
-        self.note.set('尚无当前任务结果')
+        self.note.set('No current job results')
         for var in self.chips:
             var.set('—')
 
@@ -445,8 +445,8 @@ class ResultsView(ttk.Frame):
         unverified_thermal = bool(diagnostic['sources']) and view.get('selected_summary',{}).get('thermal_noise',{}).get('status') != 'available'
         if unverified_thermal and kind in ('thermal','both'):
             offsets['series'].append(stored_thermal_series(app.current_result,offsets['rows']))
-        labels = {'calculated': 'ISF 合计' if kind == 'both' else 'ISF fn · 双管', 'flicker': 'ISF fn · 双管', 'thermal': 'ISF thermal', 'spectre': 'HBnoise 全部源', 'matched_prediction': 'ISF 同口径', 'matched_reference': 'HBnoise 同口径', 'matched_error': 'Δ 同口径'}
-        short = {'calculated': 'ISFΣ' if kind == 'both' else 'ISFfn', 'flicker':'fn', 'thermal':'th', 'spectre':'HB全', 'matched_prediction':'ISF匹配', 'matched_reference':'HB匹配', 'matched_error':'Δ'}
+        labels = {'calculated': 'ISF total' if kind == 'both' else 'ISF flicker · pair', 'flicker': 'ISF flicker · pair', 'thermal': 'ISF thermal', 'spectre': 'HBnoise · all sources', 'matched_prediction': 'ISF · matched scope', 'matched_reference': 'HBnoise · matched scope', 'matched_error': 'Δ matched scope'}
+        short = {'calculated': 'ISFΣ' if kind == 'both' else 'ISFfn', 'flicker':'fn', 'thermal':'th', 'spectre':'HB all', 'matched_prediction':'ISF matched', 'matched_reference':'HB matched', 'matched_error':'Δ'}
         for series in offsets['series']+offsets['error_series']:
             series['name'] = labels.get(series['id'],series['name'])
             series['short_name'] = short.get(series['id'],series['name'])
@@ -456,13 +456,13 @@ class ResultsView(ttk.Frame):
         thermal_bands = thermal_band_projection(view, diagnostic)
         metrics = view.get('metrics', {})
         calc, reference = finite_number(metrics.get('calculated_dbc')), finite_number(metrics.get('spectre_dbc'))
-        missing_calculation = ('合计缺 thermal' if kind == 'both' and (view.get('selected_summary', {}).get('thermal_noise') or {}).get('status') != 'available' else '缺计算')
+        missing_calculation = ('total missing thermal' if kind == 'both' and (view.get('selected_summary', {}).get('thermal_noise') or {}).get('status') != 'available' else 'calculation missing')
         for var, text in zip(self.chips, (
             'f₀  ' + engineering(metrics.get('frequency_hz'), 'Hz'),
             'offset  ' + engineering(metrics.get('offset_hz'), 'Hz'),
             'ISF  ' + (f'{calc:.4g} dBc/Hz' if calc is not None else missing_calculation),
-            'HBnoise  ' + (f'{reference:.4g} dBc/Hz' if reference is not None else '缺参考'),
-            'Δ总参考  ' + (f'{calc-reference:+.3g} dB' if calc is not None and reference is not None else '缺同点数值'),
+            'HBnoise  ' + (f'{reference:.4g} dBc/Hz' if reference is not None else 'reference missing'),
+            'Δ vs total  ' + (f'{calc-reference:+.3g} dB' if calc is not None and reference is not None else 'values missing at the same point'),
             'SIGNOFF' if view.get('signoff') else 'REPLAY · NON-SIGNOFF')):
             var.set(text)
         self.title.set(f'{self.view_id:02} / {VIEWS[self.view_id]}')
@@ -474,7 +474,7 @@ class ResultsView(ttk.Frame):
                  any(any(p is not None and finite_number(p[1]) is not None for p in s['points']) for s in offsets['error_series']),
                  bool(contrib['rows']) and (kind=='flicker' or bool(contrib['band_rows'])), bool(view.get('selected_summary')), bool(bands['table_rows']), bool(thermal_bands['rows'])]
         for i, button in enumerate(self.nav_buttons):
-            button.configure(text=f'{i:02}  {({3: "相噪对比",5: "指标质量"}).get(i,VIEWS[i])}  {"就绪" if ready[i] else "缺数据"}', style='ResultActive.TButton' if i==self.view_id else 'Result.TButton')
+            button.configure(text=f'{i:02}  {({3: "Phase-noise comparison",5: "Metrics & quality"}).get(i,VIEWS[i])}  {"Ready" if ready[i] else "Missing data"}', style='ResultActive.TButton' if i==self.view_id else 'Result.TButton')
         for widget in (self.decompose_check, self.log_check, self.source_box, self.overlay_check, self.slopes_check):
             widget.pack_forget()
         if self.view_id in (0, 3):
@@ -489,11 +489,11 @@ class ResultsView(ttk.Frame):
             self.source_box.pack(side='left')
         scope = noise_scope_note(view, kind)
         if unverified_thermal and kind!='flicker':
-            scope += f' · 旧预算 {len(diagnostic["sources"])} 源仅作未验证诊断（可能含阵列）；不参与当前计算 / 误差 / SIGNOFF'
+            scope += f' · legacy budget {len(diagnostic["sources"])} sources are unverified diagnostics only (may include the capacitor bank); excluded from current calculation / Error / SIGNOFF'
         note = scope
         phase_panels = [
-            {'title': '相噪 vs 频偏 · ISF / HBnoise', 'ylabel': 'L (dBc/Hz)', 'xlabel': '频偏 (Hz)', 'group': 'offset', 'series': offsets['series'], 'log_x': app.log_offset_var.get(), 'reason': '缺少同口径计算 / 参考；缺值不连线'},
-            {'title': '计算 − 同口径 HBnoise', 'ylabel': 'Δ (dB)', 'xlabel': '频偏 (Hz)', 'group': 'offset', 'series': offsets['error_series'], 'log_x': app.log_offset_var.get(), 'zero': True, 'reason': '未保存同口径 HBnoise 参考；不能用 VCO 总噪声代替'}]
+            {'title': 'Phase noise vs Offset · ISF / HBnoise', 'ylabel': 'L (dBc/Hz)', 'xlabel': 'Offset (Hz)', 'group': 'offset', 'series': offsets['series'], 'log_x': app.log_offset_var.get(), 'reason': 'Missing matched-scope calculation / Reference; gaps remain disconnected'},
+            {'title': 'Calculated − matched scope HBnoise', 'ylabel': 'Δ (dB)', 'xlabel': 'Offset (Hz)', 'group': 'offset', 'series': offsets['error_series'], 'log_x': app.log_offset_var.get(), 'zero': True, 'reason': 'No saved matched-scope HBnoise Reference; cannot use VCO total noise as a substitute'}]
         # Share full x range including missing y samples across both panels.
         hz = [finite_number(r.get('hz')) for r in offsets['rows']]
         hx = [v for v in hz if v is not None and (not app.log_offset_var.get() or v > 0)]
@@ -506,8 +506,8 @@ class ResultsView(ttk.Frame):
                 p['xlimits'] = (lo-margin, hi+margin)
                 if any(any(v is not None and finite_number(v[1]) is not None for v in s['points']) for s in p['series']):
                     p['reason'] = ''
-        phasor = {'kind': 'phasor', 'title': 'ΣQk 复平面 · 单管原值', 'phasors': harmonic['phasors']}
-        source_panel = {'kind': 'sources', 'title': '单频点噪声贡献 · 聚合对比 / 源明细', 'rows': contrib['rows']}
+        phasor = {'kind': 'phasor', 'title': 'ΣQk complex plane · raw single-device values', 'phasors': harmonic['phasors']}
+        source_panel = {'kind': 'sources', 'title': 'Noise contributions · comparisons & sources', 'rows': contrib['rows']}
         if self.view_id == 0:
             panels = [dict(bands['panels'][0], layout=(0, 0, .62, .62), open=6),
                       dict(source_panel, layout=(.62, 0, 1, .62), open=4),
@@ -515,19 +515,19 @@ class ResultsView(ttk.Frame):
             for i, p in enumerate((process['panels'][2], process['panels'][3])):
                 panels.append(dict(p, layout=(.55, .6 + i*.2, 1, .8+i*.2), statistics={}, open=1))
             rows, specs = self._offset_table(offsets)
-            note = bands['note'] + ' · 点击缩略图展开'
+            note = bands['note'] + ' · click a thumbnail to expand'
         elif self.view_id == 1:
             panels = process['panels']
             columns = ('sample', 'phase', 'VG_V', 'VD_V', 'VS_V', 'VB_V', 'ID_main_A', 'ID_replica_A', 'm_DC_A_rtHz', 'm_dyn_A_rtHz', 'isf_i', 'isf_q', 'product_i', 'product_q')
-            labels = ('sample', 'φ (周期)', 'VG (V)', 'VD (V)', 'VS (V)', 'VB (V)', 'ID_main (A)', 'ID_replica (A)', 'm_DC (A/√Hz)', 'm_dyn (A/√Hz)', 'Γ-I (C^-1)', 'Γ-Q (C^-1)', 'ΓI×m (s^-1/√Hz)', 'ΓQ×m (s^-1/√Hz)')
+            labels = ('sample', 'φ (period)', 'VG (V)', 'VD (V)', 'VS (V)', 'VB (V)', 'ID_main (A)', 'ID_replica (A)', 'm_DC (A/√Hz)', 'm_dyn (A/√Hz)', 'Γ-I (C^-1)', 'Γ-Q (C^-1)', 'ΓI×m (s^-1/√Hz)', 'ΓQ×m (s^-1/√Hz)')
             rows, specs = process['rows'], list(zip(columns, labels))
-            note = ('flicker 目标单器件周期原值；Γ 采用载波参考 · DC / RMS 为整周期梯形积分显示诊断')
+            note = ('Raw periodic flicker values for the target single device; carrier-referenced Γ · DC / RMS use full-period trapezoidal integration')
             if kind in ('thermal', 'both'):
-                note += ' · thermal 保留原始源采样，相位按最近工作点联动；④仍为 flicker Γ×m_dyn'
+                note += ' · Thermal retains raw source samples linked to the nearest phase sample; panel 4 remains flicker Γ×m_dyn'
                 if not sources:
                     note += ' · ' + thermal['reason']
             if process['derived']:
-                note += ' · 派生诊断：由 canonical 谐波重建，未覆盖原始输入'
+                note += ' · derived diagnostic: from canonical harmonic reconstruction, raw inputs are unchanged'
             if self.overlay.get():
                 overlay = isf_overlay_projection(process, view.get('selected_summary', {}))
                 panels, note = overlay['panels'], overlay['note']
@@ -537,22 +537,22 @@ class ResultsView(ttk.Frame):
                 panels.append(dict(p, layout=(0, i/2, .66, (i+1)/2)))
             panels.append(dict(phasor, layout=(.66, 0, 1, 1)))
             rows = harmonic['rows']
-            specs = [('k','k'), ('fraction_pct','投影占比 (%)'), ('cancellation','相消干涉'), ('mdc_mag','|Mdc| (A/√Hz)'), ('mdyn_mag','|Mdyn| (A/√Hz)'), ('amplitude','A_k (1)'), ('delta_deg','δ_k (°)'), ('q_real','Q Re (V/√Hz)'), ('q_imag','Q Im (V/√Hz)'), ('q_mag','|Qk| (V/√Hz)'), ('harmonic_dbc','双管单阶 (dBc/Hz)'), ('cumulative_dbc','双管累计 (dBc/Hz)')]
-            note = HARMONIC_NOTE + ' · 所选频偏 '+engineering(metrics.get('offset_hz'),'Hz')
+            specs = [('k','k'), ('fraction_pct','Projection fraction (%)'), ('cancellation','destructive interference'), ('mdc_mag','|Mdc| (A/√Hz)'), ('mdyn_mag','|Mdyn| (A/√Hz)'), ('amplitude','A_k (1)'), ('delta_deg','δ_k (°)'), ('q_real','Q Re (V/√Hz)'), ('q_imag','Q Im (V/√Hz)'), ('q_mag','|Qk| (V/√Hz)'), ('harmonic_dbc','Pair single-order (dBc/Hz)'), ('cumulative_dbc','Pair cumulative (dBc/Hz)')]
+            note = HARMONIC_NOTE + ' · Selected offset '+engineering(metrics.get('offset_hz'),'Hz')
         elif self.view_id == 3:
             panels = [dict(phase_panels[0], layout=(0, 0, 1, .7)), dict(phase_panels[1], layout=(0, .7, 1, 1))]
             rows, specs = self._offset_table(offsets)
         elif self.view_id == 4:
             panels = [dict(source_panel, layout=(0, 0, .62, 1)),
-                      {'title': 'thermal B_m · 原存储未验证诊断' if contrib.get('diagnostic_bands') else 'thermal 独立输入频带 B_m', 'ylabel': 'PSD (V²/Hz)', 'xlabel': '输入频带 m', 'series': contrib['band_series'], 'layout': (.62, 0, 1, 1), 'reason': ('当前筛选为 flicker；请切换 thermal / both 查看原存储频带诊断。flicker 使用 Qk 相干累计。' if kind=='flicker' and diagnostic['sources'] else contrib['reason'])}]
+                      {'title': 'thermal B_m · stored unverified diagnostic' if contrib.get('diagnostic_bands') else 'thermal independent input bands B_m', 'ylabel': 'PSD (V²/Hz)', 'xlabel': 'Input band m', 'series': contrib['band_series'], 'layout': (.62, 0, 1, 1), 'reason': ('Current filter is flicker; Switch to thermal / both view stored band diagnostics. flicker Use Qk coherent cumulative sum. ' if kind=='flicker' and diagnostic['sources'] else contrib['reason'])}]
             rows = contrib['rows']
-            specs = [('label','源 / 聚合对比'), ('simulated_dbc','HBnoise (dBc/Hz)'), ('calculated_dbc','ISF (dBc/Hz)'), ('fraction_pct','占总仿真 (%)'), ('scope','建模范围'), ('device','器件'), ('mechanism','机制'), ('psd_V2_Hz','PSD (V²/Hz)')]
+            specs = [('label','Source / Aggregate comparison'), ('simulated_dbc','HBnoise (dBc/Hz)'), ('calculated_dbc','ISF (dBc/Hz)'), ('fraction_pct','of simulated total (%)'), ('scope','Model scope'), ('device','Device'), ('mechanism','Mechanism'), ('psd_V2_Hz','PSD (V²/Hz)')]
             if contrib.get('diagnostic_bands'):
-                specs.insert(5,('stored_thermal_dbc','旧预算诊断·未验证 (dBc/Hz)'))
+                specs.insert(5,('stored_thermal_dbc','legacy-budget diagnostic·Unverified (dBc/Hz)'))
             if any(r.get('kind')=='aggregate' for r in rows):
-                note += ' · 聚合对比置顶，与源明细重叠、不重复计数；标为“计入对比”的 fn 源参与该聚合。'
+                note += ' · aggregate comparisons appear first, overlaps source details, not counted twice; marked as“included in comparison”of fn sources participate in this aggregate. '
             else:
-                note += ' · 独立源与输入频带按功率相加；未建模源不参与 ISF 计算。'
+                note += ' · independent sources and input bands add in power; unmodeled sources are excluded from ISF calculated. '
         elif self.view_id == 6:
             panels, rows, specs = bands['panels'], bands['table_rows'], bands['specs']
             note = bands['note']
@@ -564,11 +564,11 @@ class ResultsView(ttk.Frame):
             if self.source_var.get() not in options:
                 self.source_var.set(options[0] if options else '')
             panels[0]['series'] = [s for s in self._thermal_band_series if s['name']==self.source_var.get()]
-            specs = [('device','源'),('mechanism','机制'),('n','|m|'),('dbc','单带 (dBc/Hz)'),('psd','PSD (V²/Hz)')]
-            note = thermal_bands['note'] + ' · 每次显示一个源；下拉切源，选中表行也会切源（全部数据保留）'
+            specs = [('device','Source'),('mechanism','Mechanism'),('n','|m|'),('dbc','Single band (dBc/Hz)'),('psd','PSD (V²/Hz)')]
+            note = thermal_bands['note'] + ' · one source is shown at a time; select a source from the list, selecting a table row also switches the source (all data retained)'
         else:
             panels = []
-            self.quality_text.set(app.result_quality_var.get().replace('N/A','缺数据'))
+            self.quality_text.set(app.result_quality_var.get().replace('N/A','Missing data'))
             raw = view.get('selected_summary', {})
             from .app import LEGACY_DEVICE_COMPARISON_FIELDS
             metrics_rows = [{'key': 'metric:' + k, 'field': k, 'value': v} for k, v in raw.items() if k not in LEGACY_DEVICE_COMPARISON_FIELDS]
@@ -580,14 +580,14 @@ class ResultsView(ttk.Frame):
                 definition = metric_definition(r['field'])
                 r['label'] = definition['label'] if definition else r['field']
                 r['unit'] = definition['unit'] if definition else '—'
-            self.quality_table.fill(metrics_rows, [('label','全部指标与质量'), ('value','值'), ('unit','单位')])
+            self.quality_table.fill(metrics_rows, [('label','All metrics & quality'), ('value','Value'), ('unit','Unit')])
             point_data = app.current_result.get('points', {}).get(point, {})
             candidates = [dict(r, key='candidate:' + str(i)) for i,r in enumerate(point_data.get('phase_candidates', []))]
             self.candidates.fill(candidates, [('rank','rank'), ('chosen','chosen'), ('signs','signs'), ('score','score'), ('phase_cost','phase cost'), ('delay_cost','delay cost'), ('continuity_cost','continuity')])
             rows, specs = self._offset_table(offsets)
-            note = '运行完成不代表验证通过；REPLAY 不授予 SIGNOFF。双击指标可查看定义；原始结构化值支持悬停 / 复制。'
+            note = 'Completion does not imply validation; REPLAY does not grant SIGNOFF. double-click a metric for its definition; raw structured values support hover / Copy. '
         if self.view_id in (0,3) and len(offsets['rows'])==1:
-            note += ' · 本工况仅保存 1 个频偏，不插值生成扫频曲线'
+            note += ' · This operating point has only 1 offsets, no interpolation of sweep curves'
         self.note.set(note)
         if self.view_id == 5:
             self.chart.grid_remove()
@@ -598,7 +598,7 @@ class ResultsView(ttk.Frame):
         self.chart.key_positions = {r['key']: r['phase'] for r in process['rows']} if self.view_id in (0, 1) else {}
         self.chart.set_panels(panels, reset=reset)
         self.table.fill(rows, specs)
-        self.readout.set('表格与图共用 key · 悬停显示同步读数 · 单元格悬停完整精度 · Ctrl+C 复制（原始单位）')
+        self.readout.set('Table and chart share key · hover for linked readouts · hover over a cell for full precision · Ctrl+C Copy (raw units)')
         if self.view_id == 3:
             key = 'offset:' + point
             self.table.highlight(key)
@@ -627,14 +627,14 @@ class ResultsView(ttk.Frame):
             else:
                 row=self.table.rows.get(key,{})
                 if self.view_id==2:
-                    text='k='+str(row.get('k'))+' · 单阶 '+engineering(row.get('harmonic_dbc'),'dBc/Hz')+' · 投影占比 '+engineering(row.get('fraction_pct'),'%')
-                    if row.get('cancellation'):text+=' · 相消干涉：|Qk| > |ΣQk|'
+                    text='k='+str(row.get('k'))+' · single order '+engineering(row.get('harmonic_dbc'),'dBc/Hz')+' · Projection fraction '+engineering(row.get('fraction_pct'),'%')
+                    if row.get('cancellation'):text+=' · destructive interference: |Qk| > |ΣQk|'
                 elif self.view_id==6:
-                    text=row.get('label',key)+' · 各频偏相噪和占比见表格；右键表格显示全部列'
+                    text=row.get('label',key)+' · see the table for phase noise and fractions at each offset; right-click the table to show all columns'
                 elif self.view_id==1:
                     fields=(('phase','φ'),('m_DC_A_rtHz','m_DC'),('m_dyn_A_rtHz','m_dyn'),('isf_i','Γ-I'),('product_i','Γ×m_dyn'))
                     text=key+' · '+' / '.join(label+' '+engineering(row.get(field)) for field,label in fields)
-                else:text='选中 '+key+' · 单元格悬停查看完整精度'
+                else:text='Selected '+key+' · hover over a cell for full precision'
                 self.readout.set(text)
             if self.view_id == 4:
                 self.chart.schedule()  # selected low-ranked source enters viewport
@@ -652,7 +652,7 @@ class ResultsView(ttk.Frame):
 
     def _quality_selected(self, key, clicked):
         if clicked:
-            self.readout.set('指标 ' + key.removeprefix('metric:') + ' · 双击查看定义；Ctrl+C 复制完整值')
+            self.readout.set('Metric ' + key.removeprefix('metric:') + ' · double-click for the definition; Ctrl+C Copy full value')
 
     def _show_metric(self, _event=None):
         selection = self.quality_table.tree.selection()
@@ -660,19 +660,19 @@ class ResultsView(ttk.Frame):
             self.app._show_metric(self.quality_table.rows[selection[0]]['field'])
 
     def export_eps(self):
-        path = filedialog.asksaveasfilename(parent=self, title='导出当前过程图', defaultextension='.eps', filetypes=(('EPS', '*.eps'),))
+        path = filedialog.asksaveasfilename(parent=self, title='Export current process chart', defaultextension='.eps', filetypes=(('EPS', '*.eps'),))
         if path:
             try:
                 self.chart.postscript(file=path, colormode='color', width=self.chart.winfo_width(), height=self.chart.winfo_height())
             except (OSError, tk.TclError) as exc:
-                messagebox.showerror('导出失败', str(exc), parent=self)
+                messagebox.showerror('Export failed', str(exc), parent=self)
 
     def export_png(self):
-        path = filedialog.asksaveasfilename(parent=self, title='导出当前过程图', defaultextension='.png', filetypes=(('PNG', '*.png'),))
+        path = filedialog.asksaveasfilename(parent=self, title='Export current process chart', defaultextension='.png', filetypes=(('PNG', '*.png'),))
         if path:
             try:
                 from PIL import ImageGrab
                 x,y = self.chart.winfo_rootx(), self.chart.winfo_rooty()
                 ImageGrab.grab(bbox=(x,y,x+self.chart.winfo_width(),y+self.chart.winfo_height())).save(path)
             except (OSError, tk.TclError) as exc:
-                messagebox.showerror('导出失败', str(exc), parent=self)
+                messagebox.showerror('Export failed', str(exc), parent=self)

@@ -22,6 +22,26 @@ _RETIRED_NOISE_KEYS = frozenset(("additionalnoiseobjects", "additionalnoiseobjec
     "additionalnoiseobjectconfig"))
 
 
+# Compatibility only: display labels stored by releases before the English UI.
+LEGACY_HARMONIC_CURVES = {
+    "不显示累计曲线": "none",
+    "全谐波相干总和": "coherent_total",
+    "flicker 全谐波相干总和 · 对称 gm pair": "coherent_total",
+    "flicker 全谐波相干总和 · 单器件": "coherent_total",
+}
+LEGACY_CUMULATIVE_LABEL = r"^累计至 k=(\d+) · 相干总和$"
+
+
+def harmonic_curve_key(value):
+    """Migrate old display labels without changing unknown extension values."""
+    if not isinstance(value, str):
+        return value
+    if value in LEGACY_HARMONIC_CURVES:
+        return LEGACY_HARMONIC_CURVES[value]
+    match = re.fullmatch(LEGACY_CUMULATIVE_LABEL, value)
+    return "cumulative_" + match.group(1) if match else value
+
+
 def strip_retired_noise_objects(value):
     """Drop removed object-extension controls without mutating saved inputs."""
     if isinstance(value, dict):
@@ -67,6 +87,8 @@ def validate_state(value):
         raise ValueError("state timestamp is missing or invalid")
     clean = _safe_data({"schema_version": 1, "name": name.strip(),
                         "saved_at": saved_at, "config": strip_retired_noise_objects(config), "view": view})
+    if "harmonic_curve" in clean["view"]:
+        clean["view"]["harmonic_curve"] = harmonic_curve_key(clean["view"]["harmonic_curve"])
     encoded = json.dumps(clean, ensure_ascii=False, allow_nan=False).encode("utf-8")
     if len(encoded) > MAX_STATE_BYTES:
         raise ValueError("UI state exceeds 4 MiB")

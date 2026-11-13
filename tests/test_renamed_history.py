@@ -92,7 +92,7 @@ class RenamedHistoryTests(unittest.TestCase):
 
     def test_declared_and_named_roots_coexisting_is_rejected(self):
         self.declared.mkdir()
-        with self.assertRaisesRegex(DiscoveryError, "同时存在"):
+        with self.assertRaisesRegex(DiscoveryError, "also exists"):
             self.inspect()
 
     def test_root_symlink_is_not_a_rename_proof(self):

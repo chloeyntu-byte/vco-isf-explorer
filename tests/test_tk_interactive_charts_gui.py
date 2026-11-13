@@ -16,7 +16,7 @@ class InteractiveChartsTests(unittest.TestCase):
         self.root.geometry("900x470")
         self.chart = LineChart(self.root, width=900, height=450)
         self.chart.pack(fill="both", expand=True)
-        self.chart.set_axes(x_label="频偏 (Hz)", y_label="相噪 (dBc/Hz)", log_x=True)
+        self.chart.set_axes(x_label="Offset (Hz)", y_label="Phase noise (dBc/Hz)", log_x=True)
         self.rows = [{"id": "flicker", "name": "flicker", "points": [[1000, -80], [10000, None], [100000, -120]],
                       "samples": [{"point": "tt@1k"}, {"point": "tt@10k"}, {"point": "tt@100k"}]},
                      {"id": "thermal", "name": "thermal", "points": [[1000, -95], [10000, -115], [100000, -135]],
@@ -77,7 +77,7 @@ class InteractiveChartsTests(unittest.TestCase):
 
     def many_series(self):
         return [{"id": f"thermal-band-{index}",
-                 "name": f"Thermal 独立输入频带 m={index} · 独立源功率和",
+                 "name": f"Thermal independent input bands m={index} · independent-source power sum",
                  "points": [[1000, -80 - index], [10000, -100 - index], [100000, -120 - index]],
                  "samples": [{"point": "tt@1k"}, {"point": "tt@10k"}, {"point": "tt@100k"}]}
                 for index in range(45)]
@@ -94,7 +94,7 @@ class InteractiveChartsTests(unittest.TestCase):
                 rectangle = self.chart.coords(self.chart.find_withtag("plot-frame")[0])
                 self.assertGreater(rectangle[3] - rectangle[1], 80)
                 self.assertEqual(46, len(self.chart._series_selector["values"]))
-                self.assertIn("图例已折叠", self.chart._series_selector["values"][0])
+                self.assertIn("legend entries collapsed", self.chart._series_selector["values"][0])
                 self.assertTrue(self.chart.find_withtag("legend-overflow"))
                 legend_rows = set()
                 for index in range(45):

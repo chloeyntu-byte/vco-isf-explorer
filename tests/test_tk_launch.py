@@ -104,7 +104,7 @@ class TkLaunchTests(unittest.TestCase):
             instance._request_close()
         self.assertFalse(instance.root.destroy_called)
         self.assertFalse(instance.queue.closed)
-        self.assertIn("不会假称", warning.call_args.args[1])
+        self.assertIn("have not been reported as stopped", warning.call_args.args[1])
 
     def test_close_guard_closes_only_after_all_fake_jobs_are_terminal(self):
         instance = app.IsfApplication.__new__(app.IsfApplication)
@@ -146,7 +146,7 @@ class TkLaunchTests(unittest.TestCase):
             instance._request_close()
         self.assertFalse(instance.root.destroy_called)
         self.assertFalse(instance.queue.closed)
-        self.assertIn("尚未完成提交", warning.call_args.args[1])
+        self.assertIn("submission is incomplete", warning.call_args.args[1])
 
     def test_form_does_not_overwrite_advanced_only_adapter_mode(self):
         instance = app.IsfApplication.__new__(app.IsfApplication)
@@ -210,7 +210,7 @@ class TkLaunchTests(unittest.TestCase):
         instance.vars["vco_history"].set("/new.rdb")
         captured["success"]({"ok": True})
         instance._pair_inspected.assert_not_called()
-        self.assertIn("过期", instance.binding_status_var.get())
+        self.assertIn("Stale", instance.binding_status_var.get())
 
     def test_async_config_guard_is_fail_closed(self):
         instance = app.IsfApplication.__new__(app.IsfApplication)
@@ -240,7 +240,7 @@ class TkLaunchTests(unittest.TestCase):
         with mock.patch.object(app.messagebox, "showwarning") as warning:
             instance._start_run()
         self.assertEqual(1, len(submissions))
-        self.assertIn("请勿重复操作", warning.call_args.args[1])
+        self.assertIn("Do not submit again", warning.call_args.args[1])
 
     def test_live_run_is_blocked_while_another_job_is_active(self):
         instance = app.IsfApplication.__new__(app.IsfApplication)
@@ -269,7 +269,7 @@ class TkLaunchTests(unittest.TestCase):
             instance._start_run()
 
         self.assertFalse(instance._job_command_pending)
-        self.assertEqual(["检查活动任务"], labels)
+        self.assertEqual(["Check active job"], labels)
         self.assertIn("live-a", warning.call_args.args[1])
 
     def test_dry_run_is_also_blocked_while_another_job_is_active(self):
@@ -297,7 +297,7 @@ class TkLaunchTests(unittest.TestCase):
             instance._start_run()
 
         self.assertFalse(instance._job_command_pending)
-        self.assertEqual(["检查活动任务"], labels)
+        self.assertEqual(["Check active job"], labels)
         self.assertIn("live-a", warning.call_args.args[1])
 
     def test_resume_is_blocked_while_another_job_is_active(self):
@@ -322,7 +322,7 @@ class TkLaunchTests(unittest.TestCase):
             instance._resume_job()
 
         self.assertFalse(instance._job_command_pending)
-        self.assertEqual(["检查活动任务"], labels)
+        self.assertEqual(["Check active job"], labels)
         self.assertIn("live-a", warning.call_args.args[1])
 
     def test_stale_result_is_not_loaded_for_newly_selected_job(self):
@@ -417,7 +417,7 @@ class TkLaunchTests(unittest.TestCase):
 
         self.assertEqual("job-a", instance._result_load_pending_job_id)
         self.assertEqual(1, len(submissions))
-        self.assertEqual("读取结果", submissions[0][0][0])
+        self.assertEqual("Read results", submissions[0][0][0])
         instance._schedule_poll.assert_not_called()
 
     def test_empty_plan_result_explains_no_data_without_forcing_result_tab(self):
@@ -450,9 +450,9 @@ class TkLaunchTests(unittest.TestCase):
         instance.notebook.select.assert_not_called()
         instance.operating_point_box.configure.assert_called_once_with(values=[])
         self.assertFalse(hasattr(instance, "contribution_operating_box"))
-        self.assertIn("未启动仿真", instance.metrics_var.get())
-        self.assertIn("真实运行", instance.job_status_var.get())
-        instance.isf_chart.clear.assert_called_once_with("仅生成执行计划")
+        self.assertIn("No simulation started", instance.metrics_var.get())
+        self.assertIn("live run", instance.job_status_var.get())
+        instance.isf_chart.clear.assert_called_once_with("Execution plan only")
 
     def test_clear_result_clears_unified_coordinates_and_both_source_pies(self):
         instance = app.IsfApplication.__new__(app.IsfApplication)
@@ -482,7 +482,7 @@ class TkLaunchTests(unittest.TestCase):
             getattr(instance, name).configure.assert_called_once_with(values=())
         instance.simulated_noise_pie.clear.assert_called_once_with()
         instance.calculated_noise_pie.clear.assert_called_once_with()
-        self.assertEqual("尚无当前任务结果", instance.noise_pie_note_var.get())
+        self.assertEqual("No current job results", instance.noise_pie_note_var.get())
         self.assertFalse(hasattr(instance, "contribution_operating_box"))
         self.assertFalse(hasattr(instance, "contribution_offset_box"))
 

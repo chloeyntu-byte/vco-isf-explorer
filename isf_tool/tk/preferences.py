@@ -88,7 +88,7 @@ def write_preferences(path: Path, value: Mapping[str, Any], expected_revision: s
             raise ValueError("Maestro preference lock is not private")
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         if read_preferences(path).get("revision") != expected_revision:
-            raise ValueError("本项目偏好已被另一窗口更新，请重新打开以读取最新设置。")
+            raise ValueError("Project preferences were updated by another window, reopen to read the latest settings. ")
         result = {"schema": 1, "revision": uuid.uuid4().hex, **_payload(value)}
         encoded = (json.dumps(result, ensure_ascii=False, allow_nan=False, indent=2) + "\n").encode("utf-8")
         if len(encoded) > MAX_BYTES:

@@ -29,7 +29,7 @@ test("retired object controls are absent while state, pies, and scrolling remain
   const results = fs.readFileSync(path.join(root, "isf_tool/ui/results.html"), "utf8");
   const css = fs.readFileSync(path.join(root, "isf_tool/ui/styles.css"), "utf8");
   const script = fs.readFileSync(appPath, "utf8");
-  assert.doesNotMatch(html, /additional-noise-objects|add-noise-object|附加噪声对象/);
+  assert.doesNotMatch(html, /additional-noise-objects|add-noise-object|Additional noise objects/);
   assert.doesNotMatch(script, /function (initNoiseObjects|renderNoiseObjects|seedNoiseObject)\(/);
   assert.doesNotMatch(css, /\.noise-object-card/);
   assert.match(html, /workspace-state-save/);

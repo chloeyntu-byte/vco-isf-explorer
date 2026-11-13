@@ -19,7 +19,7 @@ class MappingFailureCausalityTests(unittest.TestCase):
         result = self.fixture.reports()
         result.update(ok=False, issues=[{
             'severity': 'error', 'code': 'ISF-E1202',
-            'detail': '所选相位输出的原始结果路径无法读取',
+            'detail': 'Cannot read the raw result path of the selected phase output',
             'field': 'testbenches.vco.mapping_overrides.transfer_phase_output',
         }], pair={'pdk': {'name': 'test_pdk', 'root': str(self.fixture.root)}}, bindings={})
         result['roles']['vco']['mapping_issues'].append({
@@ -34,9 +34,9 @@ class MappingFailureCausalityTests(unittest.TestCase):
         exchange = inspect_waveform_exchange(self.report())
         self.assertFalse(exchange['ok'])
         self.assertEqual(['electrical_mapping'], exchange['blocked_by'])
-        self.assertIn('受上游名称对应阻塞', exchange['summary'])
-        self.assertIn('相位输出', exchange['summary'])
-        self.assertIn('并非已确认缺少 PWL', exchange['summary'])
+        self.assertIn('Blocked by upstream name mapping', exchange['summary'])
+        self.assertIn('phase output', exchange['summary'])
+        self.assertIn('not confirmed missing PWL', exchange['summary'])
 
     def test_an_independent_missing_history_is_not_downgraded(self):
         report = self.report()
@@ -60,7 +60,7 @@ class MappingFailureCausalityTests(unittest.TestCase):
         self.assertEqual('testbenches.vco.mapping_overrides.transfer_phase_output', checks['maestro_vco']['field'])
         for key in ('maestro_pair_contract', 'engine_config', 'waveform_exchange'):
             self.assertEqual('warn', checks[key]['status'], checks[key])
-            self.assertIn('受上游', checks[key]['detail'])
+            self.assertIn('Blocked by upstream', checks[key]['detail'])
             self.assertNotIn('modification hint', checks[key]['detail'])
         self.assertEqual('fail', checks['execution_authority']['status'])
 

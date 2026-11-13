@@ -49,7 +49,7 @@ class TotalNoiseViewTests(unittest.TestCase):
         self.assertEqual(3, len(pair["noise_contribution_rows"]))
         self.assertEqual("M0", pair["noise_contribution_rows"][2]["device"])
         self.assertEqual("fn", pair["noise_contribution_rows"][2]["mechanism"])
-        self.assertFalse(any("单器件" in row["label"] for row in pair["noise_contribution_rows"]))
+        self.assertFalse(any("single device" in row["label"] for row in pair["noise_contribution_rows"]))
         self.assertIsNone(pair["noise_contribution_rows"][0]["calculated_dbc"])
 
     def test_thermal_filter_does_not_display_fn_as_thermal(self):
@@ -67,8 +67,8 @@ class TotalNoiseViewTests(unittest.TestCase):
             row["spectre_total_dBc_Hz"] = -123
         view = build_result_view(source)
         self.assertEqual("N/A", view["summary_rows"][0]["spectre_dbc"])
-        self.assertIn("旧结果", view["reference_note"])
-        self.assertIn("未采集", view["contribution_note"])
+        self.assertIn("legacy results", view["reference_note"])
+        self.assertIn("No collected", view["contribution_note"])
         self.assertIsNone(view["noise_contribution_rows"][0]["simulated_dbc"])
         self.assertIsInstance(view["noise_contribution_rows"][1]["simulated_dbc"], float)
 
@@ -76,13 +76,13 @@ class TotalNoiseViewTests(unittest.TestCase):
         row = result_fixture()["summary"][0]
         row["dynamic_error_dB"] = 0
         note = result_quality_text(row)
-        self.assertIn("运行完成不代表验证通过", note)
-        self.assertIn("数值质量：未通过", note)
+        self.assertIn("Completion does not imply validation", note)
+        self.assertIn("Numerical quality: Failed", note)
         self.assertIn("150°", note)
         self.assertIn("45°", note)
         self.assertIn("MODEL_RESULTS_DECLARED_INCORRECT", note)
-        self.assertIn("未提供", result_quality_text({}))
-        self.assertIn("曲线接近不能", result_quality_text({"numerical_quality_pass": True}))
+        self.assertIn("Not provided", result_quality_text({}))
+        self.assertIn("similar curves alone do not prove", result_quality_text({"numerical_quality_pass": True}))
 
     def test_invalid_scope_is_not_silently_mislabeled(self):
         with self.assertRaises(ValueError):

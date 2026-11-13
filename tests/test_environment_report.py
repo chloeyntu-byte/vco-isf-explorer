@@ -67,7 +67,7 @@ class ToolDiscoveryTests(unittest.TestCase):
             self.assertEqual("not_tested", report["native_execution"])
             self.assertTrue(report["license_environment_present"])
             self.assertNotIn("local-license-private.invalid", json.dumps(report))
-            self.assertIn("许可证", format_environment_report(report))
+            self.assertIn("License", format_environment_report(report))
             self.assertFalse(marker.exists())
             self.assertFalse(workspace.exists())
 

@@ -1,77 +1,77 @@
-# ISF 理论对应、本地算法核验与展示约定
+# ISF theory, local algorithm checks, and presentation conventions
 
-本文回答四个问题：本工具与 Hajimiri–Lee ISF 理论是什么关系；本地的噪声电流矫正改了什么；各种分解在物理上分别代表什么；界面应该怎样画。§4 使用可复算的合成示例说明公式恒等式，不宣称实测核验。thermal 数据合同与常数约定见 [THERMAL_NOISE.md](THERMAL_NOISE.md)，独立参考验算见 [THERMAL_REFERENCE.md](THERMAL_REFERENCE.md)。
+This document explains how the tool relates to Hajimiri–Lee ISF theory, what the local noise-current correction changes, what each decomposition means physically, and how the UI presents it. Section 4 uses reproducible synthetic examples to demonstrate algebraic identities; it does not claim measured circuit validation. See [THERMAL_NOISE.md](THERMAL_NOISE.md) for thermal data contracts and constants, and [THERMAL_REFERENCE.md](THERMAL_REFERENCE.md) for independent reference checks.
 
-版本 1.1.0。
+Version 1.1.0.
 
-## 1. 文献
+## 1. Reference
 
-A. Hajimiri, T. H. Lee, "A General Theory of Phase Noise in Electrical Oscillators", IEEE JSSC 33(2), 1998。[作者 PDF](https://chic.caltech.edu/wp-content/uploads/2013/05/general.pdf)（PDF 不入库）。
+A. Hajimiri, T. H. Lee, "A General Theory of Phase Noise in Electrical Oscillators", IEEE JSSC 33(2), 1998. [Author PDF](https://chic.caltech.edu/wp-content/uploads/2013/05/general.pdf) (not bundled).
 
-文献只用于说明理论关系。Fourier 常数项（c0 与 c0/2）、单边/双边谱、载波幅值等数值约定**不照搬**，本工具的常数以独立参考验算为准。
+The paper establishes the theoretical relationship. Numerical conventions for the Fourier constant (c0 versus c0/2), one-sided/two-sided spectra, and carrier amplitude are **not copied directly**. This tool's constants follow its independent reference checks.
 
-## 2. 文献推导要点
+## 2. Key derivations in the paper
 
-| 式 / 图 | 内容 |
+| Equation / figure | Content |
 |---|---|
-| (12) | ISF 的 Fourier 展开：Γ(ω0τ) = c0/2 + Σ c_n cos(nω0τ + θ_n)。 |
-| (13)–(17)，Fig. 8 | 注入 n·ω0 + Δω 附近的电流，只有 c_n 那一项的积分落在低频，在 S_φ 中产生 ±Δω 的一对边带：φ ≈ I_n c_n sin(Δωt) / (2 q_max Δω)。 |
-| (18) | 单音注入的边带功率 P_SBC = 10·log(I_n c_n / (4 q_max Δω))²。 |
-| Fig. 11/12(a) | 噪声按**所在频带**分组：n·f0 附近的噪声经 c_n 搬到 S_φ。DC 附近的 1/f 噪声经 c0 形成 1/f³；各 n 的白噪声形成 1/f²；总 PN 为各频带功率之和。 |
-| (19)–(21) | 白噪声：L = 10·log(Σc_n² · i_n²/Δf / (8 q_max² Δω²))，再由 Parseval Σc_n² = 2Γ_rms² 化为 Γ_rms² 的形式。 |
-| (22)–(24) | 1/f 区：L = 10·log(c0² · i_n²/Δf · ω_1/f/Δω / (8 q_max² Δω²))；1/f³ corner 为 ω_1/f · c0²/(2Γ_rms²)，通常低于器件 1/f corner。 |
-| (25)–(27)，Fig. 13/14 | 周期平稳噪声 i_n(t) = i_n0(t)·α(ω0t)，其中 i_n0 平稳、α 为确定的周期调制，由此得到 **Γ_eff = Γ·α**。1/f³ 由 Γ_eff 的直流项 c0_eff 决定。原文中 α 由器件噪声特性和工作点得到，属于准静态。 |
+| (12) | Fourier expansion of the ISF: Γ(ω0τ) = c0/2 + Σ c_n cos(nω0τ + θ_n). |
+| (13)–(17), Fig. 8 | For current injected near n·ω0 + Δω, only the c_n integral falls at low frequency, producing sidebands at ±Δω in S_φ: φ ≈ I_n c_n sin(Δωt) / (2 q_max Δω). |
+| (18) | Single-tone injection sideband power: P_SBC = 10·log(I_n c_n / (4 q_max Δω))². |
+| Fig. 11/12(a) | Noise is grouped by its **input band**: noise near n·f0 is translated into S_φ by c_n. Near-DC 1/f noise produces 1/f³ through c0; white noise in each band produces 1/f². Total PN is the sum of band powers. |
+| (19)–(21) | White noise: L = 10·log(Σc_n² · i_n²/Δf / (8 q_max² Δω²)). Parseval's identity, Σc_n² = 2Γ_rms², gives the Γ_rms² form. |
+| (22)–(24) | In the 1/f region: L = 10·log(c0² · i_n²/Δf · ω_1/f/Δω / (8 q_max² Δω²)). The 1/f³ corner is ω_1/f · c0²/(2Γ_rms²), usually below the device 1/f corner. |
+| (25)–(27), Fig. 13/14 | Cyclostationary noise is i_n(t) = i_n0(t)·α(ω0t), where i_n0 is stationary and α is deterministic periodic modulation. Thus **Γ_eff = Γ·α**. The DC term c0_eff of Γ_eff determines 1/f³ noise. The paper obtains α from device noise characteristics and operating points, using a quasi-static approach. |
 
-## 3. 本地算法与文献的对应
+## 3. Relationship to the local algorithm
 
-### 3.1 flicker：Qk 是 c0_eff 按配对阶展开的结果
+### 3.1 Flicker: Qk expands c0_eff by paired harmonic order
 
-`calculation.py::harmonic_contributions` 中：
+In `calculation.py::harmonic_contributions`:
 
 ```text
 Q_0 = H_0·M_0
 Q_k = H_k·M_k + H_-k·M_k*      (k ≥ 1)
-ΣQ  = Σ_k Q_k                  （复数相干相加）
+ΣQ  = Σ_k Q_k                  (coherent complex sum)
 ```
 
-H[k] 是 HBXF 测得的复数传递（带符号，含 I/Q），M 是噪声调制的 Fourier 系数。按 Parseval，ΣQ = ⟨h·m⟩，就是文献 c0_eff 的谐波展开。因此：
+H[k] is the measured complex HBXF transfer (signed, including I/Q); M contains the Fourier coefficients of noise modulation. Parseval gives ΣQ = ⟨h·m⟩, the harmonic expansion of the paper's c0_eff. Therefore:
 
-- **k 是 Γ_k 与 M_k 的配对阶，不是噪声所在的频带。** 每个 Q_k 都是把基带 flicker 搬上来，所以都呈 1/f³（纯 1/f 合成源各阶为 −30 dB/dec，见 §4）。
-- k=0 只是 Γ_dc·M_dc 一项。对称差分结构里 Γ_dc ≈ 0，这一项很小。主导项通常是 k=1：噪声调制在 f0 处的分量与 Γ 的基波配对。
-- 各 Q_k 相干相加，可能互相抵消，所以单阶等效 PN 可能高于总和。要看各阶对总和的贡献，用投影占比 c_k = Re(Q_k·ΣQ*)/|ΣQ|²，Σc_k = 1，负值表示该阶在相消。
+- **k pairs Γ_k with M_k; it is not an input noise band.** Every Q_k up-converts baseband flicker and therefore follows 1/f³ (−30 dB/dec per order for a pure synthetic 1/f source; see §4).
+- k=0 is only the Γ_dc·M_dc term. In a symmetric differential circuit, Γ_dc ≈ 0, so this term is small. The dominant term is often k=1: the f0 component of noise modulation pairs with the ISF fundamental.
+- Q_k terms add coherently and may cancel. A single-order equivalent PN can exceed the total. The projected fraction of each order is c_k = Re(Q_k·ΣQ*)/|ΣQ|², with Σc_k = 1. A negative fraction indicates cancellation.
 
-### 3.2 本地的噪声电流矫正 = 对文献 α 的实测修正
+### 3.2 Local noise-current correction: a measured correction to α
 
-| 本地量 | 文献对应 | 说明 |
+| Local quantity | Paper counterpart | Description |
 |---|---|---|
-| Mdc | 准静态 α | 按每个瞬时偏置点的直流噪声得到，即文献的做法 |
-| delay | — | 对 Mdc 拟合一个均匀延迟后的近似 |
-| Mdyn（A_k、δ_k） | 实测 α | 动态 replica 在周期偏置下实测的噪声调制，带幅度修正 A_k 和相位 δ_k |
-| H[k]（复数 I/Q） | Γ（实数） | 直接测量到 PM 输出的传递，不依赖冲激注入，也不假设 Γ 为实函数 |
+| Mdc | Quasi-static α | DC noise sampled at each instantaneous bias point, as in the paper |
+| delay | — | Approximation obtained by fitting a uniform delay to Mdc |
+| Mdyn (A_k, δ_k) | Measured α | Noise modulation measured by the dynamic replica under periodic bias, with magnitude correction A_k and phase δ_k |
+| H[k] (complex I/Q) | Γ (real) | Direct transfer measurement to the PM output, without impulse injection or an assumption that Γ is real |
 
-结论：本地算法完全在文献框架内（Γ_eff = Γ·α，相噪由 c0_eff 决定），**只是把 α 从准静态换成了实测的动态值**。不冲突，**不需要改算法**。
+The local algorithm remains within the paper's framework (Γ_eff = Γ·α, phase noise determined by c0_eff). **It replaces quasi-static α with measured dynamic modulation.** The two descriptions are consistent; **no algorithm change is required**.
 
-### 3.3 thermal：B_m 就是文献 Fig. 12(a) 的频带分解
+### 3.3 Thermal: B_m is the input-band decomposition of Fig. 12(a)
 
-`thermal.py::calculate_white_thermal`：B_m = Σ_k H_k·a_(k−m)，a 为 √PSD 调制的 Fourier 系数，m 为**平稳过程 i_n0 所在的输入频带**（m·f0 附近）。频带内各路径相干合成，不同频带之间不相关，按功率相加。这与文献的 c_n 一一对应。
+In `thermal.py::calculate_white_thermal`, B_m = Σ_k H_k·a_(k−m), where a contains the Fourier coefficients of √PSD modulation. Here m denotes the **input band of stationary process i_n0**, near m·f0. Paths within one band combine coherently; different bands are uncorrelated and add in power. This corresponds to the paper's c_n decomposition.
 
-频带必须按平稳部分 i_n0 定义。被 α 调制后，噪声电流在不同绝对频率上的分量是相关的，不能直接按功率相加。
+Bands must be defined for the stationary part i_n0. After modulation by α, current-noise components at different absolute frequencies are correlated and cannot simply be added in power.
 
-### 3.4 统一的频带视角（与 flicker/thermal 的人为划分无关）
+### 3.4 A unified input-band view
 
-按源噪声频带 n（n = |m|）：
+Group source noise by n = |m|, independently of the flicker/thermal classification:
 
-- n=0（DC 附近）：flicker 的全部（ΣQ 对应的功率）+ thermal |m|=0。低频偏处为 1/f³，往高频偏逐渐转为 1/f²。
-- n≥1（n·f0 附近）：thermal |m|=n。flicker 在 GHz 附近可以忽略。呈 1/f²。
-- 各频带互不相关，总和按功率相加，是严格上限，等于计算合计 predicted_total。
+- n=0 (near DC): all flicker power associated with ΣQ, plus thermal |m|=0. The low-offset slope is 1/f³, gradually approaching 1/f² at higher offsets.
+- n≥1 (near n·f0): thermal |m|=n. Flicker is negligible near GHz frequencies. These bands follow 1/f².
+- Different bands are uncorrelated. Their power sum bounds each included band and equals the calculated total, predicted_total, when all required components are available.
 
-## 4. 合成示例
+## 4. Synthetic example
 
-本节全部为合成示例，不是电路实测。运行 `python scripts/theory_example.py` 生成下表。
-脚本使用仓库示例的频偏网格和噪声拐角，以 Q=(2, −0.5, 0.25) 的实数向量演示相消，
-每阶幅度乘 (1 kHz/f)^1.5，故单阶功率斜率均为 −30 dB/dec。
-投影占比之和为 1。设动态调制为准静态的两倍，则 dc−dynamic = −6.020600 dB。
-频带 n=0 取 A/f³+B/f²，其余频带取 B_n/f²；各带功率相加精确等于合计。
+Everything in this section is synthetic, not measured circuit data. Run `python scripts/theory_example.py` to reproduce the tables.
+The script uses the example offset grid and noise corner. A real vector Q=(2, −0.5, 0.25) illustrates cancellation.
+Each order's amplitude scales by (1 kHz/f)^1.5, giving a power slope of −30 dB/dec.
+Projected fractions sum to 1. If dynamic modulation is twice the quasi-static value, dc−dynamic = −6.020600 dB.
+Band n=0 uses A/f³+B/f²; other bands use B_n/f². Their power sum exactly equals the total.
 
 | k | projection (%) | slope (dB/dec) |
 |---|---|---|
@@ -87,23 +87,22 @@ dc − dynamic = -6.020600 dB (dynamic modulation = 2 × DC).
 | 3000 | 7.518519e-08 | 5.555556e-10 | 3.703704e-10 | 7.611111e-08 |
 | 10000 | 2.100000e-09 | 5.000000e-11 | 3.333333e-11 | 2.183333e-09 |
 | 30000 | 8.518519e-11 | 5.555556e-12 | 3.703704e-12 | 9.444444e-11 |
-| 100000 | 3.000000e-12 | 5.000000e-13 | 3.333333e-13 | 3.833333e-12 |
+| 100000 | 3.000000e-12 | 5.000000e-13 | 3.333333e-13 | 3.833333e-13 |
 | 300000 | 1.851852e-13 | 5.555556e-14 | 3.703704e-14 | 2.777778e-13 |
 | 1e+06 | 1.200000e-14 | 5.000000e-15 | 3.333333e-15 | 2.033333e-14 |
 
 n=0 asymptotic slopes: −30 dB/dec below the corner, −20 dB/dec above it.
 These are analytic synthetic identities, not validation of any physical circuit.
 
+## 5. UI presentation conventions
 
-## 5. 界面展示约定
+1. The main phase-noise-versus-offset plot separates **input bands n** (§3.4), without flicker/thermal labels in the band legend. It also shows the power sum of included bands (bold), total HBnoise simulation PN (dashed), −30/−20 dB/dec reference lines, and fitted slopes in the legend.
+2. Flicker single-order k curves are not plotted versus offset in the main plot because their slopes are identical. **Harmonic decomposition** shows them at the selected offset: equivalent dBc/Hz and projected fractions c_k as bars, plus the ΣQk complex plane. Table rows represent k and link bidirectionally with the charts.
+3. The legacy `result_presentation.py::harmonic_noise_series` both branch combined flicker k and thermal |m|=k into one curve. This has no valid shared physical interpretation and is replaced by input-band decomposition in item 1. The bold calculated total itself was correct.
+4. **ISF process** shows operating point → m_DC/m_dyn → Γ-I/Q → Γ×m_dyn on a shared phase axis. **Overlay · Fig.14** plots Γ, published quasi-static α (m_DC), locally corrected dynamic α (m_dyn), and their Γ·α products, each normalized by its own peak. It reports both c0_eff values and their dB difference alongside the summary dc − dynamic value (§4's consistency check). For complex Γ, the carrier-in-phase I branch is the default and Q is shown separately.
+5. Flicker/thermal-specific analyses remain in **Noise contributions** and **Thermal bands** (bars by |m|). These are presentation changes only; calculations remain unchanged.
 
-1. **相噪 vs 频偏的主图按频带 n 分曲线**（§3.4），图例不出现 flicker/thermal 字样。另外画出：各频带功率总和（加粗）、HBnoise 仿真总 PN（虚线）、−30/−20 dB/dec 参考线、图例中的拟合斜率。
-2. **不在主图里按频偏画 flicker 单阶 k 曲线**：各阶斜率相同，没有信息量。flicker 各阶只在所选频偏处展示，放在"谐波分解"视图：单阶等效 dBc/Hz 和投影占比 c_k 的条形图，加 ΣQk 复平面，表格行为 k，与图双向联动。
-3. 旧版 `result_presentation.py::harmonic_noise_series` 的 both 分支把 flicker 的 k 与 thermal 的 |m|=k 合并成一条曲线，物理含义错误，改为第 1 条的频带分解。加粗的计算合计本身没有错。
-4. ISF 全过程视图：工作点 → m_DC/m_dyn → Γ-I/Q → Γ×m_dyn，共用相位轴。另提供一个仿文献 Fig. 14 的叠加开关：把 Γ、准静态 α（m_DC）、动态 α（m_dyn）以及对应的 Γ·α 各自按峰值归一化后画在同一坐标上，标出两个 c0_eff 及其 dB 差，并与 summary 的 dc − dynamic 对照（即 §4 的一致性校验）。Γ 为复数时，默认画载波同相的 I 路，Q 路单独显示。
-5. flicker/thermal 分开的分析放在其他视图（噪声贡献、thermal 按 |m| 的条形图），只做展示，不改计算。
+## 6. Scope
 
-## 6. 范围
-
-当前 thermal 范围：gm 对管 + 无源 LC；其他有源器件不建模。
-合成示例验证展示与公式恒等式，不能替代用户电路的数值验证。谐波截断、相位网格与噪声模型仍需独立检查。
+Current thermal scope: gm pair + passive LC. Other active devices are not modeled.
+Synthetic examples check presentation and algebraic identities; they cannot replace numerical validation of user circuits. Harmonic truncation, phase grid, and noise models still require independent checks.

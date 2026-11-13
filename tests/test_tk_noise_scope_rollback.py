@@ -42,14 +42,14 @@ class NoiseScopeRollbackTests(unittest.TestCase):
                        "noise_quantity": "PM_SSB", "pm_validation": {"fixture": "synthetic"},
                        "phase_noise_dBc_Hz": -100, "additional_noise_objects": [{"id": "bank", "status": "available"}]}}
             text = result_quality_text(summary)
-            self.assertNotIn("已匹配附加对象", text)
-            self.assertNotIn("Thermal：已验证", text)
-            self.assertIn("Thermal 未完成", text)
+            self.assertNotIn("Matched additional objects", text)
+            self.assertNotIn("Thermal: Validated", text)
+            self.assertIn("Thermal Incomplete", text)
 
     def test_native_source_has_no_object_editor(self):
         path = Path(__file__).parents[1] / "isf_tool" / "tk" / "app.py"
         source = path.read_text(encoding="utf-8")
-        for marker in ("_build_noise_objects_tab", "_add_noise_object", "noise_object_tree", "附加噪声对象（可选）"):
+        for marker in ("_build_noise_objects_tab", "_add_noise_object", "noise_object_tree", "Additional noise objects (optional)"):
             self.assertNotIn(marker, source)
 
 

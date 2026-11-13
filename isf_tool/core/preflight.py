@@ -1705,7 +1705,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
         _check(
             "numpy",
             "environment",
-            "NumPy 自动提取能力",
+            "NumPy automatic extraction capability",
             (
                 "pass"
                 if numpy_available
@@ -1737,7 +1737,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
         _check(
             "workspace",
             "environment",
-            "私有 workspace",
+            "private workspace",
             "pass" if workspace_ok else "fail",
             environment["workspace"]["path"] or "in-memory service",
             None if workspace_ok else "ISF-E1003",
@@ -1747,14 +1747,14 @@ def preflight(config=None, workspace=None, maestro_context=None):
     for check_id, label, configured, fallback, field in (
         (
             "run_target",
-            "运行目录可创建",
+            "Run directory can be created",
             resolved.get("run_root"),
             automatic_root,
             "run_root",
         ),
         (
             "bundle_target",
-            "结果 Bundle 目录可创建",
+            "Result Bundle directory can be created",
             resolved.get("bundle_path"),
             automatic_root,
             "bundle_path",
@@ -1778,7 +1778,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
         _check(
             "error_catalog",
             "environment",
-            "本地错误码目录",
+            "Local error catalog",
             "pass" if os.path.isfile(catalog_path()) else "fail",
             catalog_path(),
             None if os.path.isfile(catalog_path()) else "ISF-E1003",
@@ -1843,7 +1843,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
             _check(
                 "maestro_change_guard",
                 "reliability",
-                "Maestro 变量/输出变更保护",
+                "Maestro Variable/output change protection",
                 "pass" if binding_guard_ok else "fail",
                 (
                     changed[0].get("detail")
@@ -1876,7 +1876,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
         pair_root_detail = next(
             (item.get("detail") or item.get("message") for item in pair_errors
              if item.get("detail") or item.get("message")),
-            "请先修正上方 TB 选择或名称对应",
+            "First correct the above TB selection or name mapping",
         )
         pair_blocked = not pair_ok and bool(pair_role_failures)
         pair_status = (
@@ -1887,10 +1887,10 @@ def preflight(config=None, workspace=None, maestro_context=None):
             _check(
                 "maestro_pair_contract",
                 "input",
-                "VCO 与自动噪声副本输入" if generated_replica else "双 Maestro 物理输入合同",
+                "VCO and generated noise-replica inputs" if generated_replica else "dual Maestro Physical input contract",
                 pair_status,
                 (
-                    ("受上游绑定阻塞：" if pair_blocked else "") + pair_root_detail
+                    ("Blocked by upstream binding: " if pair_blocked else "") + pair_root_detail
                     if not pair_ok else
                     "%s · %s"
                     % (
@@ -1898,9 +1898,9 @@ def preflight(config=None, workspace=None, maestro_context=None):
                             pair_report.get("pair", {}).get("pdk") or {}
                         ).get("name", "PDK unresolved"),
                         (
-                            "%d 项非阻断提示（展开查看）" % len(pair_warnings)
+                            "%d non-blocking notes (expand to inspect)" % len(pair_warnings)
                             if pair_warnings
-                            else "对应关系齐全"
+                            else "Mappings complete"
                         ),
                     )
                     if pair_report
@@ -1936,7 +1936,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
                 _check(
                     "maestro_%s_execution_history" % pair_role,
                     "execution",
-                    "%s 生成网表/PSF history" % label,
+                    "%s Generated netlist/PSF history" % label,
                     "pass" if history_ok else ("fail" if live else "warn"),
                     (
                         "%s · %d complete run(s)"
@@ -1958,16 +1958,16 @@ def preflight(config=None, workspace=None, maestro_context=None):
 
         if generated_replica and config_path:
             checks.append(_check(
-                "generated_replica_expert_template", "input", "自动副本配置", "fail",
-                "自动副本从 VCO 工况生成。请清空专家配置路径，或切换到已有 Flicker Maestro。",
+                "generated_replica_expert_template", "input", "Generated replica configuration", "fail",
+                "Generated replica uses VCO generated from operating point. Clear the expert configuration path, or switch to existing Flicker Maestro. ",
                 "ISF-E1101", field="config_path",
             ))
         if generated_replica and resolved["run_kind"] == "signoff" and not (
             (pair_report.get("roles", {}).get("vco") or {}).get("mapping", {}).get("peer_instance")
         ):
             checks.append(_check(
-                "generated_replica_signoff_peer", "input", "正式双器件参考", "fail",
-                "当前 VCO 未确认第二个实测 flicker 器件。请选择配对器件，或使用工程分析。",
+                "generated_replica_signoff_peer", "input", "Signoff two-device reference", "fail",
+                "Current VCO No confirmed second measured flicker Device. Select a peer device, or use engineering analysis. ",
                 "ISF-E1202", field="testbenches.vco.mapping_overrides.peer_instance",
             ))
 
@@ -2011,7 +2011,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
         _check(
             "project_root",
             "input",
-            ("VCO 历史边界" if generated_replica else "双 TB 搜索边界") if pair_mode else "项目/结果根目录",
+            ("VCO History boundary" if generated_replica else "dual TB Search boundary") if pair_mode else "Project/Result root",
             "pass" if root_ok else "fail",
             (
                 ("explicit VCO Maestro" if generated_replica else "explicit Maestro pair")
@@ -2064,7 +2064,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
             _check(
                 "input_resolution",
                 "input",
-                "输入链路自动识别",
+                "Automatic input workflow detection",
                 "fail",
                 "multiple equally ranked VCO/replica candidates",
                 "ISF-E1103",
@@ -2077,7 +2077,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
             _check(
                 "input_resolution",
                 "input",
-                "输入链路自动识别",
+                "Automatic input workflow detection",
                 "fail",
                 "no complete input pair or manual bundle",
                 "ISF-E1102",
@@ -2111,7 +2111,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
             _check(
                 "input_resolution",
                 "input",
-                "输入链路自动识别",
+                "Automatic input workflow detection",
                 status,
                 "%s · %s" % (chosen["kind"], chosen.get("path")),
                 code,
@@ -2149,7 +2149,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
         _check(
             "spectre",
             "execution",
-            "Spectre 可执行文件",
+            "Spectre Executable",
             "pass" if spectre_ok else (
                 "warn" if spectre_deferred else ("fail" if live else "warn")
             ),
@@ -2190,17 +2190,17 @@ def preflight(config=None, workspace=None, maestro_context=None):
         _check(
             "engine_config",
             "execution",
-            "仿真执行设置",
+            "Simulation execution settings",
             "pass" if config_ok else ("warn" if engine_blocked or not live else "fail"),
             (
-                (config_path or "已从当前双 TB 自动生成；详细值见高级设置")
+                (config_path or "generated from the current pair of TB Generated; see Advanced settings for details")
                 if config_ok
                 else (
-                    "受上游绑定阻塞：" + pair_root_detail
+                    "Blocked by upstream binding: " + pair_root_detail
                     if engine_blocked else
                     "%s · %s" % (config_path, engine_load_error.message)
                     if engine_load_error is not None
-                    else (config_path or ("；".join(item["message"] for item in portable_report.get("errors", [])[:4]) if portable_report else "请先识别两个 TB 的信号对应关系"))
+                    else (config_path or ("; ".join(item["message"] for item in portable_report.get("errors", [])[:4]) if portable_report else "First detect both TB signal mappings"))
                 )
             ),
             None if config_ok else ("ISF-W1103" if engine_blocked or not live else "ISF-E1101"),
@@ -2213,7 +2213,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
         pair_report["waveform_exchange"] = exchange
         resolved["detection"]["waveform_exchange"] = exchange
         exchange_blocked = bool(exchange.get("blocked_by") and not pair_report.get("ok"))
-        checks.append(_check("waveform_exchange", "execution", "VCO → 噪声 TB 波形交换脚本",
+        checks.append(_check("waveform_exchange", "execution", "VCO → Noise TB Waveform exchange script",
             "pass" if exchange["ok"] else ("warn" if exchange_blocked or not live else "fail"), exchange["summary"],
             None if exchange["ok"] else ("ISF-W1103" if exchange_blocked or not live else "ISF-E1101"),
             field="testbenches", detected=exchange))
@@ -2221,7 +2221,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
     physical_required = live and adapter_mode == "bundled"
     physical_blocked_on_config = physical_required and engine_config is None
     physical_detail = (
-        ("请在高级设置中补齐信号对应和未能自动确定的执行设置"
+        ("Complete signal mappings and unresolved execution settings in Advanced settings"
          if portable_report is not None else
          "select a Cadence engine JSON; its physical_profile or physical_profile_path defines the device/node contract")
         if engine_config is None
@@ -2244,7 +2244,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
         _check(
             "physical_profile",
             "profile",
-            "器件、节点与噪声对应校验",
+            "Device, Node and noise mapping validation",
             (
                 "pass"
                 if physical_ok
@@ -2275,7 +2275,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
         _check(
             "formal_signoff_scope",
             "reliability",
-            "正式 Signoff 设计点覆盖",
+            "Formal Signoff Design-point coverage",
             "pass" if formal_scope_ok else "fail",
             (
                 "%d configured design point(s) · formal quality gate" % point_count
@@ -2307,7 +2307,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
         _check(
             "export_contract",
             "reliability",
-            "结果导出模式与运行合同一致",
+            "Result export mode matches the run contract",
             "pass" if export_contract_ok else "fail",
             (
                 "formal signoff exporter enabled"
@@ -2324,7 +2324,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
         _check(
             "execution_authority",
             "execution",
-            "实际执行授权",
+            "Execution authorization",
             "pass" if (not live or allow_execute) else "fail",
             "dry-run" if not live else ("enabled" if allow_execute else "disabled"),
             None if (not live or allow_execute) else "ISF-E1101",
@@ -2367,7 +2367,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
         _check(
             "adapter",
             "execution",
-            "运行 Adapter",
+            "Run Adapter",
             "pass" if adapter_ok else ("fail" if live else "warn"),
             "%s · %s" % (adapter_mode, adapter_detail),
             None if adapter_ok else "ISF-E4001",
@@ -2379,7 +2379,7 @@ def preflight(config=None, workspace=None, maestro_context=None):
         _check(
             "resume",
             "reliability",
-            "断点恢复状态",
+            "Resume state",
             "pass" if resume_enabled else "warn",
             "atomic .isf_run_state.json" if resume_enabled else "disabled",
             None if resume_enabled else "ISF-E5001",

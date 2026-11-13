@@ -245,7 +245,7 @@ class StateApiFollowupTests(unittest.TestCase):
         self.token = self.server.app.api_token
         self.payload = dict(name="independent-api-fixture", config=dict(
             execution=dict(allow_execute=True),
-            testbenches=dict(vco=dict(binding_fingerprint="stale", history_fingerprint="stale",
+            testbenches=dict(vco=dict(binding_fingerprint="Stale", history_fingerprint="Stale",
                                      mapping_overrides=dict(output_p="/arbitrary")))),
             view=dict(noise_kind="both", job_id="no-auto-run", cumulative_k=2))
 

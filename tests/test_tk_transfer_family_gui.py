@@ -29,7 +29,7 @@ class NativeTransferFamilyTests(unittest.TestCase):
             self.assertEqual({}, app._mapping_overrides["vco"])
             box.set("harm_mag_0")
             self.assertEqual("harm_mag_0", app._collect_fields()["vco_mapping_overrides"]["transfer_output"])
-            self.assertIn("精确输出：harm_mag_0", app.mapping_detail_var.get())
+            self.assertIn("Exact output: harm_mag_0", app.mapping_detail_var.get())
             app._render_mapping_report(report)
             self.assertIn("harm_mag_0", app._mapping_inputs["vco:transfer_output"].cget("values"))
             self.assertNotIn("harm_mag_m1", app._mapping_inputs["vco:transfer_output"].cget("values"))
@@ -40,7 +40,7 @@ class NativeTransferFamilyTests(unittest.TestCase):
             app._reset_mapping_input("vco:transfer_output")
             self.assertEqual({}, app._mapping_overrides["vco"])
             self.assertEqual("harm_mag", app._mapping_inputs["vco:transfer_output"].get())
-            self.assertIn("读取代表项：harm_mag_0", app.mapping_detail_var.get())
+            self.assertIn("Read anchor: harm_mag_0", app.mapping_detail_var.get())
         finally:
             if app is not None:
                 app.queue.close()

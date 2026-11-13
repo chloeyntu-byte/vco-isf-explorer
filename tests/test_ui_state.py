@@ -31,6 +31,24 @@ class UiStateTests(unittest.TestCase):
         self.assertEqual(loaded["view"], self.payload["view"])
         self.assertEqual(ui_state.list_states(self.workspace)["states"][0]["id"], saved["id"])
 
+    def test_old_harmonic_labels_load_as_stable_keys_without_mutating_input(self):
+        cases = dict(ui_state.LEGACY_HARMONIC_CURVES)
+        cases["累计至 k=2 · 相干总和"] = "cumulative_2"
+        cases.update({"coherent_total": "coherent_total", "cumulative_3": "cumulative_3",
+                      "extension_curve": "extension_curve"})
+        for old, expected in cases.items():
+            with self.subTest(label=old):
+                saved = ui_state.save_state(self.workspace, self.payload)
+                legacy = copy.deepcopy(saved["state"])
+                legacy["view"]["harmonic_curve"] = old
+                Path(saved["path"]).write_text(json.dumps(legacy), encoding="utf-8")
+                before = copy.deepcopy(legacy)
+                loaded = ui_state.load_state(self.workspace, saved["id"])["state"]
+                self.assertEqual(expected, loaded["view"]["harmonic_curve"])
+                self.assertEqual(before, legacy)
+                self.assertEqual(self.payload["view"]["point"], loaded["view"]["point"])
+                self.assertFalse(loaded["config"]["execution"]["allow_execute"])
+
     def test_same_name_never_overwrites_previous_state(self):
         first = ui_state.save_state(self.workspace, self.payload)
         original = Path(first["path"]).read_bytes()

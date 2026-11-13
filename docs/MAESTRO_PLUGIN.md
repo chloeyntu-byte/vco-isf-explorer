@@ -10,10 +10,10 @@
    当前 Maestro 已明确选中的 history 会带入；未选中时不按“最新”猜测。
 3. 默认选用自动夹具。选择一颗 core MOS 和频偏即可。已有参考 TB 或需要 thermal 时，
    切换到手动 TB 并选择它的 History。多个 Test 或信号不能唯一确定时，按界面提示选择。
-4. 点击 **开始分析** 完成预检并启动本次计算。打开菜单、刷新或选择 History 只读取来源。
+4. 点击 **Start analysis** 完成预检并启动本次计算。打开菜单、刷新或选择 History 只读取来源。
 
 VCO 路径仍可手动更换；更换后清除旧 history、映射和绑定。
-**恢复启动的 Maestro** 回到本程序实例最初的来源。**刷新 History** 重新查询同一来源，
+**Restore launch source** 回到本程序实例最初的来源。**Refresh History** 重新查询同一来源，
 保留当前选择；原历史删除、损坏或未完成时，不悄悄切换到其他记录。
 
 ## 安装与环境
@@ -36,7 +36,7 @@ Python 进程不继承 Cadence 的动态库或 Python/Tk 路径设置。
 当前 Maestro 的 Ocean 路径、工作目录、PATH 和许可证环境由上下文保留，
 只有原生 Ocean 刷新子进程使用这些设置，不改系统环境或 EDA 安装。
 
-桌面中的“环境检测”和 `vco-isf --diagnose` 显示 Python、Tcl/Tk、NumPy、工作区权限和 Cadence 工具路径。源码版可用 `python3.11 run.py --diagnose --json` 导出同一份检查。工具按手动覆盖、当前 Maestro、Cadence 环境脚本、PATH 和安装目录线索查找。只读诊断仅读取脚本中的字面 PATH 线索，工具启动与许可证签出需要在正常执行流程中验证。
+桌面中的“Environment check”和 `vco-isf --diagnose` 显示 Python、Tcl/Tk、NumPy、工作区权限和 Cadence 工具路径。源码版可用 `python3.11 run.py --diagnose --json` 导出同一份检查。工具按手动覆盖、当前 Maestro、Cadence 环境脚本、PATH 和安装目录线索查找。只读诊断仅读取脚本中的字面 PATH 线索，工具启动与许可证签出需要在正常执行流程中验证。
 
 ## 绑定与结果读取合同
 

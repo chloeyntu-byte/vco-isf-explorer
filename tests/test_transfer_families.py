@@ -121,7 +121,7 @@ class TransferFamilyMappingTests(unittest.TestCase):
         result, _ = self.role(self.family('no_zero', bands=(-2, 3)))
         details = self.fields(result)['transfer_output']['selected_details']
         self.assertEqual('no_zero_m2', details['representative_output'])
-        self.assertTrue(any('没有边带 0' in note for note in details['notes']))
+        self.assertTrue(any('no sidebands 0' in note for note in details['notes']))
         self.assertFalse(details['errors'])
 
     def test_suffix_mismatch_and_duplicate_sidebands_are_descriptive(self):
@@ -129,15 +129,15 @@ class TransferFamilyMappingTests(unittest.TestCase):
         details = self.fields(result)['transfer_output']['selected_details']
         self.assertEqual('manual', self.fields(result)['transfer_output']['status'])
         self.assertFalse(details['errors'])
-        self.assertTrue(any('名称后缀' in note for note in details['notes']))
-        self.assertTrue(any('对应多个名称' in note for note in details['notes']))
+        self.assertTrue(any('name suffix' in note for note in details['notes']))
+        self.assertTrue(any('maps to multiple names' in note for note in details['notes']))
 
     def test_mixed_family_sources_are_disclosed_not_a_physical_gate(self):
         result, _ = self.role([output('mixed_0'), output('mixed_1', 1, source='I_OTHER')], {'transfer_output': 'mixed'})
         contract = result['mapping']['transfer_contract']
         self.assertEqual('I_SOURCE', contract['source'])
         self.assertFalse(contract['family']['errors'])
-        self.assertTrue(any('注入电流源有多个' in note for note in contract['family']['notes']))
+        self.assertTrue(any('multiple values for injected current source' in note for note in contract['family']['notes']))
 
     def test_different_phase_source_is_reference_not_complex_recombination(self):
         result, _ = self.role([output('amplitude'), output('user_phase', 2, source='I_OTHER', phase=True)],
@@ -174,7 +174,7 @@ class TransferFamilyMappingTests(unittest.TestCase):
         for key in ('noise_output_at_offset', 'current_trace'):
             issue = next(item for item in result['mapping_issues'] if item['key'] == key)
             self.assertEqual('warning', issue['severity'])
-            self.assertIn('不影响原始数据计算', issue['message'])
+            self.assertIn('does not affect the raw-data calculation', issue['message'])
             self.assertEqual('invalid', fields[key]['status'])
             self.assertTrue(fields[key]['active'])
         self.assertTrue(self.fixture.build(report)['ok'])
@@ -191,7 +191,7 @@ class TransferFamilyMappingTests(unittest.TestCase):
         field = self.fields(result)['vgs_variable']
         issue = next(item for item in result['mapping_issues'] if item['key'] == 'vgs_variable')
         self.assertEqual('info', issue['severity'])
-        self.assertIn('不需要重复迁移', issue['message'])
+        self.assertIn('no repeated migration needed', issue['message'])
         self.assertEqual('test', field['scope'])
         self.assertEqual('0.7', field['selected_details']['global_expression'])
         self.assertEqual('0.6', field['selected_details']['expression'])
@@ -202,4 +202,4 @@ class TransferFamilyMappingTests(unittest.TestCase):
         result, _ = self.role(role='flicker', mutate=mutate)
         issue = next(item for item in result['mapping_issues'] if item['key'] == 'vgs_variable')
         self.assertEqual('warning', issue['severity'])
-        self.assertIn('移到 Maestro global', issue['message'])
+        self.assertIn('moving to Maestro global', issue['message'])

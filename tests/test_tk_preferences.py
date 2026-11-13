@@ -29,7 +29,7 @@ class MaestroPreferencesTests(unittest.TestCase):
             self.assertEqual({"offset_mode": "single", "offset_value": 17}, loaded["fields"])
             self.assertEqual("dark", loaded["theme"])
             self.assertEqual(0o600, path.stat().st_mode & 0o777)
-            with self.assertRaisesRegex(ValueError, "另一窗口"):
+            with self.assertRaisesRegex(ValueError, "another window"):
                 write_preferences(path, {"theme": "light"}, None)
             self.assertEqual(loaded, read_preferences(path))
             self.assertEqual("light", write_preferences(path, {"theme": "light"}, result["revision"])["theme"])

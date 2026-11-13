@@ -24,10 +24,10 @@ _MISSING = object()
 _UNIT_SCALE = {"Hz": 1.0, "kHz": 1_000.0, "MHz": 1_000_000.0}
 
 CATALOG_KIND_LABELS = {
-    "net": "网名 · Net", "output": "输出 · Output", "variable": "变量 · Variable",
-    "parameter": "网表参数", "device": "器件", "source": "电源 / 探针",
-    "analysis": "分析", "save": "保存信号", "trace": "波形引用",
-    "model": "模型", "include": "引用文件", "subcircuit": "子电路",
+    "net": "Net", "output": "Output", "variable": "Variable",
+    "parameter": "Netlist parameter", "device": "Device", "source": "Supply / Probe",
+    "analysis": "Analysis", "save": "Saved signals", "trace": "Waveform reference",
+    "model": "Model", "include": "Included file", "subcircuit": "Subcircuit",
 }
 
 
@@ -42,7 +42,7 @@ def catalog_review_rows(report: Mapping[str, Any] | None, query: str = "", kind:
                 continue
             row = copy.deepcopy(dict(item))
             row.update(iid=f"{role}:{index}", role=role, role_label="VCO" if role == "vco" else "Flicker")
-            row["kind_label"] = CATALOG_KIND_LABELS.get(str(row.get("kind")), str(row.get("kind") or "其他"))
+            row["kind_label"] = CATALOG_KIND_LABELS.get(str(row.get("kind")), str(row.get("kind") or "Other"))
             details = row.get("details") if isinstance(row.get("details"), Mapping) else {}
             if not row.get("expression"):
                 row["expression"] = details.get("value", details.get("default", ""))
@@ -55,7 +55,7 @@ def catalog_review_rows(report: Mapping[str, Any] | None, query: str = "", kind:
 def catalog_summary(report: Mapping[str, Any] | None) -> str:
     rows = catalog_review_rows(report)
     counts = {kind: sum(row.get("kind") == kind for row in rows) for kind in ("net", "output", "variable")}
-    return f"网名 {counts['net']} 项 · Outputs {counts['output']} 项 · Variables {counts['variable']} 项 · 全部 {len(rows)} 项"
+    return f"Net name {counts['net']} items · Outputs {counts['output']} items · Variables {counts['variable']} items · All {len(rows)} items"
 
 
 def portable_issue_rows(setup: Mapping[str, Any] | None, pair_report: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -85,11 +85,11 @@ def portable_issue_rows(setup: Mapping[str, Any] | None, pair_report: Mapping[st
             if key.startswith(prefix):
                 mapping_iid = f"{role}:{key[len(prefix):]}"
         target = mappings.get(mapping_iid, {})
-        field_label = str(fields.get(key, {}).get("label") or target.get("label") or "仿真执行设置")
+        field_label = str(fields.get(key, {}).get("label") or target.get("label") or "Simulation execution settings")
         destination_label = str(target.get("label") or field_label)
-        message = str(error.get("message") or "请检查该项的识别结果。")
+        message = str(error.get("message") or "Check the detected value for this item. ")
         if not message.startswith(field_label):
-            message = field_label + "：" + message
+            message = field_label + ": " + message
         rows.append({"field": key, "label": field_label, "message": message,
                      "mapping_iid": mapping_iid if mapping_iid in mappings else "",
                      "target_label": destination_label, "tab": "mapping" if mapping_iid in mappings else "physical"})
@@ -725,55 +725,55 @@ def mapping_selection_details(row: Mapping[str, Any], selected: Any = None) -> l
     if not isinstance(info, Mapping) and current == validated:
         info = row.get("selected_details")
     if not isinstance(info, Mapping) or info.get("kind") not in {"transfer_family", "transfer_output"}:
-        return ["新输入尚无可核对的传递来源；请应用并验证。"] if current and isinstance(details, Mapping) and current != validated else []
+        return ["New input has no verifiable transfer source yet; Apply and validate. "] if current and isinstance(details, Mapping) and current != validated else []
     lines = []
     if current != validated:
-        lines.append("候选表达式说明；本次手动选择尚待应用验证。")
+        lines.append("Candidate expression details; this manual selection awaits application and validation. ")
     selected_details = row.get("selected_details") if isinstance(row.get("selected_details"), Mapping) else {}
     consumption = info.get("role_consumption") or selected_details.get("role_consumption")
     if consumption:
-        lines.append("实际使用：" + str(consumption))
+        lines.append("Actually used: " + str(consumption))
     members = [item for item in info.get("members", []) if isinstance(item, Mapping)]
     if info.get("kind") == "transfer_family":
-        lines.append("系列 %s：%d 个已发现成员；短名不是新增的 Maestro 输出。" % (info.get("family_name") or current, len(members)))
+        lines.append("Family %s: %d discovered members; short names do not create new Maestro Output. " % (info.get("family_name") or current, len(members)))
     else:
-        lines.append("精确输出：%s；保留该单项选择，不自动改成系列。" % current)
-    lines.append("按所选输出定位原始来源与成员；电路对应关系由用户确认。")
-    lines.append("原始电流源：%s；分析：%s；读取代表项：%s" % (info.get("source") or "未确认", info.get("analysis") or "未确认", info.get("anchor_output") or "未确认"))
+        lines.append("Exact output: %s; retain this single selection, not automatically converted to a family. " % current)
+    lines.append("the selected output identifies the raw source and family members; the user confirms the circuit mapping. ")
+    lines.append("Original current source: %s; Analysis: %s; Read anchor: %s" % (info.get("source") or "Unconfirmed", info.get("analysis") or "Unconfirmed", info.get("anchor_output") or "Unconfirmed"))
     sidebands = info.get("sidebands", [])
     if sidebands:
-        lines.append("表达式边带：%s；算法使用边带 = k − 1，不能按名称后缀直接当作 k。" % ", ".join(str(value) for value in sidebands))
+        lines.append("Expression sidebands: %s; the algorithm uses sideband = k − 1, do not interpret the name suffix as k. " % ", ".join(str(value) for value in sidebands))
     for member in members:
-        lines.append("%s → 边带 %s；源 %s；分析 %s\n  %s" % (member.get("name") or "未命名", member.get("sideband", "未确认"), member.get("source") or "未确认", member.get("analysis") or "未确认", member.get("expression") or "表达式未提供"))
-    lines.extend("读取提示：" + str(error) for error in info.get("errors", []) if error)
-    lines.extend("系列提示（不阻止运行）：" + str(note) for note in info.get("notes", []) if note)
+        lines.append("%s → Sideband %s; Source %s; Analysis %s\n  %s" % (member.get("name") or "Unnamed", member.get("sideband", "Unconfirmed"), member.get("source") or "Unconfirmed", member.get("analysis") or "Unconfirmed", member.get("expression") or "Expression not provided"))
+    lines.extend("Read notes: " + str(error) for error in info.get("errors", []) if error)
+    lines.extend("Family notes (does not block execution): " + str(note) for note in info.get("notes", []) if note)
     if info.get("missing_sidebands"):
-        lines.append("缺少边带：" + ", ".join(str(value) for value in info["missing_sidebands"]))
+        lines.append("Missing sidebands: " + ", ".join(str(value) for value in info["missing_sidebands"]))
     return lines
 
 
 def mapping_source_text(row: Mapping[str, Any]) -> str:
     """Explain provenance independently from a friendly signal name."""
-    presence = {"named_output": "Maestro 命名输出", "script_derived": "脚本按器件端口求差",
-                "unresolved": "Maestro 缺失 / 尚未对应"}.get(str(row.get("maestro_presence") or ""), "")
+    presence = {"named_output": "Maestro Named output", "script_derived": "Script-derived terminal difference",
+                "unresolved": "Maestro Missing / Not mapped yet"}.get(str(row.get("maestro_presence") or ""), "")
     if row.get("maestro_presence") == "script_derived" and row.get("candidate_kind") == "variable":
-        presence = "脚本生成波形文件变量（Maestro 未声明）"
+        presence = "Script-generated waveform file variable (Maestro Undeclared)"
     details = row.get("selected_details") if isinstance(row.get("selected_details"), Mapping) else {}
     scope = str(details.get("scope") or row.get("scope") or row.get("variable_scope") or "")
-    scope_text = {"global": "全局变量", "test": "Test 局部变量（需改为全局）"}.get(scope, scope)
+    scope_text = {"global": "Global variable", "test": "Test local variable (must be global)"}.get(scope, scope)
     if scope == "test" and (details.get("shadows_global") or "global_expression" in details):
-        scope_text = "全局已存在 / Test 保留同名值"
+        scope_text = "Global already exists / Test retain the same-name value"
     derivation = row.get("effective_derivation")
     if isinstance(derivation, Mapping):
         derivation = derivation.get("expression") or derivation.get("description") or ""
-    return "；".join(str(item) for item in (presence, scope_text, derivation, row.get("source")) if item)
+    return "; ".join(str(item) for item in (presence, scope_text, derivation, row.get("source")) if item)
 
 
 def waveform_exchange_view(report: Mapping[str, Any] | None) -> dict[str, Any]:
     """Present only backend-proven exchange evidence; absence is not success."""
     exchange = _nested(report or {}, "waveform_exchange", default={})
     if not isinstance(exchange, Mapping) or not exchange:
-        return {"summary": "波形传递尚未检查；识别并绑定后显示 VCO → 噪声 TB 的路径与来源。", "rows": []}
+        return {"summary": "Waveform transfer not checked; Shown after detection and binding VCO → Noise TB paths and sources. ", "rows": []}
     channels = exchange.get("channels", exchange.get("rows", []))
     if isinstance(channels, Mapping):
         channels = [{"semantic": key, **dict(value)} for key, value in channels.items() if isinstance(value, Mapping)]
@@ -781,7 +781,7 @@ def waveform_exchange_view(report: Mapping[str, Any] | None) -> dict[str, Any]:
     def readable(value: Any) -> str:
         if isinstance(value, Mapping):
             return str(value.get("expression") or value.get("name") or value.get("variable") or value.get("description") or json.dumps(dict(value), ensure_ascii=False))
-        return str(value or "未提供")
+        return str(value or "Not provided")
     for item in channels if isinstance(channels, list) else []:
         if isinstance(item, Mapping):
             rows.append({"semantic": readable(item.get("semantic") or item.get("quantity")),
@@ -790,7 +790,7 @@ def waveform_exchange_view(report: Mapping[str, Any] | None) -> dict[str, Any]:
                          "path_policy": readable(item.get("relative_file") or item.get("path_policy") or exchange.get("path_policy")),
                          "status": readable(item.get("status")) + (" · " + str(item["detail"]) if item.get("detail") else "")})
     return {"summary": str(exchange.get("summary") or exchange.get("message") or
-                           ("波形传递静态检查通过；实际运行时仍需验证生成文件和仿真结果。" if exchange.get("ok") else "波形传递检查未通过，请处理以下缺项。")),
+                           ("Static waveform transfer check passed; generated files and simulation results still require validation during execution. " if exchange.get("ok") else "Waveform transfer check failed, Resolve the missing items below. ")),
             "rows": rows, "path_policy": str(exchange.get("path_policy") or ""),
             "checks": [str(item.get("detail") or "") for item in exchange.get("checks", []) if isinstance(item, Mapping) and item.get("status") not in {"pass", "ok"}]}
 
@@ -801,7 +801,7 @@ def result_sample_choices(result: Mapping[str, Any], operating_point_id: str) ->
     rows = [row for row in source.get("summary", []) if str(row.get("operating_point_id") or row.get("point") or "") == str(operating_point_id)]
     rows.sort(key=lambda row: finite_number(row.get("offset_Hz")) or math.inf)
     return [{"point": str(row.get("point") or ""), "offset_hz": finite_number(row.get("offset_Hz")),
-             "label": f"{float(row['offset_Hz']):.12g} Hz" if finite_number(row.get("offset_Hz")) is not None else "频偏未记录"} for row in rows]
+             "label": f"{float(row['offset_Hz']):.12g} Hz" if finite_number(row.get("offset_Hz")) is not None else "Offset not recorded"} for row in rows]
 
 
 def mapping_review_rows(report: Mapping[str, Any] | None) -> list[dict[str, Any]]:
@@ -838,7 +838,7 @@ def cross_tb_review_rows(report: Mapping[str, Any] | None) -> list[dict[str, Any
     }
     fields = {(row["role"], row["key"]): row for row in mapping_review_rows(report)}
     rows = []
-    for voltage, label in (("vgs", "栅源电压 VGS"), ("vds", "漏源电压 VDS"), ("vbs", "体源电压 VBS")):
+    for voltage, label in (("vgs", "Gate-source voltage VGS"), ("vds", "Drain-source voltage VDS"), ("vbs", "Body-source voltage VBS")):
         if voltage in resolved:
             mapping = resolved[voltage]
             source_kind = str(mapping.get("vco_source") or "unresolved")
@@ -848,8 +848,8 @@ def cross_tb_review_rows(report: Mapping[str, Any] | None) -> list[dict[str, Any
                 "vco": mapping.get("vco_value") or "",
                 "replica": mapping.get("replica_value") or "",
                 "expression": mapping.get("vco_expression") or "",
-                "source": {"pin_derived": "原始节点计算", "named_waveform": "已命名周期波形", "reference_only": "表达式仅供对照", "unresolved": "未识别"}.get(source_kind, source_kind),
-                "status": {"mapped": "已对应", "derived": "按节点对应", "reference": "仅对照 / 不可计算", "invalid": "需修正", "unresolved": "未完成"}.get(status, status),
+                "source": {"pin_derived": "Derived from raw nodes", "named_waveform": "Named periodic waveform", "reference_only": "Expression for reference only", "unresolved": "Unresolved"}.get(source_kind, source_kind),
+                "status": {"mapped": "Mapped", "derived": "Mapped by nodes", "reference": "reference only / not calculable", "invalid": "Needs correction", "unresolved": "Incomplete"}.get(status, status),
                 "help": str(mapping.get("help") or ""),
             })
             continue
@@ -860,8 +860,8 @@ def cross_tb_review_rows(report: Mapping[str, Any] | None) -> list[dict[str, Any
         rows.append({
             "key": voltage, "label": label,
             "vco": vco.get("value") or "", "replica": replica.get("value") or "",
-            "status": "需确认" if uncertain else ("已对应" if vco.get("value") and replica.get("value") else ("待补充" if required else "可选 / 未识别")),
-            "source": "命名输出 / 变量", "expression": "", "help": "点击重新识别可查看原始节点计算或表达式对照状态。",
+            "status": "Needs confirmation" if uncertain else ("Mapped" if vco.get("value") and replica.get("value") else ("Missing input" if required else "optional / Unresolved")),
+            "source": "Named output / Variable", "expression": "", "help": "Detect again to inspect raw-node derivation or expression reference status. ",
         })
     return rows
 
@@ -1113,33 +1113,33 @@ def _summary_view(row: Mapping[str, Any], noise_scope: str = "single", noise_kin
 
 def result_quality_text(summary: Mapping[str, Any]) -> str:
     """Explain recorded quality gates without equating a close curve with truth."""
-    labels = (("numerical_quality_pass", "数值质量"),
-              ("hbac_secondary_validation_pass", "HBAC 相位辅助检查"),
-              ("pm_magnitude_projection_valid", "PM 投影前提"))
+    labels = (("numerical_quality_pass", "Numerical quality"),
+              ("hbac_secondary_validation_pass", "HBAC secondary phase check"),
+              ("pm_magnitude_projection_valid", "PM Projection prerequisites"))
     fields = enrich_summary(summary)
-    statuses = [label + "：" + ("通过" if fields.get(key) is True else
-                               "未通过" if fields.get(key) is False else "未提供")
+    statuses = [label + ": " + ("Passed" if fields.get(key) is True else
+                               "Failed" if fields.get(key) is False else "Not provided")
                 for key, label in labels]
     failed = any(fields.get(key) is False for key, _label in labels)
-    text = ("质量检查未通过；运行完成不代表验证通过。" if failed else
-            "辅助检查不等于独立验证通过；曲线接近不能单独证明计算可信。")
-    text += " " + "；".join(statuses) + "。"
+    text = ("Quality checks failed; Completion does not imply validation. " if failed else
+            "Secondary checks do not constitute independent validation; similar curves alone do not prove calculation validity. ")
+    text += " " + "; ".join(statuses) + ". "
     if summary.get("numerical_quality_issues"):
-        text += " 数值告警：" + str(summary["numerical_quality_issues"]) + "。"
+        text += " Numerical warnings: " + str(summary["numerical_quality_issues"]) + ". "
     if fields.get("hbac_secondary_validation_pass") is False:
         delta = finite_number(summary.get("hbac_max_phase_delta_deg"))
         threshold = finite_number(summary.get("hbac_phase_warn_threshold_deg"))
         if delta is not None and threshold is not None:
-            text += f" HBAC 最大相位差 {delta:.3g}°，门限 {threshold:.3g}°。"
+            text += f" HBAC maximum phase difference {delta:.3g}°, threshold {threshold:.3g}°. "
     thermal = fields.get("thermal_noise") or {}
     if thermal.get("status") == "unavailable":
-        text += " Thermal 未完成：" + str(thermal.get("reason") or "未采集") + "。"
+        text += " Thermal Incomplete: " + str(thermal.get("reason") or "Not collected") + ". "
     elif thermal.get("status") == "available":
-        text += " Thermal：已验证 PM/SSB 口径；gm MOS 周期白噪声近似 + LC 无源源谱，其他有源器件及 shot noise 未纳入计算。"
+        text += " Thermal: Validated PM/SSB Scope; gm MOS periodic white-noise approximation + LC passive source spectra, other active devices and shot noise excluded from calculation. "
         quality_record = thermal.get("numerical_quality")
         thermal_quality = quality_record.get("pass") if isinstance(quality_record, Mapping) else None
-        text += " Thermal 仿真数值质量：" + ("通过" if thermal_quality is True else
-                                           "未通过" if thermal_quality is False else "未提供") + "。"
+        text += " Thermal Simulation numerical quality: " + ("Passed" if thermal_quality is True else
+                                           "Failed" if thermal_quality is False else "Not provided") + ". "
     return text
 
 
@@ -1323,9 +1323,9 @@ def build_result_view(
         "summary_rows": [_summary_view(row, noise_scope, noise_kind) for row in summary],
         "selected_summary": copy.deepcopy(dict(selected_summary)),
         "noise_contribution_rows": noise_contribution_rows(selected_summary, scope=noise_scope, noise_kind=noise_kind),
-        "reference_note": ("VCO 总仿真相噪未采集：旧结果显示 N/A，不以器件 flicker 代替。"
+        "reference_note": ("VCO simulated total phase noise was not collected: legacy results show N/A, do not substitute device flicker as a substitute. "
                            if finite_number(selected_summary.get("spectre_total_dBc_Hz")) is None else ""),
-        "contribution_note": ("未采集各器件 / 噪声机制明细；旧结果不能补出未保存的贡献。"
+        "contribution_note": ("No collected per-device / noise mechanism details; old results cannot reconstruct unsaved contributions. "
                               if not isinstance(selected_summary.get("spectre_noise_contributions"), list)
                               or not selected_summary.get("spectre_noise_contributions") else ""),
         "quality_text": result_quality_text(selected_summary),
@@ -1372,9 +1372,9 @@ def engineering(value: Any, unit: str = '', digits: int = 4) -> str:
     if isinstance(value, bool):
         return str(value)
     if isinstance(value, Mapping):
-        return f'对象 · {len(value)} 字段'
+        return f'Object · {len(value)} Fields'
     if isinstance(value, (list, tuple)):
-        return f'数组 · {len(value)} 项'
+        return f'Array · {len(value)} items'
     number = finite_number(value)
     if number is None:
         return '—' if value in (None, '', N_A) or isinstance(value, (int, float)) else str(value)
@@ -1401,7 +1401,7 @@ def _trace(name, rows, field, *, x='phase', side='left', style='line', unit='', 
     missing = sum(point is None for point in points)
     return {'id': field, 'name': name, 'points': points, 'keys': keys or [r['key'] for r in rows],
             'side': side, 'style': style, 'unit': unit,
-            'reason': f'{name} 缺少 {missing}/{len(rows)} 个采样；缺值处断线' if missing else ''}
+            'reason': f'{name} Missing {missing}/{len(rows)} samples; break lines at missing values' if missing else ''}
 
 
 def cycle_statistics(points):
@@ -1411,12 +1411,12 @@ def cycle_statistics(points):
     explicitly unavailable; this diagnostic never participates in signoff.
     """
     if len(points) < 2 or any(p is None for p in points):
-        return {'mean': None, 'rms': None, 'reason': '周期缺值，无法给出完整周期 DC / RMS'}
+        return {'mean': None, 'rms': None, 'reason': 'missing values in the period, cannot report full-period DC / RMS'}
     duration = points[-1][0] - points[0][0]
     if duration <= 0 or any(b[0] <= a[0] for a, b in zip(points, points[1:])):
-        return {'mean': None, 'rms': None, 'reason': '相位不是严格递增的完整周期'}
+        return {'mean': None, 'rms': None, 'reason': 'Phase does not form a strictly increasing complete period'}
     if not math.isclose(duration, 1.0, abs_tol=1e-5):
-        return {'mean': None, 'rms': None, 'reason': '采样未覆盖完整周期'}
+        return {'mean': None, 'rms': None, 'reason': 'Samples do not cover a complete period'}
     mean = sum((b[0] - a[0]) * (a[1] + b[1]) / 2 for a, b in zip(points, points[1:])) / duration
     square = sum((b[0] - a[0]) * (a[1] ** 2 + b[1] ** 2) / 2 for a, b in zip(points, points[1:])) / duration
     return {'mean': mean, 'rms': math.sqrt(square), 'reason': ''}
@@ -1441,7 +1441,7 @@ def thermal_cycle_projection(coefficients, f0_hz):
                          'sqrt_psd': math.sqrt(psd) if psd is not None and psd >= 0 else None})
         sources.append({'id': device + '/' + mechanism, 'rows': rows,
                         'series': _trace(device + ' · ' + mechanism + ' √PSD', rows, 'sqrt_psd', unit='A/√Hz')})
-    return {'sources': sources, 'reason': '' if sources else '本结果没有 thermal 源系数'}
+    return {'sources': sources, 'reason': '' if sources else 'This result has no thermal source coefficients'}
 
 
 def load_thermal_coefficients(result, point, job_directory=None):
@@ -1470,12 +1470,12 @@ def load_thermal_coefficients(result, point, job_directory=None):
     for path in paths:
         try:
             if path.stat().st_size > 32 * 1024 * 1024:
-                errors.append('源系数文件超过 32 MiB 读取上限')
+                errors.append('Source coefficient file exceeds 32 MiB read limit')
                 continue
             with path.open(encoding='utf-8') as stream:
                 data = json.load(stream)
             if not isinstance(data, (list, dict)):
-                raise ValueError('源系数必须为数组或 sources 对象')
+                raise ValueError('Source coefficients must be an array or a sources Object')
             projection = thermal_cycle_projection(data, thermal.get('f0_Hz') or summary.get('f0_Hz'))
             projection['path'] = str(path)
             return projection
@@ -1483,7 +1483,7 @@ def load_thermal_coefficients(result, point, job_directory=None):
             continue
         except (OSError, ValueError, TypeError) as exc:
             errors.append(str(exc))
-    return {'sources': [], 'reason': '本结果没有 thermal 源系数' + ('：' + '；'.join(errors) if errors else '')}
+    return {'sources': [], 'reason': 'This result has no thermal source coefficients' + (': ' + '; '.join(errors) if errors else '')}
 
 
 def process_projection(result, point, thermal=None, noise_kind='flicker'):
@@ -1504,14 +1504,14 @@ def process_projection(result, point, thermal=None, noise_kind='flicker'):
     fields = (('gamma_i', 'isf_i'), ('gamma_q', 'isf_q'), ('m_dc', 'm_DC_A_rtHz'),
               ('m_dyn', 'm_dyn_A_rtHz'), ('product_i', 'product_i'), ('product_q', 'product_q'))
     panels = [
-        {'title': '1. 工作点 · V / A', 'ylabel': '电压 (V)', 'right_label': '电流 (A)', 'series':
+        {'title': '1. Operating point · V / A', 'ylabel': 'Voltage (V)', 'right_label': 'Current (A)', 'series':
          [_trace(n, rows, n + '_V', unit='V') for n in ('VG', 'VD', 'VS', 'VB')] +
          [_trace(n, rows, n + '_A', unit='A', side='right') for n in ('ID_main', 'ID_replica')]},
-        {'title': '2. 噪声调制 · A/√Hz', 'ylabel': 'ASD (A/√Hz)', 'series':
+        {'title': '2. Noise modulation · A/√Hz', 'ylabel': 'ASD (A/√Hz)', 'series':
          [_trace('m_DC', rows, 'm_DC_A_rtHz', unit='A/√Hz'), _trace('m_dyn', rows, 'm_dyn_A_rtHz', unit='A/√Hz')]},
-        {'title': '3. ISF · 载波参考 · C^-1', 'ylabel': 'Γ (C^-1)', 'zero': True, 'series':
+        {'title': '3. ISF · carrier reference · C^-1', 'ylabel': 'Γ (C^-1)', 'zero': True, 'series':
          [_trace('Γ-I', rows, 'isf_i', unit='C^-1'), _trace('Γ-Q', rows, 'isf_q', unit='C^-1')]},
-        {'title': '4. 有效 ISF · flicker · c0_eff 为周期均值 · s^-1/√Hz', 'ylabel': 'Γ×m (s^-1/√Hz)', 'zero': True, 'series':
+        {'title': '4. Effective ISF · flicker · c0_eff = period mean · s^-1/√Hz', 'ylabel': 'Γ×m (s^-1/√Hz)', 'zero': True, 'series':
          [_trace('Γ-I × m_dyn', rows, 'product_i', style='fill', unit='s^-1/√Hz'),
           _trace('Γ-Q × m_dyn', rows, 'product_q', style='fill', unit='s^-1/√Hz')]},
     ]
@@ -1523,7 +1523,7 @@ def process_projection(result, point, thermal=None, noise_kind='flicker'):
                       field: v.get('value'), 'key': linked_key('derived', i)} for i, v in enumerate(samples)]
             panel_index = 1 if curve_name.startswith('m_') else 2 if curve_name.startswith('gamma') else 3
             panels[panel_index]['series'] = [s for s in panels[panel_index]['series'] if s['id'] != field]
-            trace = _trace(field + ' · 派生', drows, field)
+            trace = _trace(field + ' · derived', drows, field)
             trace['derived'] = True
             if rows:
                 trace['keys'] = [min(rows, key=lambda r: abs(r['phase'] - d['phase']) if r['phase'] is not None and d['phase'] is not None else float('inf'))['key'] for d in drows]
@@ -1531,28 +1531,28 @@ def process_projection(result, point, thermal=None, noise_kind='flicker'):
     if not rows and derived:
         grid = next((v for v in derived.values() if isinstance(v, list) and v), [])
         for i, item in enumerate(grid):
-            row = {'sample': i, 'phase': finite_number(item.get('wt_rad')) / (2 * math.pi) if finite_number(item.get('wt_rad')) is not None else None, 'key': linked_key('derived', i), 'source': '派生'}
+            row = {'sample': i, 'phase': finite_number(item.get('wt_rad')) / (2 * math.pi) if finite_number(item.get('wt_rad')) is not None else None, 'key': linked_key('derived', i), 'source': 'derived'}
             for curve_name, field in fields:
                 curve = derived.get(curve_name, [])
                 row[field] = curve[i].get('value') if i < len(curve) else None
             rows.append(row)
     if noise_kind in ('thermal', 'both'):
-        t = thermal or {'sources': [], 'reason': '本结果没有 thermal 源系数'}
+        t = thermal or {'sources': [], 'reason': 'This result has no thermal source coefficients'}
         panels[1]['thermal_sources'] = t['sources']
         if noise_kind == 'thermal':
             panels[1]['series'] = [t['sources'][0]['series']] if t['sources'] else []
-            panels[1]['title'] = '2. thermal 周期源 √PSD'
+            panels[1]['title'] = '2. thermal periodic source √PSD'
         elif t['sources']:
             panels[1]['series'].append(t['sources'][0]['series'])
         panels[1]['reason'] = t.get('reason', '')
     for panel, short in zip(panels, ('V', 'ASD', 'Γ', 'Γ×m')):
         panel['short_ylabel'] = short
-        panel.update(xlabel='归一化相位 φ (周期)', group='phase', xlimits=(0, 1), reserve_right=True, show_xlabel=panel is panels[-1])
+        panel.update(xlabel='Normalized phase φ (period)', group='phase', xlimits=(0, 1), reserve_right=True, show_xlabel=panel is panels[-1])
         reasons = [s['reason'] for s in panel['series'] if s['reason']]
         if reasons:
-            panel['reason'] = '；'.join(reasons)
+            panel['reason'] = '; '.join(reasons)
         if not any(any(p is not None for p in s['points']) for s in panel['series']):
-            panel['reason'] = panel.get('reason') or '本结果没有保存此阶段的周期采样'
+            panel['reason'] = panel.get('reason') or 'This result has no saved periodic samples for this stage'
     panels[-1]['statistics'] = {s['name']: cycle_statistics(s['points']) for s in panels[-1]['series']}
     return {'rows': rows, 'panels': panels,
             'derived': any(s.get('derived') for p in panels for s in p['series'])}
@@ -1561,22 +1561,22 @@ def process_projection(result, point, thermal=None, noise_kind='flicker'):
 def harmonic_projection(view):
     rows = [dict(r, key=linked_key('k', r['k'])) for r in view.get('harmonic_rows', [])]
     def panel(title, ylabel, specs):
-        return {'title': title, 'ylabel': ylabel, 'xlabel': '谐波阶数 k', 'group': 'k',
+        return {'title': title, 'ylabel': ylabel, 'xlabel': 'Harmonic order k', 'group': 'k',
                 'series': [_trace(name, rows, field, x='k', style=style, unit=unit) for name, field, style, unit in specs],
-                'reason': '' if rows else '本结果没有 flicker 原始谐波；thermal 按独立输入频带加功率'}
+                'reason': '' if rows else 'This result has no flicker raw harmonics; thermal add independent input bands in power'}
     panels = [panel('|Mdc_k| / |Mdyn_k|', 'ASD (A/√Hz)', [('Mdc', 'mdc_mag', 'stem', 'A/√Hz'), ('Mdyn', 'mdyn_mag', 'stem', 'A/√Hz')]),
-              panel('调制修正 A_k / δ_k', 'A_k (1)', [('A_k', 'amplitude', 'stem', '1'), ('δ_k', 'delta_deg', 'stem', '°')]),
-              panel('|Qk| · 单管原值', '|Qk| (V/√Hz)', [('|Qk|', 'q_mag', 'stem', 'V/√Hz')]),
-              panel('单阶 / 相干累计 · 双管', '相噪 (dBc/Hz)', [('单阶', 'harmonic_dbc', 'line', 'dBc/Hz'), ('累计', 'cumulative_dbc', 'line', 'dBc/Hz')])]
+              panel('Modulation correction A_k / δ_k', 'A_k (1)', [('A_k', 'amplitude', 'stem', '1'), ('δ_k', 'delta_deg', 'stem', '°')]),
+              panel('|Qk| · raw single-device values', '|Qk| (V/√Hz)', [('|Qk|', 'q_mag', 'stem', 'V/√Hz')]),
+              panel('single order / coherent cumulative sum · device pair', 'Phase noise (dBc/Hz)', [('single order', 'harmonic_dbc', 'line', 'dBc/Hz'), ('Cumulative', 'cumulative_dbc', 'line', 'dBc/Hz')])]
     from ..core.result_presentation import harmonic_projection_fractions
     projected = harmonic_projection_fractions([dict(r, Q_real_V_rtHz=finite_number(r.get('q_real')),
                                                   Q_imag_V_rtHz=finite_number(r.get('q_imag'))) for r in rows])
     rows = [dict(r, fraction_pct=r['projection_fraction']*100 if r['projection_fraction'] is not None else None) for r in projected]
-    panels[-1] = panel('Qk 单阶等效 · 所选频偏', '相噪 (dBc/Hz)', [('单阶等效', 'harmonic_dbc', 'bar', 'dBc/Hz')])
-    panels.append(panel('投影贡献 · 正负相加 = 100%', '占比 (%)', [('投影占比', 'fraction_pct', 'bar', '%')]))
+    panels[-1] = panel('Qk single-order equivalent · Selected offset', 'Phase noise (dBc/Hz)', [('single-order equivalent', 'harmonic_dbc', 'bar', 'dBc/Hz')])
+    panels.append(panel('Projected contribution · signed sum = 100%', 'Fraction (%)', [('Projection fraction', 'fraction_pct', 'bar', '%')]))
     panels[-1]['zero'] = True
     if rows and all(r['fraction_pct'] is None for r in rows):
-        panels[-1]['reason'] = 'ΣQk=0 或复数项缺失，投影占比未定义'
+        panels[-1]['reason'] = 'ΣQk=0 or complex terms are missing, projection fraction is undefined'
     for p in panels[-2:]:
         p['series'][0]['hollow'] = [r['cancellation'] for r in rows]
     panels[1]['series'][1]['side'] = 'right'
@@ -1595,10 +1595,10 @@ def noise_scope_note(view, noise_kind):
     summary = view.get('selected_summary', {})
     thermal = summary.get('thermal_noise') or {}
     sources = thermal.get('sources') or []
-    note = (f'{noise_kind} · flicker 双器件（+3.01 dB 独立对称假设）；'
-            f'thermal 已建模 {len(sources)} 源 / {thermal.get("scope") or "未提供预算"}；HBnoise 为 VCO 全部源')
+    note = (f'{noise_kind} · flicker two-device (+3.01 dB independent symmetric assumption); '
+            f'thermal modeled {len(sources)} Source / {thermal.get("scope") or "No budget provided"}; HBnoise is VCO all sources')
     if noise_kind == 'both' and thermal.get('status') != 'available':
-        note += ' · 缺有效 thermal，合计不可用；切换 flicker 可查看已有计算'
+        note += ' · Thermal unavailable; total is N/A. Select flicker to inspect existing calculations'
     return note
 
 
@@ -1617,7 +1617,7 @@ def offset_projection(result, identity, overview, errors, decomposition=False):
         projected.append(trace)
     if decomposition:
         for name in ('dc', 'delay', 'dynamic'):
-            projected.append(_trace(name + ' · 单管分解', rows, name + '_dBc_Hz', x='hz', unit='dBc/Hz'))
+            projected.append(_trace(name + ' · single-device decomposition', rows, name + '_dBc_Hz', x='hz', unit='dBc/Hz'))
     error_traces = [dict(r, keys=[key_by_hz.get(finite_number(p[0])) if p is not None else None for p in r.get('points', [])]) for r in errors]
     return {'rows': rows, 'series': projected, 'error_series': error_traces}
 
@@ -1633,11 +1633,11 @@ def contribution_projection(view, thermal_diagnostic=None):
                          linked_key('source', str(row.get('device')) + '/' + str(row.get('mechanism'))))
         copied['modeled'] = finite_number(row.get('calculated_dbc')) is not None
         if comparison:
-            copied['scope'] = '聚合对比 · 与下方源明细重叠，不重复计数'
+            copied['scope'] = 'Aggregate comparison · overlaps the source details below, not counted twice'
         elif row.get('comparison_group') == 'flicker_pair':
-            copied['scope'] = '计入对称 gm pair 对比'
+            copied['scope'] = 'included in symmetric gm pair comparison'
         else:
-            copied['scope'] = '已建模' if copied['modeled'] else '未建模 · 不参与 ISF 计算'
+            copied['scope'] = 'modeled' if copied['modeled'] else 'not modeled · outside ISF calculation'
         rows.append(copied)
     # Rank by simulated power only, so a dominant unmodeled source (for
     # example array switches outside the ISF scope) stays visible at the top.
@@ -1657,7 +1657,7 @@ def contribution_projection(view, thermal_diagnostic=None):
         for identity, source in by_source.items():
             if identity not in seen:
                 rows.append({'key':linked_key('source',str(identity[0])+'/'+str(identity[1])), 'device':identity[0], 'mechanism':identity[1],
-                             'label':str(identity[0])+' · '+str(identity[1]), 'kind':'source', 'modeled':False,'scope':'旧预算未验证 · 不参与当前 ISF 计算',
+                             'label':str(identity[0])+' · '+str(identity[1]), 'kind':'source', 'modeled':False,'scope':'legacy budget unverified · excluded from current ISF calculated',
                              'stored_thermal_dbc':finite_number(source.get('phase_noise_dBc_Hz'))})
     bands = []
     for source in (thermal.get('sources', []) or diagnostic_sources):
@@ -1671,9 +1671,9 @@ def contribution_projection(view, thermal_diagnostic=None):
             totals[row['input_band']] = totals.get(row['input_band'], 0.) + value
     band_rows = [{'m': k, 'power': v, 'key': linked_key('band', k)} for k, v in sorted(totals.items())]
     return {'rows': rows, 'band_rows': band_rows,
-            'band_series': [_trace('Σ源 B_m 功率', band_rows, 'power', x='m', style='stem', unit='V²/Hz')],
+            'band_series': [_trace('ΣSource B_m power', band_rows, 'power', x='m', style='stem', unit='V²/Hz')],
             'diagnostic_bands': bool(diagnostic_sources) and thermal.get('status') != 'available',
-            'reason': '' if bands else '本结果没有 thermal 独立输入频带 B_m 功率预算（flicker 使用 Qk 相干累计）'}
+            'reason': '' if bands else 'This result has no thermal independent input bands B_m power budget (flicker Use Qk coherent cumulative sum)'}
 
 
 def stored_thermal_diagnostic(result, point):
@@ -1688,7 +1688,7 @@ def stored_thermal_diagnostic(result, point):
     raw = raw if isinstance(raw, Mapping) else {}
     return {'sources': copy.deepcopy(raw.get('sources') or []),
             'phase_noise_dBc_Hz': finite_number(raw.get('phase_noise_dBc_Hz')),
-            'scope': str(raw.get('scope') or '未记录'), 'unverified': True}
+            'scope': str(raw.get('scope') or 'Not recorded'), 'unverified': True}
 
 
 def thermal_workpoint_series(source, workpoint_rows):
@@ -1704,7 +1704,7 @@ def thermal_workpoint_series(source, workpoint_rows):
 
 def stored_thermal_series(result, offset_rows):
     """A saved, unqualified diagnostic, independent of active calculation curves."""
-    return {'id':'stored_thermal','name':'thermal 旧诊断 · 未验证','short_name':'旧th未验','dash':True,'unit':'dBc/Hz',
+    return {'id':'stored_thermal','name':'thermal legacy diagnostic · Unverified','short_name':'legacythunverified','dash':True,'unit':'dBc/Hz',
             'points':[(r['hz'],stored_thermal_diagnostic(result,r['point'])['phase_noise_dBc_Hz']) for r in offset_rows],
             'keys':[r['key'] for r in offset_rows]}
 
@@ -1717,23 +1717,23 @@ def offset_table_projection(offsets):
             for key, point in zip(series.get('keys',[]),series['points']):
                 if key==row['key'] and point is not None:
                     row[series['id']]=point[1]
-    wanted=[('hz','频偏 (Hz)'),('calculated','ISF 当前口径 (dBc/Hz)'),('flicker','flicker (dBc/Hz)'),
-            ('thermal','thermal (dBc/Hz)'),('stored_thermal','旧 thermal 诊断·未验证 (dBc/Hz)'),
-            ('both','合计 (dBc/Hz)'),('spectre','HBnoise 总源 (dBc/Hz)'),('matched_error','同口径 Δ (dB)')]
+    wanted=[('hz','Offset (Hz)'),('calculated','ISF current scope (dBc/Hz)'),('flicker','flicker (dBc/Hz)'),
+            ('thermal','thermal (dBc/Hz)'),('stored_thermal','legacy thermal Diagnostic·Unverified (dBc/Hz)'),
+            ('both','Total (dBc/Hz)'),('spectre','HBnoise · all sources (dBc/Hz)'),('matched_error','matched scope Δ (dB)')]
     return rows,[s for s in wanted if s[0]=='hz' or any(s[0] in r for r in rows)]
 
 
-BAND_NOTE = ('频带 n=|m| 指平稳过程 i_n0 位于 n·f0 附近；不同频带互不相关、按功率相加。'
-             '基带含 c0_eff=ΣQk 的全部 flicker，k 不是输入频带。'
-             'Hajimiri & Lee, JSSC 33(2), 1998, Fig.12(a), 式(19)(23)(27)。')
-HARMONIC_NOTE = ('flicker 各阶相干叠加，单阶等效相噪可能高于总和；占比按投影计算，正负相加等于 100%。'
-                 'flicker 的 k 不是噪声所在频率；c0_eff = ΣQk。Hajimiri & Lee (1998), 式(27)。')
+BAND_NOTE = ('Band n=|m| locates stationary process i_n0 near n·f0; independent bands add in power. '
+             'Baseband includes all flicker through c0_eff=ΣQk; k is not an input band. '
+             'Hajimiri & Lee, JSSC 33(2), 1998, Fig.12(a), Eq.(19)(23)(27). ')
+HARMONIC_NOTE = ('flicker orders add coherently, single-order equivalent phase noise may exceed the total; fractions use projection, signed sum equals 100%. '
+                 'Flicker order k is not the input noise frequency; c0_eff = ΣQk. Hajimiri & Lee (1998), Eq.(27). ')
 
 
 def band_noise_projection(result, identity, noise_kind='both', references=True):
     from ..core.result_presentation import input_band_noise_series
     data = input_band_noise_series(result, identity, noise_kind)
-    specs = [('label', '输入频带 / 总和')]
+    specs = [('label', 'Input band / sum')]
     rows = [dict(key=s['row_key'], label=s['name'], slope=s['slope']) for s in data['series']]
     for i, summary in enumerate(data['rows']):
         hz = summary['offset_Hz']
@@ -1743,7 +1743,7 @@ def band_noise_projection(result, identity, noise_kind='both', references=True):
             row[field] = series['points'][i][1]
             value = series.get('fraction', [None]*len(data['rows']))[i]
             row[fraction] = value*100 if value is not None else None
-    specs.append(('slope','最低两 decade (dB/dec)'))
+    specs.append(('slope','lowest two decades (dB/dec)'))
     series = list(data['series'])
     if references:
         valid = [(x,y) for s in series if s['id']=='calculated_total' for x,y in s['points'] if y is not None]
@@ -1752,10 +1752,10 @@ def band_noise_projection(result, identity, noise_kind='both', references=True):
             for slope, color in ((-30,'#79909e'),(-20,'#a18d70')):
                 series.append(dict(id='slope_'+str(slope),name=str(slope)+' dB/dec',
                     points=[(x,y-8),(end,y-8+slope*math.log10(end/x))],keys=[],dash=True,width=1,color=color,unit='dBc/Hz'))
-    panel = dict(title='输入噪声频带 → 相噪',ylabel='相噪 (dBc/Hz)',xlabel='频偏 (Hz)',group='band_offset',
+    panel = dict(title='Input noise band → phase noise',ylabel='Phase noise (dBc/Hz)',xlabel='Offset (Hz)',group='band_offset',
                  log_x=True,series=series,legend_full=True)
     return dict(data, panels=[panel], table_rows=rows, specs=specs,
-                note=BAND_NOTE+(' · '+'；'.join(data['notes']) if data['notes'] else ''))
+                note=BAND_NOTE+(' · '+'; '.join(data['notes']) if data['notes'] else ''))
 
 
 def thermal_band_projection(view, diagnostic=None):
@@ -1777,10 +1777,10 @@ def thermal_band_projection(view, diagnostic=None):
         series.append(dict(id='thermal-source:'+str(si),name=source['device']+'/'+source['mechanism'],
                            points=[(r['n'],r['dbc']) for r in source_rows],keys=[r['key'] for r in source_rows],
                            unit='dBc/Hz',style='bar',color=band_color(si),row_key=source_rows[0]['key'] if source_rows else None))
-    return dict(rows=rows, panels=[dict(title='各源按 |m| 的独立输入频带'+(' · 旧预算未验证诊断' if unverified else ''),
-                xlabel='|m| · 输入噪声频带',ylabel='相噪 (dBc/Hz)',group='k',series=series,legend_full=True,
-                reason='' if rows else '本结果没有 thermal 输入频带数据')],
-                note='所选频偏；不同源与输入频带按功率相加。'+('旧预算仅作未验证诊断，不纳入频带主图或预测总值。' if unverified and rows else ''))
+    return dict(rows=rows, panels=[dict(title='Sources by |m| independent input bands'+(' · unverified legacy-budget diagnostic' if unverified else ''),
+                xlabel='|m| · Input noise band',ylabel='Phase noise (dBc/Hz)',group='k',series=series,legend_full=True,
+                reason='' if rows else 'This result has no thermal input-band data')],
+                note='Selected offset; independent sources and input bands add in power. '+('legacy budget is an unverified diagnostic only, excluded from the main band plot and predicted total. ' if unverified and rows else ''))
 
 
 def isf_overlay_projection(process, summary):
@@ -1791,15 +1791,15 @@ def isf_overlay_projection(process, summary):
         r['product_dc']=g*m if g is not None and m is not None else None
         dyn=finite_number(r.get('m_dyn_A_rtHz'))
         r['product_overlay_dyn']=g*dyn if g is not None and dyn is not None else None
-    definitions=(('Γ','isf_i'),('文献准静态 α','m_DC_A_rtHz'),('本地动态矫正 α','m_dyn_A_rtHz'),
-                 ('Γ·文献准静态 α','product_dc'),('Γ·本地动态矫正 α','product_overlay_dyn'))
+    definitions=(('Γ','isf_i'),('Published quasi-static α','m_DC_A_rtHz'),('Local dynamic correction α','m_dyn_A_rtHz'),
+                 ('Γ·Published quasi-static α','product_dc'),('Γ·Local dynamic correction α','product_overlay_dyn'))
     traces=[];means={}
     for label,field in definitions:
         trace=_trace(label,rows,field)
         means[field]=cycle_statistics(trace['points'])['mean']
         peak=max((abs(p[1]) for p in trace['points'] if p is not None),default=0)
         trace['points']=[(p[0],p[1]/peak if peak else 0) if p is not None else None for p in trace['points']]
-        trace['unit']='峰值归一化';traces.append(trace)
+        trace['unit']='peak-normalized';traces.append(trace)
     dc,dyn=means['product_dc'],means['product_overlay_dyn']
     # A zero mean has no finite logarithmic ratio. Keep the raw means and
     # report the ratio as unavailable, including the indeterminate 0/0 case.
@@ -1807,12 +1807,12 @@ def isf_overlay_projection(process, summary):
     difference=20*(math.log10(abs(dc))-math.log10(abs(dyn))) if dc and dyn else None
     sd,sy=finite_number(summary.get('dc_dBc_Hz')),finite_number(summary.get('dynamic_dBc_Hz'))
     summary_difference=sd-sy if sd is not None and sy is not None else None
-    note=('Hajimiri & Lee (1998), Fig.14 / 式(27)；各曲线按各自峰值归一化（α 原值未归一化）。'
-          'c0_eff 周期均值：准静态 '+engineering(dc)+' / 动态 '+engineering(dyn)+
-          '；20log10 均值比（原波形梯形积分） '+engineering(difference,'dB')+
-          '；summary dc−dynamic（独立读取） '+engineering(summary_difference,'dB'))
+    note=('Hajimiri & Lee (1998), Fig.14 / Eq.(27); each curve is normalized by its own peak (α raw values are not normalized). '
+          'c0_eff period mean: quasi-static '+engineering(dc)+' / dynamic '+engineering(dyn)+
+          '; 20log10 mean ratio (trapezoidal integration of raw waveforms) '+engineering(difference,'dB')+
+          '; summary dc−dynamic (read independently) '+engineering(summary_difference,'dB'))
     if dc == 0 or dyn == 0:
-        note += '；周期均值为零，均值比无有限 dB 值'
-    return dict(panels=[dict(title='Fig.14 · Γ / α / Γ·α 叠加',xlabel='归一化相位 φ (周期)',ylabel='各自峰值归一化',
+        note += '; the period mean is zero, mean ratio has no finite dB value'
+    return dict(panels=[dict(title='Fig.14 · Γ / α / Γ·α overlay',xlabel='Normalized phase φ (period)',ylabel='normalized by each peak',
                 group='phase',series=traces,legend_full=True,zero=True)],note=note,ratio_db=difference,summary_delta_db=summary_difference,
                 means=means)

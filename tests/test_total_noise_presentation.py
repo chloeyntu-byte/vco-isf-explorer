@@ -47,7 +47,7 @@ class TotalNoisePresentationTests(unittest.TestCase):
         self.assertEqual(a[1]['points'], b[1]['points'])
         self.assertNotEqual(a[0]['points'], b[0]['points'])
         self.assertAlmostEqual(a[1]['points'][0][1], 10 * math.log10(8e-10))
-        self.assertIn('总仿真', a[1]['name'])
+        self.assertIn('simulated total', a[1]['name'])
 
     def test_generated_flicker_compares_same_device_while_preserving_pair_estimate(self):
         result = sample_result()
@@ -144,7 +144,7 @@ class TotalNoisePresentationTests(unittest.TestCase):
                 rows = noise_contribution_rows(summary, scope="pair")
                 aggregate = next(row for row in rows if row["mechanism"] == "thermal")
                 self.assertFalse(aggregate["reference_complete"])
-                self.assertIn("参考源不完整", aggregate["label"])
+                self.assertIn("reference sources incomplete", aggregate["label"])
                 self.assertEqual(aggregate["reference_issues"], [
                     dict(device="Xpair.right", mechanism="id", reason="missing")])
                 for field in ("simulated_dbc", "psd_V2_Hz", "asd_V_rtHz", "fraction_pct"):

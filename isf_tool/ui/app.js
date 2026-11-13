@@ -248,12 +248,12 @@
   }
 
   async function refreshWorkspaceStates(selected) {
-    if (!state.apiOnline) { workspaceStateStatus("API 不可达；不能保存或读取工作区状态。"); return; }
+    if (!state.apiOnline) { workspaceStateStatus("API unreachable; Cannot save or read workspace states. "); return; }
     var payload = await apiRequest("/api/states");
     var select = byId("workspace-state-list");
     if (select) {
       selected = selected || select.value;
-      select.innerHTML = '<option value="">选择已保存状态</option>' + (payload.states || []).map(function (item) {
+      select.innerHTML = '<option value="">Select saved state</option>' + (payload.states || []).map(function (item) {
         return '<option value="' + escapeHtml(item.id) + '"' + (item.id === selected ? ' selected' : '') + '>' + escapeHtml(item.name + " · " + item.saved_at) + '</option>';
       }).join("");
     }
@@ -261,13 +261,13 @@
   }
 
   async function saveWorkspaceState() {
-    if (!state.apiOnline) throw new Error("API 不可达，未保存工作区状态");
+    if (!state.apiOnline) throw new Error("API unreachable, Workspace state not saved");
     var config = byId("config-form") ? configPayload(collectConfig()) : state.rawConfig || readStorage(STORAGE.rawConfig, null) || configPayload(collectConfig());
     var response = await apiRequest("/api/states", {method: "POST", body: {
       name: String(byId("workspace-state-name") && byId("workspace-state-name").value || "").trim(),
       config: workspaceStateConfig(config, false), view: workspaceStateView()
     }});
-    workspaceStateStatus("已保存：" + response.path + "。不包含执行授权。");
+    workspaceStateStatus("Saved: " + response.path + ". excludes execution consent. ");
     await refreshWorkspaceStates(response.id);
     return response;
   }
@@ -275,13 +275,13 @@
   function exactWorkspaceResult(payload, view) {
     var source = payload && (payload.result || payload.data) || payload;
     var hz = finiteOrNull(view.offset_hz);
-    if (!source || !source.provenance || source.provenance.job_id !== view.job_id || !view.point || !view.operating_point_id || hz === null || hz <= 0) throw new Error("保存的结果缺少同任务来源或精确频点证据");
+    if (!source || !source.provenance || source.provenance.job_id !== view.job_id || !view.point || !view.operating_point_id || hz === null || hz <= 0) throw new Error("Saved result lacks same-job provenance or exact-frequency evidence");
     var groups = resultOperatingPoints(source).filter(function (group) { return group.id === view.operating_point_id; });
     var matches = groups.length === 1 ? groups[0].rows.filter(function (sample) { return sample.point === view.point && sample.offset === hz; }) : [];
-    if (matches.length !== 1 || !source.points || !Object.prototype.hasOwnProperty.call(source.points, view.point)) throw new Error("保存的工况/频偏已不存在或不唯一；未替换为其它频点");
+    if (matches.length !== 1 || !source.points || !Object.prototype.hasOwnProperty.call(source.points, view.point)) throw new Error("Saved operating point/Offset no longer exists or is ambiguous; Not replaced with another frequency point");
     if (byId("result-offset-select")) byId("result-offset-select").innerHTML = '<option value="' + hz + '" selected>' + escapeHtml(formatOffsetHz(hz)) + '</option>';
     var result = normalizeResults(payload, view.job_id, view.point);
-    if (result.error || result.point !== view.point || result.operatingPointId !== view.operating_point_id || result.metrics.offsetHz !== hz) throw new Error("保存的结果选择与实际数据不一致");
+    if (result.error || result.point !== view.point || result.operatingPointId !== view.operating_point_id || result.metrics.offsetHz !== hz) throw new Error("Saved result selection differs from actual data");
     return result;
   }
 
@@ -289,21 +289,21 @@
     if (byId("noise-kind")) byId("noise-kind").value = ["both", "thermal", "flicker"].indexOf(view.noise_kind) >= 0 ? view.noise_kind : "both";
     if (byId("noise-x-scale")) byId("noise-x-scale").value = view.x_scale === "linear" ? "linear" : "log";
     var k = finiteOrNull(view.cumulative_k), harmonics = result.sampleHarmonics || [];
-    if (byId("cumulative-k-select")) byId("cumulative-k-select").innerHTML = k !== null && harmonics.some(function (row) { return Number(row.k) === k; }) ? '<option value="' + k + '" selected>' + k + '</option>' : '<option value="">不显示累计曲线</option>';
+    if (byId("cumulative-k-select")) byId("cumulative-k-select").innerHTML = k !== null && harmonics.some(function (row) { return Number(row.k) === k; }) ? '<option value="' + k + '" selected>' + k + '</option>' : '<option value="">No cumulative curve</option>';
   }
 
   async function loadWorkspaceState(id) {
-    if (!state.apiOnline || !id) throw new Error("请先选择可读取的已保存状态");
+    if (!state.apiOnline || !id) throw new Error("Select a readable saved state first");
     function blocked() { return state.executionPending || activeJobRows([state.currentJob]).length > 0; }
-    if (blocked()) throw new Error("当前有活动任务或正在提交运行/恢复；请等待结束后再加载状态");
+    if (blocked()) throw new Error("A job is active or a run is being submitted/Resume; Wait until completion before loading state");
     var sequence = ++state.workspaceStateSequence, revision = state.setupRevision;
     var response = await apiRequest("/api/states/" + encodeURIComponent(id));
     if (sequence !== state.workspaceStateSequence || revision !== state.setupRevision) return null;
     var saved = response.state;
-    if (!saved || saved.schema_version !== 1 || !isPlainObject(saved.config) || !isPlainObject(saved.view)) throw new Error("保存的状态格式不受支持");
+    if (!saved || saved.schema_version !== 1 || !isPlainObject(saved.config) || !isPlainObject(saved.view)) throw new Error("Saved state format is unsupported");
     var jobs = await apiRequest("/api/jobs", {timeout: 5000});
     if (sequence !== state.workspaceStateSequence || revision !== state.setupRevision) return null;
-    if (blocked() || !jobs || !Array.isArray(jobs.jobs) || activeJobRows(jobs).length) throw new Error("存在活动任务或无法确认任务空闲；未加载状态，也未改变当前任务视图");
+    if (blocked() || !jobs || !Array.isArray(jobs.jobs) || activeJobRows(jobs).length) throw new Error("A job is active or idle status cannot be confirmed; No state loaded, current job view is also unchanged");
     var config = workspaceStateConfig(saved.config, true), view = saved.view;
     state.rawConfig = config;
     writeStorage(STORAGE.rawConfig, config);
@@ -318,14 +318,14 @@
     writeStorage(STORAGE.job, null);
     writeStorage(STORAGE.jobId, "");
     if (state.pollTimer) { window.clearTimeout(state.pollTimer); state.pollTimer = null; }
-    invalidatePreflight("状态已加载；请重新检测并绑定当前 TB，来源确认和预检不继承。");
+    invalidatePreflight("State loaded; Detect and bind current settings again for TB, source confirmation and preflight do not carry over. ");
     populateConfig(config);
     var appliedRevision = state.setupRevision;
     if (byId("workspace-state-name")) byId("workspace-state-name").value = saved.name || "";
-    if (document.body.dataset.page === "results") renderResults(unavailableResults("", "已加载设置，正在核对保存的结果选择"));
-    workspaceStateStatus("已加载设置；需重新检测并绑定，不自动预检或仿真。" + (response.path ? " 来源：" + response.path : ""));
+    if (document.body.dataset.page === "results") renderResults(unavailableResults("", "Settings loaded, Checking saved result selection"));
+    workspaceStateStatus("Settings loaded; Detection and binding required again, no automatic preflight or simulation. " + (response.path ? " Source: " + response.path : ""));
     if (!view.job_id) {
-      if (document.body.dataset.page === "results") renderResults(unavailableResults("", "此状态没有可恢复的同任务结果选择"));
+      if (document.body.dataset.page === "results") renderResults(unavailableResults("", "This state has no restorable same-job result selection"));
       return response;
     }
     try {
@@ -341,12 +341,12 @@
         renderResults(result);
         writeStorage(STORAGE.workspaceState, {loaded: true, view: {}});
       }
-      workspaceStateStatus("已加载设置及已核验的结果选择：" + view.job_id + " / " + view.point + "。需重新检测绑定；未启动预检或仿真。");
+      workspaceStateStatus("Settings and verified result selection loaded: " + view.job_id + " / " + view.point + ". Detection and binding required again; No preflight or simulation started. ");
     } catch (error) {
       if (sequence !== state.workspaceStateSequence || appliedRevision !== state.setupRevision) return null;
       writeStorage(STORAGE.workspaceState, {loaded: true, view: {}});
       if (document.body.dataset.page === "results") renderResults(unavailableResults(view.job_id, errorMessage(error)));
-      workspaceStateStatus("设置已加载；结果选择未恢复：" + errorMessage(error) + "。没有替换成其它任务或频点。");
+      workspaceStateStatus("Settings loaded; Result selection not restored: " + errorMessage(error) + ". Not replaced with another job or frequency point. ");
     }
     return response;
   }
@@ -454,7 +454,7 @@
 
   function formatOffsetHz(value) {
     var hz = finiteOrNull(value);
-    if (hz === null) return "offset 未提供";
+    if (hz === null) return "offset Not provided";
     var absolute = Math.abs(hz);
     var scale = absolute >= 1000000 ? 1000000 : (absolute >= 1000 ? 1000 : 1);
     var unit = scale === 1000000 ? "MHz" : (scale === 1000 ? "kHz" : "Hz");
@@ -494,7 +494,7 @@
     var icon = type === "error"
       ? '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.4"/><path d="m6.7 6.7 4.6 4.6m0-4.6-4.6 4.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>'
       : '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.4"/><path d="m5.8 9 2.1 2.1 4.4-4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    item.innerHTML = '<span class="toast-icon">' + icon + '</span><span>' + escapeHtml(message) + '</span><button type="button" aria-label="关闭">×</button>';
+    item.innerHTML = '<span class="toast-icon">' + icon + '</span><span>' + escapeHtml(message) + '</span><button type="button" aria-label="Close">×</button>';
     stack.appendChild(item);
     var remove = function () {
       if (item.parentNode) item.parentNode.removeChild(item);
@@ -541,7 +541,7 @@
 
   function errorMessage(error, fallback) {
     var code = error && error.code ? "[" + error.code + "] " : "";
-    return code + (error && error.message ? error.message : fallback || "操作失败");
+    return code + (error && error.message ? error.message : fallback || "Operation failed");
   }
 
   function reportError(error, fallback) {
@@ -550,24 +550,24 @@
     var panel = byId("job-error-panel");
     if (panel) {
       panel.hidden = false;
-      panel.innerHTML = '<strong>' + escapeHtml(error && error.code ? error.code : "ISF-E9000") + '</strong><span>' + escapeHtml(error && error.message ? error.message : fallback || "操作失败") + '</span><a href="errors.html' + (error && error.code ? "?code=" + encodeURIComponent(error.code) : "") + '">排障说明</a>';
+      panel.innerHTML = '<strong>' + escapeHtml(error && error.code ? error.code : "ISF-E9000") + '</strong><span>' + escapeHtml(error && error.message ? error.message : fallback || "Operation failed") + '</span><a href="errors.html' + (error && error.code ? "?code=" + encodeURIComponent(error.code) : "") + '">Troubleshooting details</a>';
     }
   }
 
   async function checkHealth(showFeedback) {
-    setApiStatus("checking", "正在检查 API", "GET /api/health");
+    setApiStatus("checking", "Checking API", "GET /api/health");
     try {
       var health = await apiRequest("/api/health", { timeout: 2600 });
       if (health && typeof health === "object" && (health.ok === false || health.status === "error")) {
         throw new Error(health.message || "API reported unhealthy");
       }
       var version = health && typeof health === "object" ? (health.version || health.api_version || "ready") : "ready";
-      setApiStatus("online", "API 已连接", "API " + version);
-      if (showFeedback) toast("API 连接正常");
+      setApiStatus("online", "API Connected", "API " + version);
+      if (showFeedback) toast("API Connected");
       return true;
     } catch (error) {
-      setApiStatus("offline", "API 不可达", "后端数据未加载");
-      if (showFeedback) toast("API 不可达，后端数据未加载", "error");
+      setApiStatus("offline", "API unreachable", "Backend data not loaded");
+      if (showFeedback) toast("API unreachable, Backend data not loaded", "error");
       return false;
     }
   }
@@ -590,7 +590,7 @@
       var link = document.createElement("a");
       link.className = "tool-link";
       link.href = "errors.html";
-      link.textContent = "错误码";
+      link.textContent = "Error codes";
       tools.insertBefore(link, tools.firstChild);
     }
     $$('[data-action="refresh-health"]').forEach(function (button) {
@@ -723,12 +723,12 @@
     if (!panel) return;
     if (error) { panel.textContent = error; panel.dataset.state = "error"; return; }
     var preview = state.offsetPreview;
-    if (!preview) { panel.textContent = "正在核对实际 Hz 点表…"; panel.dataset.state = "pending"; return; }
+    if (!preview) { panel.textContent = "Checking actual Hz Point list…"; panel.dataset.state = "pending"; return; }
     var count = offsetTaskCount(state.currentMaestroPair, preview.values);
     panel.dataset.state = "ready";
-    panel.innerHTML = '<strong>' + count.offsets + ' 个频偏</strong><span class="offset-point-list">' + preview.values.map(function (value) { return escapeHtml(value.toPrecision(12).replace(/(?:\.0+|(?:(\.\d*?)0+))(?=e|$)/, "$1")) + ' Hz'; }).join(' · ') + '</span><span>' +
-      (count.operatingPoints === null ? '工况数待双 TB 检测确认；总评估任务数暂不可用。' : escapeHtml(count.operatingPoints + ' 个实际工况 × ' + count.offsets + ' 个频偏 = ' + count.evaluations + ' 个工况/频偏评估')) +
-      '</span><small>每个频偏运行一套完整标量流程，仿真量大致随频偏数增加；终点会包含在点表中。最多 256 点。</small>';
+    panel.innerHTML = '<strong>' + count.offsets + ' offsets</strong><span class="offset-point-list">' + preview.values.map(function (value) { return escapeHtml(value.toPrecision(12).replace(/(?:\.0+|(?:(\.\d*?)0+))(?=e|$)/, "$1")) + ' Hz'; }).join(' · ') + '</span><span>' +
+      (count.operatingPoints === null ? 'operating-point count awaits both TB Detection confirmation; Total evaluation count is unavailable. ' : escapeHtml(count.operatingPoints + ' actual operating points × ' + count.offsets + ' offsets = ' + count.evaluations + ' operating points/Offset evaluation')) +
+      '</span><small>Each offset runs a complete scalar workflow, simulation workload grows roughly with offset count; the point list includes the endpoint. maximum 256 points. </small>';
   }
 
   async function requestOffsetPreview(config) {
@@ -736,18 +736,18 @@
     var sequence = ++state.offsetPreviewSequence;
     var analysis = offsetAnalysis(config);
     state.offsetPreview = null;
-    if (!state.apiOnline) { renderOffsetPreview("API 连接后可预览实际频偏点和任务量；当前尚未核对。"); return null; }
+    if (!state.apiOnline) { renderOffsetPreview("API Connect to preview actual offsets and workload; Not reviewed yet. "); return null; }
     renderOffsetPreview();
     try {
       var report = await apiRequest("/api/offsets", { method: "POST", body: { analysis: analysis }, timeout: 5000 });
       if (sequence !== state.offsetPreviewSequence) return null;
       var values = report.offsets_hz;
-      if (!report.ok || !Array.isArray(values) || !values.length || values.length > 256 || values.some(function (value) { return typeof value !== "number" || !Number.isFinite(value) || value <= 0; })) throw new Error("频偏预览返回了无效点表");
+      if (!report.ok || !Array.isArray(values) || !values.length || values.length > 256 || values.some(function (value) { return typeof value !== "number" || !Number.isFinite(value) || value <= 0; })) throw new Error("Offset preview returned an invalid point list");
       state.offsetPreview = { signature: JSON.stringify(analysis), values: values.slice() };
       renderOffsetPreview();
       return state.offsetPreview;
     } catch (error) {
-      if (sequence === state.offsetPreviewSequence) renderOffsetPreview("请更正频偏设置：" + errorMessage(error));
+      if (sequence === state.offsetPreviewSequence) renderOffsetPreview("Correct offset settings: " + errorMessage(error));
       return null;
     }
   }
@@ -959,7 +959,7 @@
         if (field.tagName === "SELECT" && value && !Array.prototype.some.call(field.options, function (option) { return option.value === value; })) {
           var savedOption = document.createElement("option");
           savedOption.value = value;
-          savedOption.textContent = "已保存 · " + value;
+          savedOption.textContent = "Saved · " + value;
           savedOption.dataset.saved = "true";
           field.appendChild(savedOption);
         }
@@ -968,7 +968,7 @@
     });
     toggleSourceMode(config.sourceMode);
     state.currentMaestroPair = null;
-    invalidatePreflight("已读取绑定，请检测当前 TB 的信号名称并重新预检");
+    invalidatePreflight("Binding read, Detect current TB signal names, then rerun preflight");
     renderPortableMappings({});
     updateOffsetMode(config);
     scheduleOffsetPreview();
@@ -986,7 +986,7 @@
     });
     var tag = byId("tb-mode-tag");
     if (tag) {
-      tag.textContent = mode === "maestro_pair" ? "双 TB 主链" : mode === "manual" ? "旧结果回放" : "自动识别";
+      tag.textContent = mode === "maestro_pair" ? "dual TB primary workflow" : mode === "manual" ? "Historical replay" : "Automatic detection";
       tag.className = mode === "manual" ? "tag orange" : "tag";
     }
   }
@@ -994,11 +994,11 @@
   function updateConfigSummary() {
     var config = collectConfig();
     var values = {
-      "summary-project": config.projectName || "未命名项目",
+      "summary-project": config.projectName || "Untitled project",
       "summary-mode": "VCO + Flicker Maestro",
       "summary-main": config.mainTb || "—",
       "summary-replica": config.replicaTb || "—",
-      "summary-offset": config.offsetMode && config.offsetMode !== "single" ? ({ list: "多个单点", linear: "线性频偏", log: "对数频偏" })[config.offsetMode] || "待检查" : config.offsetValue + " " + config.offsetUnit,
+      "summary-offset": config.offsetMode && config.offsetMode !== "single" ? ({ list: "Offset list", linear: "Linear offset", log: "Log offset" })[config.offsetMode] || "Awaiting check" : config.offsetValue + " " + config.offsetUnit,
       "summary-harmonics": "k = 0…" + config.harmonics,
       "summary-samples": config.phaseSamples + " × " + config.periodCount + " periods"
     };
@@ -1026,9 +1026,9 @@
     state.rawConfig = persistentConfig(payload);
     writeStorage(STORAGE.rawConfig, state.rawConfig);
     var saveState = byId("save-state");
-    if (saveState) saveState.textContent = "已保存到浏览器 · " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (saveState) saveState.textContent = "Saved in browser · " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     if (!state.apiOnline) {
-      if (feedback) toast("API 不可达；配置仅保存到本机", "error");
+      if (feedback) toast("API unreachable; Configuration saved locally only", "error");
       return { config: storedConfig, localOnly: true };
     }
     try {
@@ -1036,12 +1036,12 @@
       state.rawConfig = persistentConfig(rawConfigFrom(response));
       if (!Object.keys(state.rawConfig).length) state.rawConfig = deepMerge({}, payload);
       writeStorage(STORAGE.rawConfig, state.rawConfig);
-      if (saveState) saveState.textContent = "配置已同步到 API";
-      if (feedback) toast("配置已保存并同步到 API");
+      if (saveState) saveState.textContent = "Configuration synchronized to API";
+      if (feedback) toast("Configuration saved and synchronized to API");
       return response || { config: storedConfig };
     } catch (error) {
-      if (!error.httpStatus) setApiStatus("offline", "API 写入失败", "配置仅保存在本机");
-      if (feedback) reportError(error, "配置写入失败，已保存在浏览器");
+      if (!error.httpStatus) setApiStatus("offline", "API Write failed", "Configuration stored locally only");
+      if (feedback) reportError(error, "Configuration write failed, Saved in browser");
       return { config: storedConfig, localOnly: true };
     }
   }
@@ -1065,7 +1065,7 @@
         var itemStatus = String(item.status || "warn").toLowerCase();
         var code = item.code ? '<a href="errors.html?code=' + encodeURIComponent(item.code) + '">' + escapeHtml(item.code) + '</a>' : "";
         return '<div class="preflight-check ' + escapeHtml(itemStatus) + '"><i aria-hidden="true"></i><span><strong>' + escapeHtml(item.label || item.id) + '</strong><small>' + escapeHtml(item.detail || "") + '</small></span>' + code + '</div>';
-      }).join("") || '<div class="empty-state compact">无预检条目</div>';
+      }).join("") || '<div class="empty-state compact">No preflight entries</div>';
     }
     var maestroPair = report.detected && report.detected.maestro_pair;
     var resolvedConfig = report.resolved_config || {};
@@ -1074,17 +1074,17 @@
     if (required) {
       var fields = report.required_user_fields || [];
       var labels = {
-        config_path: "高级设置 → 自动生成的仿真执行设置",
-        physical_profile: "高级设置 → 器件、端口与模型对应关系",
-        portable_setup: "高级设置 → 自动生成的仿真执行设置",
-        "execution.allow_execute": "本次 Live 执行授权"
+        config_path: "Advanced settings → Generated simulation execution settings",
+        physical_profile: "Advanced settings → Device, terminal and model mapping",
+        portable_setup: "Advanced settings → Generated simulation execution settings",
+        "execution.allow_execute": "this run Live Execution consent"
       };
       var requiredText = fields.length
-        ? "需手动补充：" + fields.map(function (field) { return labels[field] || field; }).join("、")
-        : "无需手动补充字段";
+        ? "Manual input required: " + fields.map(function (field) { return labels[field] || field; }).join(", ")
+        : "no manual fields required";
       required.innerHTML = '<span>' + escapeHtml(requiredText) + '</span>' + executionProblemsHtml(portable);
       if (fields.some(function (field) { return ["config_path", "physical_profile", "portable_setup"].indexOf(field) >= 0; }) && !(portable && portable.errors && portable.errors.length)) {
-        required.innerHTML += '<a class="settings-jump" href="index.html#portable-execution-heading" data-settings-field="portable_setup">查看具体执行设置</a>';
+        required.innerHTML += '<a class="settings-jump" href="index.html#portable-execution-heading" data-settings-field="portable_setup">View execution setting details</a>';
       }
     }
     var selected = report.detected && report.detected.inputs && report.detected.inputs.selected;
@@ -1161,10 +1161,10 @@
   }
 
   function mappingStatusText(status) {
-    return ({ detected: "自动识别", auto: "自动识别", manual: "手动覆盖", override: "手动覆盖",
-      missing: "待补充", ambiguous: "多个候选，请选择", stale: "名称已变化，请重新选择",
-      invalid: "请检查", optional: "可选", ok: "已对应", matched: "已对应", mapped: "已对应",
-      derived: "按器件端口提取", reference: "仅表达式参考", unresolved: "尚未对应", pending: "待重新检测" })[status] || String(status || "待检测");
+    return ({ detected: "Automatic detection", auto: "Automatic detection", manual: "Manual override", override: "Manual override",
+      missing: "Missing input", ambiguous: "multiple candidates, Select", stale: "names changed, Select again",
+      invalid: "Check", optional: "optional", ok: "Mapped", matched: "Mapped", mapped: "Mapped",
+      derived: "extract by device terminals", reference: "expression reference only", unresolved: "Not mapped yet", pending: "Detection required again" })[status] || String(status || "Awaiting detection");
   }
 
   function mappingFieldsWithOverrides(fields, overrides) {
@@ -1172,7 +1172,7 @@
     var present = rows.map(function (field) { return field.key; });
     Object.keys(overrides || {}).forEach(function (key) {
       if (present.indexOf(key) < 0) rows.push({ key: key, label: key, value: overrides[key], detected: "",
-        status: "stale", source: "已保存的手动覆盖", help: "当前检测尚未确认这个字段；可清空恢复自动后重新检测。" });
+        status: "stale", source: "Saved manual overrides", help: "This field is not yet confirmed by detection; clear to restore automatic detection, then detect again. " });
     });
     return rows;
   }
@@ -1199,28 +1199,28 @@
     var details = field.candidate_details;
     var info = details && Object.prototype.hasOwnProperty.call(details, current) ? details[current] : null;
     if (!info && current === validated) info = field.selected_details;
-    if (!info || ["transfer_family", "transfer_output"].indexOf(info.kind) < 0) return current && details && current !== validated ? ["新输入尚无可核对的传递来源；请应用并验证。"] : [];
+    if (!info || ["transfer_family", "transfer_output"].indexOf(info.kind) < 0) return current && details && current !== validated ? ["New input has no verifiable transfer source yet; Apply and validate. "] : [];
     var lines = [];
-    if (current !== validated) lines.push("候选表达式说明；本次手动选择尚待应用验证。");
+    if (current !== validated) lines.push("Candidate expression details; this manual selection awaits application and validation. ");
     var consumption = info.role_consumption || field.selected_details && field.selected_details.role_consumption;
-    if (consumption) lines.push("实际使用：" + consumption);
+    if (consumption) lines.push("Actually used: " + consumption);
     var members = (Array.isArray(info.members) ? info.members : []).filter(function (item) { return item && typeof item === "object"; });
-    lines.push(info.kind === "transfer_family" ? "系列 " + (info.family_name || current) + "：" + members.length + " 个已发现成员；短名不是新增的 Maestro 输出。" : "精确输出：" + current + "；保留该单项选择，不自动改成系列。");
-    lines.push("按所选输出定位原始来源与成员；电路对应关系由用户确认。");
-    lines.push("原始电流源：" + (info.source || "未确认") + "；分析：" + (info.analysis || "未确认") + "；读取代表项：" + (info.anchor_output || "未确认"));
-    if (info.sidebands && info.sidebands.length) lines.push("表达式边带：" + info.sidebands.join(", ") + "；算法使用边带 = k − 1，不能按名称后缀直接当作 k。");
+    lines.push(info.kind === "transfer_family" ? "Family " + (info.family_name || current) + ": " + members.length + " discovered members; short names do not create new Maestro Output. " : "Exact output: " + current + "; retain this single selection, not automatically converted to a family. ");
+    lines.push("the selected output identifies the raw source and family members; the user confirms the circuit mapping. ");
+    lines.push("Original current source: " + (info.source || "Unconfirmed") + "; Analysis: " + (info.analysis || "Unconfirmed") + "; Read anchor: " + (info.anchor_output || "Unconfirmed"));
+    if (info.sidebands && info.sidebands.length) lines.push("Expression sidebands: " + info.sidebands.join(", ") + "; the algorithm uses sideband = k − 1, do not interpret the name suffix as k. ");
     members.forEach(function (member) {
-      lines.push((member.name || "未命名") + " → 边带 " + (member.sideband === undefined || member.sideband === null ? "未确认" : member.sideband) + "；源 " + (member.source || "未确认") + "；分析 " + (member.analysis || "未确认") + "；" + (member.expression || "表达式未提供"));
+      lines.push((member.name || "Unnamed") + " → Sideband " + (member.sideband === undefined || member.sideband === null ? "Unconfirmed" : member.sideband) + "; Source " + (member.source || "Unconfirmed") + "; Analysis " + (member.analysis || "Unconfirmed") + "; " + (member.expression || "Expression not provided"));
     });
-    (info.errors || []).forEach(function (error) { if (error) lines.push("读取提示：" + error); });
-    (info.notes || []).forEach(function (note) { if (note) lines.push("系列提示（不阻止运行）：" + note); });
-    if (info.missing_sidebands && info.missing_sidebands.length) lines.push("缺少边带：" + info.missing_sidebands.join(", "));
+    (info.errors || []).forEach(function (error) { if (error) lines.push("Read notes: " + error); });
+    (info.notes || []).forEach(function (note) { if (note) lines.push("Family notes (does not block execution): " + note); });
+    if (info.missing_sidebands && info.missing_sidebands.length) lines.push("Missing sidebands: " + info.missing_sidebands.join(", "));
     return lines;
   }
 
   function mappingSelectionHtml(field, selected) {
     var lines = mappingSelectionLines(field, selected);
-    return lines.length ? '<summary>查看选中来源 / 系列成员</summary>' + lines.map(function (line) { return '<small>' + escapeHtml(line) + '</small>'; }).join("") : "";
+    return lines.length ? '<summary>View selected source / family members</summary>' + lines.map(function (line) { return '<small>' + escapeHtml(line) + '</small>'; }).join("") : "";
   }
 
   function refreshMappingSelection(input, row) {
@@ -1236,8 +1236,8 @@
 
   function mappingTableHtml(fields, scope, overrides, disabled, suffix, prepared) {
     var rows = prepared ? fields : mappingFieldsWithOverrides(fields, overrides);
-    if (!rows.length) return '<div class="empty-state compact">绑定并检测后显示自动识别结果；所有需要用到的名称都可在这里核对。</div>';
-    return '<div class="signal-table-scroll"><table class="signal-table mapping-table"><thead><tr><th>TB / 计算用途</th><th>TB 中实际名称（可选 / 可输入）</th><th>来源 / 缺失 / 推导</th><th>' + (disabled ? '参考值（未生效）' : '状态 / 自动候选') + '</th></tr></thead><tbody>' + rows.map(function (field, index) {
+    if (!rows.length) return '<div class="empty-state compact">Automatic detection results appear after binding and detection; All required names can be reviewed here. </div>';
+    return '<div class="signal-table-scroll"><table class="signal-table mapping-table"><thead><tr><th>TB / Calculation role</th><th>TB actual names (optional / can enter)</th><th>Source / Missing / Derived</th><th>' + (disabled ? 'reference value (not effective)' : 'State / Automatic candidate') + '</th></tr></thead><tbody>' + rows.map(function (field, index) {
       var id = "mapping-" + scope + "-" + (suffix || "") + index;
       var manual = Object.prototype.hasOwnProperty.call(overrides || {}, field.key) ? overrides[field.key] : "";
       var editable = !disabled && field.editable !== false;
@@ -1246,25 +1246,25 @@
       var candidates = mappingCandidateNames(field, selected);
       var selectionHtml = mappingSelectionHtml(field, selected);
       var details = field.selected_details || {};
-      var provenance = ({named_output: "Maestro 命名输出", script_derived: "脚本按器件端口求差", unresolved: "Maestro 缺失 / 尚未对应"})[field.maestro_presence] || "";
-      if (field.maestro_presence === "script_derived" && field.candidate_kind === "variable") provenance = "脚本生成波形文件变量（Maestro 未声明）";
+      var provenance = ({named_output: "Maestro Named output", script_derived: "Script-derived terminal difference", unresolved: "Maestro Missing / Not mapped yet"})[field.maestro_presence] || "";
+      if (field.maestro_presence === "script_derived" && field.candidate_kind === "variable") provenance = "Script-generated waveform file variable (Maestro Undeclared)";
       var variableScope = details.scope || field.scope || "";
-      var scopeText = ({global: "全局变量", test: "Test 局部变量（需改为全局）"})[variableScope] || variableScope;
-      if (variableScope === "test" && (details.shadows_global || Object.prototype.hasOwnProperty.call(details, "global_expression"))) scopeText = "全局已存在 / Test 保留同名值";
+      var scopeText = ({global: "Global variable", test: "Test local variable (must be global)"})[variableScope] || variableScope;
+      if (variableScope === "test" && (details.shadows_global || Object.prototype.hasOwnProperty.call(details, "global_expression"))) scopeText = "Global already exists / Test retain the same-name value";
       var derivation = field.effective_derivation;
       if (derivation && typeof derivation === "object") derivation = derivation.expression || derivation.description || "";
-      return '<tr><td><small>' + escapeHtml(scope === "vco" ? "VCO TB" : scope === "flicker" ? "噪声 TB" : "执行设置") + '</small><label for="' + id + '">' + escapeHtml(field.label || field.key) + (field.required ? '<span class="required"> *</span>' : "") + '</label>' +
+      return '<tr><td><small>' + escapeHtml(scope === "vco" ? "VCO TB" : scope === "flicker" ? "Noise TB" : "Execution settings") + '</small><label for="' + id + '">' + escapeHtml(field.label || field.key) + (field.required ? '<span class="required"> *</span>' : "") + '</label>' +
         '<small>' + escapeHtml(field.help || "") + '</small>' +
-        (field.consumption_mode ? '<small>消费方式：' + escapeHtml(field.consumption_mode) + '</small>' : '') +
-        (field.used_by && field.used_by.length ? '<small>用于：' + escapeHtml(field.used_by.join("；")) + '</small>' : field.group === "reference" ? '<small>仅对照，不参与计算</small>' : '') + '</td>' +
+        (field.consumption_mode ? '<small>Consumption: ' + escapeHtml(field.consumption_mode) + '</small>' : '') +
+        (field.used_by && field.used_by.length ? '<small>used for: ' + escapeHtml(field.used_by.join("; ")) + '</small>' : field.group === "reference" ? '<small>reference only, excluded from calculation</small>' : '') + '</td>' +
         '<td><input id="' + id + '" class="mono-input" type="text" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" data-mapping-scope="' + scope + '" data-mapping-key="' + escapeHtml(field.key) + '" data-mapping-detected="' + escapeHtml(field.detected || field.effective_value || "") +
-        '" list="' + id + '-candidates" value="' + escapeHtml(selected) + '" placeholder="选择候选或填写真实名称"' + (editable ? "" : " disabled") + '>' +
+        '" list="' + id + '-candidates" value="' + escapeHtml(selected) + '" placeholder="Select a candidate or enter an actual name"' + (editable ? "" : " disabled") + '>' +
         '<datalist id="' + id + '-candidates">' + candidates.map(function (candidate) { return '<option value="' + escapeHtml(candidate) + '"></option>'; }).join("") + '</datalist>' +
-        '<small>' + escapeHtml((manual ? "手动选择" : "自动选择") + " · " + candidates.length + " 个候选；" + (field.candidate_details ? "系列已合并，仍可输入完整单项名称" : "允许输入其他名称")) + '</small>' +
+        '<small>' + escapeHtml((manual ? "Manual selection" : "Automatic selection") + " · " + candidates.length + " candidates; " + (field.candidate_details ? "family merged, full individual names may still be entered" : "other names may be entered")) + '</small>' +
         (selectionHtml || field.candidate_details ? '<details data-mapping-selection-details' + (selectionHtml ? "" : " hidden") + '>' + selectionHtml + '</details>' : '') +
-        (editable ? '<button type="button" class="mapping-reset" data-mapping-reset="' + id + '">恢复自动</button>' : '<small>由已选信号或专家配置决定</small>') +
-        '</td><td><small>' + escapeHtml([provenance, scopeText, derivation, field.source].filter(Boolean).join("；") || "等待检测") + '</small>' +
-        (details.expression ? '<code>' + escapeHtml(details.expression) + '</code>' : '') + '</td><td><code data-mapping-effective>' + escapeHtml(value || field.effective_value || "未确定") + '</code><small data-mapping-status>' + escapeHtml(disabled ? "专家文件优先；此项不生效" : field.effective_value && !value ? "本次脚本生成；Maestro 尚未声明" : mappingStatusText(field.status)) + '</small><small>自动候选：' + escapeHtml(field.detected || "尚未唯一确定；可手动选择") + '</small></td></tr>';
+        (editable ? '<button type="button" class="mapping-reset" data-mapping-reset="' + id + '">Restore automatic</button>' : '<small>determined by selected signals or expert configuration</small>') +
+        '</td><td><small>' + escapeHtml([provenance, scopeText, derivation, field.source].filter(Boolean).join("; ") || "Waiting for detection") + '</small>' +
+        (details.expression ? '<code>' + escapeHtml(details.expression) + '</code>' : '') + '</td><td><code data-mapping-effective>' + escapeHtml(value || field.effective_value || "Undetermined") + '</code><small data-mapping-status>' + escapeHtml(disabled ? "Expert file takes precedence; This item is inactive" : field.effective_value && !value ? "Generated by this script; Maestro Not declared yet" : mappingStatusText(field.status)) + '</small><small>Automatic candidate: ' + escapeHtml(field.detected || "Not uniquely determined yet; can select manually") + '</small></td></tr>';
     }).join("") + '</tbody></table></div>';
   }
 
@@ -1282,33 +1282,33 @@
     var groups = { main: [], details: [], reference: [] };
     rows.forEach(function (field) { groups[mappingFieldGroup(field, overrides)].push(field); });
     var html = mappingTableHtml(groups.main, scope, overrides, disabled, "main-", true);
-    [["details", "本次执行细节"], ["reference", "仅参考或当前未使用的名称"]].forEach(function (entry) {
-      if (groups[entry[0]].length) html += '<details class="nested-details mapping-diagnostics"><summary>' + entry[1] + '（' + groups[entry[0]].length + '）</summary>' + mappingTableHtml(groups[entry[0]], scope, overrides, disabled, entry[0] + "-", true) + '</details>';
+    [["details", "Current execution details"], ["reference", "reference-only or currently unused names"]].forEach(function (entry) {
+      if (groups[entry[0]].length) html += '<details class="nested-details mapping-diagnostics"><summary>' + entry[1] + ' (' + groups[entry[0]].length + ')</summary>' + mappingTableHtml(groups[entry[0]], scope, overrides, disabled, entry[0] + "-", true) + '</details>';
     });
     return html;
   }
 
   function signalCatalogSummary(catalog) {
     var rows = Array.isArray(catalog) ? catalog : [];
-    return [["net", "节点"], ["output", "Maestro 输出"], ["variable", "Maestro 设计变量"], ["parameter", "网表参数"]].map(function (entry) {
+    return [["net", "Node"], ["output", "Maestro Output"], ["variable", "Maestro Design variable"], ["parameter", "Netlist parameter"]].map(function (entry) {
       var names = rows.filter(function (item) { return item.kind === entry[0]; }).map(function (item) { return item.name; });
-      return entry[1] + " " + names.filter(function (name, index) { return names.indexOf(name) === index; }).length + " 项";
+      return entry[1] + " " + names.filter(function (name, index) { return names.indexOf(name) === index; }).length + " items";
     }).join(" · ");
   }
 
   function signalCatalogHtml(catalog, query, kind) {
     var all = Array.isArray(catalog) ? catalog : [];
     var needle = String(query || "").trim().toLocaleLowerCase();
-    var kinds = { net: "节点 net", output: "Maestro 输出 Output", variable: "Maestro 设计变量", device: "器件", analysis: "仿真分析", parameter: "网表参数", saved_signal: "保存信号", save: "保存信号", trace: "输出引用信号", source: "电压 / 电流源", include: "包含文件", subcircuit: "子电路", model: "模型" };
+    var kinds = { net: "Node net", output: "Maestro output", variable: "Maestro Design variable", device: "Device", analysis: "Simulation analysis", parameter: "Netlist parameter", saved_signal: "Saved signals", save: "Saved signals", trace: "Output-referenced signals", source: "Voltage / current source", include: "included file", subcircuit: "Subcircuit", model: "Model" };
     var rows = all.filter(function (item) {
       var kindMatches = !kind || item.kind === kind || kind === "save" && ["saved_signal", "trace"].indexOf(item.kind) >= 0;
       return kindMatches && (!needle || [item.kind, item.name, item.expression, item.source, item.details && JSON.stringify(item.details), kinds[item.kind]].join(" ").toLocaleLowerCase().indexOf(needle) >= 0);
     });
-    return '<p class="caption">显示 ' + rows.length + ' / ' + all.length + ' 项；清单保留原始名称、表达式和来源。输出名称的选择不修改原 Maestro 表达式。</p>' +
-      (rows.length ? '<div class="signal-table-scroll catalog-scroll"><table class="signal-table"><thead><tr><th>类型</th><th>名称</th><th>表达式 / 详情</th><th>来源</th></tr></thead><tbody>' + rows.map(function (item) {
+    return '<p class="caption">show ' + rows.length + ' / ' + all.length + ' items; Inventory preserves original names, Expression & source. selecting output names does not modify the original Maestro Expression. </p>' +
+      (rows.length ? '<div class="signal-table-scroll catalog-scroll"><table class="signal-table"><thead><tr><th>Type</th><th>Name</th><th>Expression / Details</th><th>Source</th></tr></thead><tbody>' + rows.map(function (item) {
         var details = typeof item.details === "string" ? item.details : item.details ? JSON.stringify(item.details) : "";
-        return '<tr><td>' + escapeHtml(kinds[item.kind] || item.kind || "其他") + '</td><td><code>' + escapeHtml(item.name) + '</code></td><td><code>' + escapeHtml(item.expression || "") + '</code><small>' + escapeHtml(details) + '</small></td><td>' + escapeHtml(item.source) + '</td></tr>';
-      }).join("") + '</tbody></table></div>' : '<div class="empty-state compact">' + (needle || kind ? "当前清单没有这一类型或匹配的名称 / 表达式；可切回全部类型核对。" : "检测后显示完整清单") + '</div>');
+        return '<tr><td>' + escapeHtml(kinds[item.kind] || item.kind || "Other") + '</td><td><code>' + escapeHtml(item.name) + '</code></td><td><code>' + escapeHtml(item.expression || "") + '</code><small>' + escapeHtml(details) + '</small></td><td>' + escapeHtml(item.source) + '</td></tr>';
+      }).join("") + '</tbody></table></div>' : '<div class="empty-state compact">' + (needle || kind ? "No names match this type or filter / Expression; switch to All types to review. " : "Full inventory appears after detection") + '</div>');
   }
 
   function renderSignalCatalog(role, roleReport) {
@@ -1318,17 +1318,17 @@
     var catalog = byId(role + "-signal-catalog");
     if (catalog) catalog.innerHTML = signalCatalogHtml(item.signal_catalog, filter && filter.value, kind && kind.value);
     var summary = byId(role + "-catalog-summary");
-    if (summary) summary.textContent = item.signal_catalog ? signalCatalogSummary(item.signal_catalog) : "检测后显示分类数量";
+    if (summary) summary.textContent = item.signal_catalog ? signalCatalogSummary(item.signal_catalog) : "Counts by type appear after detection";
   }
 
   function executionProblemsHtml(portable) {
     var errors = portable && Array.isArray(portable.errors) ? portable.errors : [];
     var fields = portable && Array.isArray(portable.fields) ? portable.fields : [];
     if (!errors.length) return "";
-    return '<ul class="execution-problems" aria-label="仿真执行设置具体问题">' + errors.map(function (error) {
+    return '<ul class="execution-problems" aria-label="Execution setting issues">' + errors.map(function (error) {
       var field = fields.find(function (item) { return item.key === error.field; });
-      var label = field && field.label || "需要确认的对应关系";
-      return '<li><strong>' + escapeHtml(label) + '</strong><span>' + escapeHtml(error.message || error.field || "请检查当前对应关系") + '</span><a class="settings-jump" href="index.html#portable-execution-heading" data-settings-field="' + escapeHtml(error.field || "portable_setup") + '">定位并修改此项</a></li>';
+      var label = field && field.label || "Mappings requiring confirmation";
+      return '<li><strong>' + escapeHtml(label) + '</strong><span>' + escapeHtml(error.message || error.field || "Check current mappings") + '</span><a class="settings-jump" href="index.html#portable-execution-heading" data-settings-field="' + escapeHtml(error.field || "portable_setup") + '">Locate and edit this item</a></li>';
     }).join("") + '</ul>';
   }
 
@@ -1382,8 +1382,8 @@
   function renderCrossTbMapping(report, pending) {
     var panel = byId("cross-tb-mapping");
     if (!panel) return;
-    panel.innerHTML = '<div class="signal-table-scroll"><table class="signal-table"><thead><tr><th>物理量</th><th>VCO 周期波形输出</th><th>→ Flicker 直流变量</th><th>状态 / 用途</th></tr></thead><tbody>' + crossTbRows(report, pending).map(function (row) {
-      return '<tr><th>' + escapeHtml(row.semantic) + '</th><td><code>' + escapeHtml(row.vco_value || "待识别") + '</code><small>' + escapeHtml(row.vco_expression && row.vco_expression !== row.vco_value ? row.vco_expression : "") + '</small></td><td><code>' + escapeHtml(row.replica_value || "待识别") + '</code></td><td>' + escapeHtml(mappingStatusText(row.status)) + '<small>' + escapeHtml(row.help || "按物理量对应；名称无需相同。修改两侧对应项后重新检测。") + '</small></td></tr>';
+    panel.innerHTML = '<div class="signal-table-scroll"><table class="signal-table"><thead><tr><th>Quantity</th><th>VCO Periodic waveform output</th><th>→ Flicker DC variable</th><th>State / Purpose</th></tr></thead><tbody>' + crossTbRows(report, pending).map(function (row) {
+      return '<tr><th>' + escapeHtml(row.semantic) + '</th><td><code>' + escapeHtml(row.vco_value || "Awaiting detection") + '</code><small>' + escapeHtml(row.vco_expression && row.vco_expression !== row.vco_value ? row.vco_expression : "") + '</small></td><td><code>' + escapeHtml(row.replica_value || "Awaiting detection") + '</code></td><td>' + escapeHtml(mappingStatusText(row.status)) + '<small>' + escapeHtml(row.help || "map by physical quantity; names need not match. edit mappings on both sides, then detect again. ") + '</small></td></tr>';
     }).join("") + '</tbody></table></div>';
   }
 
@@ -1393,7 +1393,7 @@
     var expert = String(byId("engine-config-path") && byId("engine-config-path").value || "").trim();
     panel.innerHTML = groupedMappingHtml(portable && portable.fields, "execution", state.portableSetup.overrides, Boolean(expert));
     var status = byId("portable-execution-status");
-    if (status) status.textContent = expert ? "正在使用专家配置文件：" + expert + "。下表自动建议与执行覆盖均不生效，已设为只读；清空专家路径即可恢复自动并允许编辑。" : portable && portable.ok ? "执行设置已自动生成，可逐项查看和覆盖。" : "等待补齐可明确识别的器件、节点和模型；下表会列出需要选择的项。";
+    if (status) status.textContent = expert ? "Using expert configuration file: " + expert + ". Generated suggestions and execution overrides below are inactive, Set to read-only; Clear the expert path to restore automatic settings and enable editing. " : portable && portable.ok ? "Execution settings generated, inspect and override each item. " : "Waiting for identifiable device mappings, nodes and models; The table below lists items requiring selection. ";
     var errors = byId("portable-execution-errors");
     if (errors) errors.innerHTML = expert ? "" : executionProblemsHtml(portable);
   }
@@ -1418,7 +1418,7 @@
       var unresolved = fields.filter(function (field) { return ["missing", "ambiguous", "invalid", "stale"].indexOf(field.status) >= 0 && field.required !== false; });
       var catalogs = ["vco", "flicker"].reduce(function (all, role) { return all.concat(report.roles && report.roles[role] && report.roles[role].signal_catalog || []); }, []);
       var activeCount = fields.filter(function (field) { return field.active !== false && field.group !== "reference"; }).length;
-      summary.textContent = !fields.length ? "检测后显示本次实际使用的信号、注入支路和跨 TB 对应；完整名称清单保留在折叠诊断中。" : unresolved.length ? "有 " + unresolved.length + " 项用途需要手动选择；打开高级设置处理。" : "已识别 " + activeCount + " 项实际用途；可查看来源、消费方式和覆盖，完整清单在折叠诊断中。";
+      summary.textContent = !fields.length ? "Effective signals appear after detection, injection branch and cross- TB Mapping; full name inventory remains in collapsed diagnostics. " : unresolved.length ? "has " + unresolved.length + " roles require manual selection; Open Advanced settings to resolve. " : "Detected " + activeCount + " effective roles; provenance available, Consumption & overrides, full inventory is in collapsed diagnostics. ";
     }
   }
 
@@ -1426,16 +1426,16 @@
     var panel = byId("waveform-exchange");
     if (!panel) return;
     if (!exchange) {
-      panel.innerHTML = '<p class="caption">波形传递尚未检查；已有 history 或旧绑定不证明本次闭环就绪，请重新识别并绑定。</p>';
+      panel.innerHTML = '<p class="caption">Waveform transfer not checked; existing history or old bindings do not prove this loop is ready, Detect and bind again. </p>';
       return;
     }
     var rows = Array.isArray(exchange.rows) ? exchange.rows : [];
     var checks = (exchange.checks || []).filter(function (item) { return ["pass", "ok"].indexOf(item.status) < 0; });
-    panel.innerHTML = '<p class="caption" role="status">' + escapeHtml(exchange.summary || (exchange.ok ? "波形传递静态检查通过" : "波形传递检查未通过")) + '</p><p class="caption">' + escapeHtml(exchange.path_policy || "") + '</p>' +
-      '<div class="signal-table-scroll"><table class="signal-table"><thead><tr><th>物理量</th><th>VCO 实际来源</th><th>噪声 TB 接收端 / Global variable</th><th>本次相对路径</th><th>结果 / 需处理项</th></tr></thead><tbody>' + rows.map(function (row) {
-        return '<tr><th>' + escapeHtml(row.semantic) + '</th><td><code>' + escapeHtml(row.source_output || "无命名输出") + '</code><small>' + escapeHtml(row.source_expression || "") + '</small><small>' + escapeHtml(row.source_kind || "") + '</small></td><td><code>' + escapeHtml(row.destination_source || "待补充") + '</code><small>' + escapeHtml([row.destination_variable, row.pwl_variable, row.scope].filter(Boolean).join(" · ")) + '</small></td><td><code>' + escapeHtml(row.relative_file || "待生成") + '</code></td><td>' + escapeHtml(mappingStatusText(row.status)) + '<small>' + escapeHtml(row.detail || "") + '</small></td></tr>';
+    panel.innerHTML = '<p class="caption" role="status">' + escapeHtml(exchange.summary || (exchange.ok ? "Static waveform transfer check passed" : "Waveform transfer check failed")) + '</p><p class="caption">' + escapeHtml(exchange.path_policy || "") + '</p>' +
+      '<div class="signal-table-scroll"><table class="signal-table"><thead><tr><th>Quantity</th><th>VCO Actual source</th><th>Noise TB Destination / Global variable</th><th>Current relative path</th><th>Result / Items needing action</th></tr></thead><tbody>' + rows.map(function (row) {
+        return '<tr><th>' + escapeHtml(row.semantic) + '</th><td><code>' + escapeHtml(row.source_output || "No named output") + '</code><small>' + escapeHtml(row.source_expression || "") + '</small><small>' + escapeHtml(row.source_kind || "") + '</small></td><td><code>' + escapeHtml(row.destination_source || "Missing input") + '</code><small>' + escapeHtml([row.destination_variable, row.pwl_variable, row.scope].filter(Boolean).join(" · ")) + '</small></td><td><code>' + escapeHtml(row.relative_file || "Not generated yet") + '</code></td><td>' + escapeHtml(mappingStatusText(row.status)) + '<small>' + escapeHtml(row.detail || "") + '</small></td></tr>';
       }).join("") + '</tbody></table></div>' + checks.map(function (item) { return '<p class="caption">' + escapeHtml(item.detail || item.id) + '</p>'; }).join("") +
-      '<p class="caption">绑定阶段验证文件生成和仿真准备；实际运行时还会检查波形文件及仿真结果，静态通过不表示已完成新仿真。</p>';
+      '<p class="caption">Binding validates file generation and simulation preparation; execution also checks waveform files and simulation results, passing static checks does not mean new simulation has completed. </p>';
   }
 
   function invalidatePreflight(message) {
@@ -1443,13 +1443,13 @@
     state.currentPreflight = null;
     writeStorage(STORAGE.preflight, null);
     var status = byId("preflight-status");
-    if (status) { status.textContent = "需重跑"; status.className = "status-pill warning"; }
+    if (status) { status.textContent = "Rerun required"; status.className = "status-pill warning"; }
     var summary = byId("preflight-summary");
-    if (summary) summary.innerHTML = '<strong>—</strong><span>设置已变化</span>';
+    if (summary) summary.innerHTML = '<strong>—</strong><span>Settings changed</span>';
     var checks = byId("preflight-checks");
-    if (checks) checks.innerHTML = '<div class="empty-state compact">请用当前设置重新预检</div>';
+    if (checks) checks.innerHTML = '<div class="empty-state compact">Run preflight again with current settings</div>';
     var required = byId("preflight-required");
-    if (required) required.textContent = message || "设置已更改，请重新预检";
+    if (required) required.textContent = message || "Settings changed, Run preflight again";
   }
 
   function updateMappingOverride(scope, key, value) {
@@ -1459,9 +1459,9 @@
     if (value) target[key] = value;
     else delete target[key];
     if (scope !== "execution") clearMaestroRoleFingerprints(scope);
-    invalidatePreflight("信号或执行设置已更改，请重新检测并预检");
+    invalidatePreflight("Signal or execution settings changed, Detect and run preflight again");
     var summary = byId("mapping-readiness");
-    if (summary) summary.textContent = "手动覆盖已更新；重新检测后会显示实际使用值和检查结果。";
+    if (summary) summary.textContent = "Manual overrides updated; Detection shows effective values and check results. ";
     renderCrossTbMapping(state.currentMaestroPair || {}, true);
   }
 
@@ -1473,16 +1473,16 @@
       if (byId(id)) byId(id).value = "";
     });
     if (resetHistory && byId(maestroRoleFields(role).history)) {
-      byId(maestroRoleFields(role).history).innerHTML = '<option value="">重新检测可用 history</option>';
+      byId(maestroRoleFields(role).history).innerHTML = '<option value="">Detect available history</option>';
       byId(maestroRoleFields(role).history).value = "";
     }
     state.currentMaestroPair = null;
-    invalidatePreflight("绑定已更改，已清除此 TB 的旧覆盖和执行设置；请重新检测");
+    invalidatePreflight("Binding changed, Cleared this TB legacy overrides and execution settings; Detect again");
     renderPortableMappings({});
     var notice = byId("mapping-change-notice");
-    if (notice) { notice.hidden = false; notice.textContent = "绑定已变化：已清除此 TB 的手动映射、旧执行设置及 PDK 选择。请重新检测，避免沿用上一个 TB 的名称。"; }
+    if (notice) { notice.hidden = false; notice.textContent = "Binding changed: Cleared this TB manual mapping, legacy execution settings and PDK Select. Detect again, avoid reusing the previous TB name. "; }
     var status = byId(maestroRoleFields(role).status);
-    if (status) { status.textContent = "需重新检测"; status.className = "tag orange"; }
+    if (status) { status.textContent = "Detection required again"; status.className = "tag orange"; }
   }
 
   function maestroRoleFields(role) {
@@ -1555,8 +1555,8 @@
     var choice = selectHistoryCandidate(histories, requested, testName);
     var selectedValue = choice.selected ? String(choice.selected.path || choice.selected.name || "") : "";
     var placeholder = choice.completeCount > 1
-      ? "请选择完整 history（" + choice.completeCount + " 个）"
-      : choice.completeCount === 1 ? "唯一完整 history 已自动选择" : (choice.historyCount ? "无可绑定的完整 history" : "未发现 history");
+      ? "Select a complete history (" + choice.completeCount + " items)"
+      : choice.completeCount === 1 ? "unique complete history Selected automatically" : (choice.historyCount ? "No complete bindable history" : "not discovered history");
     if (select) {
       select.innerHTML = '<option value="">' + escapeHtml(placeholder) + '</option>' + histories.map(function (history) {
         var disabled = historyCanBind(history, testName) ? "" : " disabled";
@@ -1583,7 +1583,7 @@
   }
 
   function roleDetailHtml(roleReport, role, historyState) {
-    if (!roleReport || !roleReport.selected_test) return '<span>未找到可绑定 test</span>';
+    if (!roleReport || !roleReport.selected_test) return '<span>No bindable candidate found for test</span>';
     var test = roleReport.selected_test;
     var design = test.design || {};
     var analyses = (test.analyses || []).filter(function (item) { return item.enabled; }).map(function (item) { return item.name; });
@@ -1597,7 +1597,7 @@
       historyHtml = '<span>history · ' + escapeHtml(history.name || "?") + '</span>' +
         '<span>RDB · ' + escapeHtml(history.path || "?") + '</span>' +
         '<span>complete/checked · ' + escapeHtml(finite(history.complete_runs, 0)) + '/' + escapeHtml(finite(history.checked_runs, 0)) + '</span>' +
-        '<span>仿真记录 · ' + (historyState.bindingReady ? "已确认" : "待重新检测") + '</span>';
+        '<span>History · ' + (historyState.bindingReady ? "Confirmed" : "Detection required again") + '</span>';
       var manifest = history.history_manifest || historyState.bindingReady && roleReport.history_manifest;
       var sourceRows = manifest && Array.isArray(manifest.source_netlists) ? manifest.source_netlists : [];
       if (sourceRows.length) {
@@ -1608,20 +1608,20 @@
           if (!complete || !(design.lib || design.library) || !design.cell || !design.view) unknown = true;
           else if (origin.library !== (design.lib || design.library) || origin.cell !== design.cell || origin.view !== design.view) mismatch = true;
           var stamp = finiteOrNull(source.source_mtime), date = stamp !== null ? new Date(stamp * 1000) : null;
-          var time = date && Number.isFinite(date.getTime()) ? date.toISOString() : "未知";
-          return '<span>点 ' + escapeHtml(source.point_id === undefined || source.point_id === null ? "未知" : source.point_id) + ' / corner ' + escapeHtml(source.corner || "未知") + ' · ' + escapeHtml((origin.library || "?") + '/' + (origin.cell || "?") + '/' + (origin.view || "?")) + '</span><span>网表时间 · ' + escapeHtml(time) + ' · SHA256 ' + escapeHtml(source.sha256 ? String(source.sha256).slice(0, 12) : "未知") + '</span>';
+          var time = date && Number.isFinite(date.getTime()) ? date.toISOString() : "Unknown";
+          return '<span>points ' + escapeHtml(source.point_id === undefined || source.point_id === null ? "Unknown" : source.point_id) + ' / corner ' + escapeHtml(source.corner || "Unknown") + ' · ' + escapeHtml((origin.library || "?") + '/' + (origin.cell || "?") + '/' + (origin.view || "?")) + '</span><span>Netlist timestamp · ' + escapeHtml(time) + ' · SHA256 ' + escapeHtml(source.sha256 ? String(source.sha256).slice(0, 12) : "Unknown") + '</span>';
         }).join("");
-        historyHtml += '<details class="history-source-details"><summary>实际 history 网表 · ' + sourceRows.length + ' 条 · ' + (mismatch ? "与当前设计存在差异" : unknown ? "部分来源未知" : "设计来源一致") + '</summary>' + details + '<span>展示实际历史网表来源，不把当前设计视图当作旧仿真的来源；差异仅提示，不禁止合法历史回放。</span></details>';
-      } else historyHtml += '<span>实际 history 网表来源 / 时间 / hash · 未提供，不能由当前设计推定</span>';
+        historyHtml += '<details class="history-source-details"><summary>actual history netlist · ' + sourceRows.length + ' curves · ' + (mismatch ? "differs from the current design" : unknown ? "Some sources unknown" : "Design provenance matches") + '</summary>' + details + '<span>Show actual historical netlist provenance, current design views are not used as historical simulation provenance; differences are informational, valid historical replay remains allowed. </span></details>';
+      } else historyHtml += '<span>actual history Netlist provenance / Time / hash · Not provided, cannot be inferred from the current design</span>';
     } else if (historyState && historyState.requiresManual) {
-      historyHtml = '<span>history · ' + escapeHtml(historyState.completeCount + " 个完整候选，需手动选择") + '</span>';
+      historyHtml = '<span>history · ' + escapeHtml(historyState.completeCount + " complete candidates, Manual selection required") + '</span>';
     } else {
-      historyHtml = '<span>history · 未找到可绑定的完整 RDB</span>';
+      historyHtml = '<span>history · No complete bindable candidate found for RDB</span>';
     }
-    return '<strong>当前 test 设计 · ' + escapeHtml((design.lib || design.library || "?") + "/" + (design.cell || "?") + "/" + (design.view || "?")) + '</strong>' +
+    return '<strong>Current test design · ' + escapeHtml((design.lib || design.library || "?") + "/" + (design.cell || "?") + "/" + (design.view || "?")) + '</strong>' +
       '<span>test · ' + escapeHtml(test.name || "?") + '</span>' +
       '<span>analysis · ' + escapeHtml(analyses.join(", ") || "none") + '</span>' +
-      '<span>主要信号 · ' + escapeHtml(mapped || "需在高级设置补充") + '</span>' + historyHtml;
+      '<span>Main signals · ' + escapeHtml(mapped || "Complete in Advanced settings") + '</span>' + historyHtml;
   }
 
   function applyMaestroBindings(report) {
@@ -1673,7 +1673,7 @@
       var historyState = historyStates[role];
       var fields = maestroRoleFields(role);
       var sealed = Boolean(byId(fields.fingerprint) && byId(fields.fingerprint).value && byId(fields.historyFingerprint) && byId(fields.historyFingerprint).value);
-      var label = exchangeFailed ? "波形传递待修正" : !contractReady ? "需处理" : historyState.requiresManual ? "选择 history" : !historyState.selected ? "无完整 history" : !historyState.bindingReady ? "需重新检测" : (bindingAccepted || sealed ? "已绑定" : "已识别");
+      var label = exchangeFailed ? "Waveform transfer needs correction" : !contractReady ? "Needs action" : historyState.requiresManual ? "Select history" : !historyState.selected ? "No complete history" : !historyState.bindingReady ? "Detection required again" : (bindingAccepted || sealed ? "Bound" : "Detected");
       var status = byId(entry[2]);
       if (status) {
         status.textContent = label;
@@ -1689,7 +1689,7 @@
         var historyState = historyStates[entry[0]];
         var label = maestroRoleFields(entry[0]).label;
         if (historyState.requiresManual) {
-          return '<div class="pair-issue warning"><i aria-hidden="true"></i><span><strong>' + escapeHtml(label + " history 需手动选择") + '</strong><small>' + escapeHtml("发现 " + historyState.completeCount + " 个完整 RDB；请选择一个后重新检测绑定。") + '</small></span><span class="tag orange">HISTORY</span></div>';
+          return '<div class="pair-issue warning"><i aria-hidden="true"></i><span><strong>' + escapeHtml(label + " history Manual selection required") + '</strong><small>' + escapeHtml("Discover " + historyState.completeCount + " complete RDB; Select one, then detect and bind again. ") + '</small></span><span class="tag orange">HISTORY</span></div>';
         }
         return "";
       }).filter(Boolean);
@@ -1699,7 +1699,7 @@
         var action = issue.action ? " · " + issue.action : "";
         return '<div class="pair-issue ' + escapeHtml(severity) + '"><i aria-hidden="true"></i><span><strong>' + escapeHtml(issue.title || issue.code) + '</strong><small>' + escapeHtml((issue.detail || issue.message || "") + action) + '</small></span><a href="errors.html?code=' + encodeURIComponent(issue.code || "") + '">' + escapeHtml(issue.code || "INFO") + '</a></div>';
       });
-      panel.innerHTML = issueHtml.concat(historyNotices).join("") || '<div class="empty-state compact">双 TB 合同与所选 history 完整，未发现缺失或改名。</div>';
+      panel.innerHTML = issueHtml.concat(historyNotices).join("") || '<div class="empty-state compact">dual TB contract and selected history Complete, No missing or renamed items found. </div>';
     }
     var bindings = report.bindings || {};
     if (bindingAccepted || !acceptBindings) {
@@ -1716,7 +1716,7 @@
 
   async function inspectMaestroPair(config, acceptBindings, feedback) {
     if (!state.apiOnline) {
-      if (feedback) reportError({ code: "ISF-E9000", message: "API 不可达，无法读取 Maestro" });
+      if (feedback) reportError({ code: "ISF-E9000", message: "API unreachable, Cannot read Maestro" });
       return null;
     }
     try {
@@ -1730,25 +1730,25 @@
         timeout: 30000
       });
       if (revision !== state.setupRevision) {
-        if (feedback) toast("检测期间设置已变化，请用当前设置重新检测", "error");
+        if (feedback) toast("Settings changed during detection, Detect again with current settings", "error");
         return null;
       }
       report.ui_binding_ready = renderMaestroPair(report, acceptBindings);
       if (feedback) {
-        var message = report.ui_binding_ready ? "双 Maestro 与精确 history 已检测并绑定" : report.ok ? "请选择各卡片的完整 history，再重新检测绑定" : "双 Maestro 仍有必须处理的问题";
+        var message = report.ui_binding_ready ? "dual Maestro and exact history Detected and bound" : report.ok ? "Select a complete entry in each card history, then detect and bind again" : "dual Maestro issues still require action";
         if (!report.ui_binding_ready && report.roles) {
           var testChoices = ["vco", "flicker"].filter(function (role) { var item = report.roles[role] || {}; return (item.test_names || []).length > 1 && !item.selected_test; });
           var missingNames = ["vco", "flicker"].reduce(function (all, role) {
-            return all.concat(((report.roles[role] || {}).mapping_fields || []).filter(function (field) { return field.required !== false && ["missing", "ambiguous", "invalid", "stale"].indexOf(field.status) >= 0; }).map(function (field) { return (role === "vco" ? "VCO " : "噪声 TB ") + (field.label || field.key); }));
+            return all.concat(((report.roles[role] || {}).mapping_fields || []).filter(function (field) { return field.required !== false && ["missing", "ambiguous", "invalid", "stale"].indexOf(field.status) >= 0; }).map(function (field) { return (role === "vco" ? "VCO " : "Noise TB ") + (field.label || field.key); }));
           }, []);
-          if (testChoices.length) message = testChoices.map(function (role) { return role === "vco" ? "VCO" : "噪声 TB"; }).join("、") + " 有多个 Maestro Test；请在 Test 下拉中选择。器件和电流检测源在高级对应表单独选择。";
-          else if (missingNames.length) message = "需手动对应：" + missingNames.slice(0, 4).join("、") + "；请在高级设置逐行选择或输入。";
+          if (testChoices.length) message = testChoices.map(function (role) { return role === "vco" ? "VCO" : "Noise TB"; }).join(", ") + " has multiple Maestro Test; Use Test select from the list. devices and current-sensing sources are selected separately in Advanced mappings. ";
+          else if (missingNames.length) message = "Needs manual mapping: " + missingNames.slice(0, 4).join(", ") + "; Select or enter each row in Advanced settings. ";
         }
         toast(message, report.ui_binding_ready ? undefined : "error", 7000);
       }
       return report;
     } catch (error) {
-      if (feedback) reportError(error, "Maestro 双 TB 检测失败");
+      if (feedback) reportError(error, "Maestro dual TB Detection failed");
       return null;
     }
   }
@@ -1760,24 +1760,24 @@
     clearPortableBinding(role, false);
     var status = byId(fields.status);
     if (status) {
-      status.textContent = "需重新检测";
+      status.textContent = "Detection required again";
       status.className = "tag orange";
     }
     var detail = byId(fields.detail);
     if (detail) {
       detail.innerHTML = select && select.value
-        ? '<strong>history 已更改</strong><span>history · ' + escapeHtml(selected && selected.dataset.historyName || "?") + '</span><span>RDB · ' + escapeHtml(select.value) + '</span><span>complete/checked · ' + escapeHtml(selected && selected.dataset.complete || "0") + '/' + escapeHtml(selected && selected.dataset.checked || "0") + '</span><span>history fingerprint · 待重新检测</span>'
-        : '<strong>history 已清除</strong><span>请选择完整 RDB 后重新检测绑定</span>';
+        ? '<strong>history Changed</strong><span>history · ' + escapeHtml(selected && selected.dataset.historyName || "?") + '</span><span>RDB · ' + escapeHtml(select.value) + '</span><span>complete/checked · ' + escapeHtml(selected && selected.dataset.complete || "0") + '/' + escapeHtml(selected && selected.dataset.checked || "0") + '</span><span>history fingerprint · Detection required again</span>'
+        : '<strong>history Cleared</strong><span>Select a complete RDB then detect and bind again</span>';
     }
     var preflightStatus = byId("preflight-status");
     if (preflightStatus) {
-      preflightStatus.textContent = "需重跑";
+      preflightStatus.textContent = "Rerun required";
       preflightStatus.className = "status-pill warning";
     }
     var required = byId("preflight-required");
-    if (required) required.textContent = "history 已更改，旧信号覆盖已清除，需重新检测并绑定";
+    if (required) required.textContent = "history Changed, Legacy signal overrides cleared, Detection and binding required again";
     var inspectButton = byId("inspect-maestro-pair");
-    if (inspectButton) inspectButton.textContent = "重新检测并绑定当前 history";
+    if (inspectButton) inspectButton.textContent = "Detect & bind current history";
   }
 
   function maestroBindingReady(config) {
@@ -1820,7 +1820,7 @@
     if (feedback) config = executionRequestConfig(config);
     if (!config.allowExecute) return null;
     if (!state.apiOnline) {
-      if (feedback) reportError({ code: "ISF-E9000", message: "API 不可达，无法执行预检" });
+      if (feedback) reportError({ code: "ISF-E9000", message: "API unreachable, Cannot run preflight" });
       return null;
     }
     try {
@@ -1831,16 +1831,16 @@
         timeout: 15000
       });
       if (revision !== state.setupRevision) {
-        if (feedback) toast("预检期间设置已变化，请重新预检", "error");
+        if (feedback) toast("Settings changed during preflight, Run preflight again", "error");
         return null;
       }
       renderPreflight(report);
       if (feedback) {
-        toast(report.ok ? "预检通过" : "预检未通过，请检查 FAIL 项", report.ok ? undefined : "error", 6000);
+        toast(report.ok ? "Preflight passed" : "Preflight failed, Check FAIL items", report.ok ? undefined : "error", 6000);
       }
       return report;
     } catch (error) {
-      if (feedback) reportError(error, "预检接口失败");
+      if (feedback) reportError(error, "Preflight API failed");
       return null;
     }
   }
@@ -1850,7 +1850,7 @@
       id: String(id || ""),
       status: "pending",
       progress: 0,
-      message: message || "任务未加载",
+      message: message || "No job loaded",
       duration: "N/A",
       updated_at: null,
       source: "unavailable",
@@ -1871,7 +1871,7 @@
       grouped[key].entries.push(event);
       grouped[key].title = event.title || event.label || key.replace(/_/g, " ");
       grouped[key].status = statusName(event.status || event.state);
-      grouped[key].message = event.message || event.summary || event.detail || "未提供说明";
+      grouped[key].message = event.message || event.summary || event.detail || "No description provided";
       grouped[key].duration = event.duration || event.elapsed || "N/A";
     });
     return order.map(function (key) {
@@ -1895,9 +1895,9 @@
       stages = rawStages.map(function (stage, index) {
         return {
           key: stage.key || stage.id || "stage-" + index,
-          title: stage.title || stage.name || stage.label || "阶段 " + (index + 1),
+          title: stage.title || stage.name || stage.label || "Stage " + (index + 1),
           status: statusName(stage.status || stage.state),
-          message: stage.message || stage.summary || stage.detail || "未提供说明",
+          message: stage.message || stage.summary || stage.detail || "No description provided",
           duration: stage.duration || stage.elapsed || "N/A",
           log: Array.isArray(stage.log || stage.logs) ? (stage.log || stage.logs).join("\n") : (stage.log || stage.logs || "N/A")
         };
@@ -1909,7 +1909,7 @@
           key: key,
           title: stage.title || stage.name || key,
           status: statusName(stage.status || stage.state),
-          message: stage.message || stage.summary || "未提供说明",
+          message: stage.message || stage.summary || "No description provided",
           duration: stage.duration || stage.elapsed || "N/A",
           log: Array.isArray(stage.log || stage.logs) ? (stage.log || stage.logs).join("\n") : (stage.log || stage.logs || "N/A")
         };
@@ -1931,7 +1931,7 @@
       id: String(source.id || source.job_id || source.run_id || (payload && payload.job_id) || ""),
       status: overall,
       progress: clamp(Math.round(progress), 0, 100),
-      message: source.message || source.summary || (overall === "success" ? "分析已完成" : overall === "running" ? "分析运行中" : "等待运行"),
+      message: source.message || source.summary || (overall === "success" ? "Analysis completed" : overall === "running" ? "Analysis running" : "Waiting to run"),
       duration: source.duration || source.elapsed || source.elapsed_time || "N/A",
       updated_at: source.updated_at || source.updated || null,
       source: "api",
@@ -1959,7 +1959,7 @@
 
   async function loadRemoteConfig(feedback) {
     if (!state.apiOnline) {
-      if (feedback) toast("API 不可达，已读取本机配置", "error");
+      if (feedback) toast("API unreachable, Local configuration read", "error");
       state.rawConfig = persistentConfig(rawConfigFrom(readStorage(STORAGE.rawConfig, {})));
       var localConfig = persistentConfig(flatConfig(readStorage(STORAGE.config, DEFAULT_CONFIG)));
       writeStorage(STORAGE.rawConfig, state.rawConfig);
@@ -1971,7 +1971,7 @@
       var revision = state.setupRevision;
       var response = await apiRequest("/api/config");
       if (revision !== state.setupRevision) {
-        if (feedback) toast("读取期间设置已变化，保留当前输入", "error");
+        if (feedback) toast("Settings changed while reading, retain current input", "error");
         return;
       }
       state.rawConfig = persistentConfig(rawConfigFrom(response));
@@ -1980,9 +1980,9 @@
       writeStorage(STORAGE.config, config);
       populateConfig(config);
       state.setupDirty = false;
-      if (feedback) toast("已读取 API 配置");
+      if (feedback) toast("Read API Configuration");
     } catch (error) {
-      if (feedback) reportError(error, "读取 API 配置失败，保留当前内容");
+      if (feedback) reportError(error, "Read API Configuration failed, retain current content");
     }
   }
 
@@ -2004,8 +2004,8 @@
         updateMappingOverride(target.dataset.mappingScope, target.dataset.mappingKey, target.value);
         var row = target.closest("tr");
         if (row) {
-          $("[data-mapping-effective]", row).textContent = target.value || "自动（待重新检测）";
-          $("[data-mapping-status]", row).textContent = "待重新检测";
+          $("[data-mapping-effective]", row).textContent = target.value || "Automatic (Detection required again)";
+          $("[data-mapping-status]", row).textContent = "Detection required again";
           refreshMappingSelection(target, row);
         }
       } else if (["mainTb", "mainTest", "replicaTb", "replicaTest"].indexOf(target.name) >= 0) {
@@ -2022,7 +2022,7 @@
       state.setupDirty = true;
       if (String(target.name || "").indexOf("offset") === 0) { updateOffsetMode(collectConfig()); scheduleOffsetPreview(); }
       var saveState = byId("save-state");
-      if (saveState) saveState.textContent = "有尚未保存的更改";
+      if (saveState) saveState.textContent = "has unsaved changes";
       updateConfigSummary();
     });
     form.addEventListener("change", function (event) {
@@ -2052,11 +2052,11 @@
       state.setupDirty = true;
       var row = input.closest("tr");
       if (row) {
-        $("[data-mapping-effective]", row).textContent = "自动（待重新检测）";
-        $("[data-mapping-status]", row).textContent = "待重新检测";
+        $("[data-mapping-effective]", row).textContent = "Automatic (Detection required again)";
+        $("[data-mapping-status]", row).textContent = "Detection required again";
         refreshMappingSelection(input, row);
       }
-      if (byId("save-state")) byId("save-state").textContent = "有尚未保存的更改";
+      if (byId("save-state")) byId("save-state").textContent = "has unsaved changes";
     });
     var openSettings = byId("open-signal-settings");
     if (openSettings) openSettings.addEventListener("click", function () {
@@ -2091,7 +2091,7 @@
     var inspectPairButton = byId("inspect-maestro-pair");
     if (inspectPairButton) inspectPairButton.addEventListener("click", async function () {
       if (!byId("main-tb").value || !byId("replica-tb").value) {
-        toast("请先选择 VCO 与 flicker-noise 两个 Maestro", "error");
+        toast("First select VCO and flicker-noise two Maestro", "error");
         return;
       }
       setButtonBusy(inspectPairButton, true);
@@ -2099,7 +2099,7 @@
       if (report && report.ui_binding_ready) {
         await persistConfig(collectConfig(), false);
         state.setupDirty = false;
-        inspectPairButton.textContent = "检测并绑定当前设置";
+        inspectPairButton.textContent = "Detect & bind current settings";
       }
       setButtonBusy(inspectPairButton, false);
     });
@@ -2108,11 +2108,11 @@
     if (findPairButton) findPairButton.addEventListener("click", async function () {
       var root = String(byId("project-root") && byId("project-root").value || "").trim();
       if (!root) {
-        toast("请先填写一个较小的 Maestro 搜索根目录", "error");
+        toast("Enter a smaller value first for Maestro Search root", "error");
         return;
       }
       if (!state.apiOnline) {
-        reportError({ code: "ISF-E9000", message: "API 不可达，无法查找 Maestro" });
+        reportError({ code: "ISF-E9000", message: "API unreachable, Cannot discover Maestro" });
         return;
       }
       setButtonBusy(findPairButton, true);
@@ -2123,9 +2123,9 @@
           timeout: 30000
         });
         var filled = renderMaestroCandidates(candidates);
-        toast(filled ? "已填写唯一的 VCO / flicker 候选，请确认后检测" : "候选不唯一，请在下拉建议中手动选择", filled ? undefined : "error", 7000);
+        toast(filled ? "Filled the unique VCO / flicker Candidates, Confirm and detect" : "Ambiguous candidates, Select manually from the suggestions", filled ? undefined : "error", 7000);
       } catch (error) {
-        reportError(error, "Maestro 查找失败");
+        reportError(error, "Maestro Discovery failed");
       } finally {
         setButtonBusy(findPairButton, false);
       }
@@ -2136,7 +2136,7 @@
       if (!form.reportValidity()) return;
       var config = collectConfig();
       if (!maestroBindingReady(config)) {
-        toast("请先为两个 Maestro 选择完整 history，并重新检测绑定", "error", 7000);
+        toast("First for both Maestro Select complete history, and detect/bind again", "error", 7000);
         return;
       }
       setButtonBusy(preflightButton, true);
@@ -2153,7 +2153,7 @@
       if (!hasBundle && !hasDual) {
         var firstMissing = !config.vcoCsvPath ? byId("vco-csv-path") : byId("replica-csv-path");
         if (firstMissing) firstMissing.focus();
-        toast("请填写完整 bundle，或同时填写 VCO 与 replica CSV", "error");
+        toast("Complete bundle, or fill both VCO and replica CSV", "error");
         return;
       }
       setButtonBusy(importButton, true);
@@ -2176,16 +2176,16 @@
           if (response && (response.job || response.job_id || response.id)) {
             var importedJob = jobFromResponse(response);
             saveJob(importedJob);
-            toast("导入完成，共 " + finite(response.points, 0) + " 个设计点");
+            toast("Import complete, total " + finite(response.points, 0) + " design points");
             window.location.href = "results.html?id=" + encodeURIComponent(importedJob.id);
             return;
           }
           throw new Error("import response has no job id");
         } catch (error) {
-          reportError(error, "导入失败，路径已保存在本机");
+          reportError(error, "Import failed, Path saved locally");
         }
       } else {
-        toast("API 不可达；导入路径仅保存在本机", "error");
+        toast("API unreachable; import paths are saved locally only", "error");
       }
       setButtonBusy(importButton, false);
     });
@@ -2218,7 +2218,7 @@
     if (!list) return;
     var badge = byId("pipeline-status");
     if (!Array.isArray(stages) || !stages.length) {
-      list.innerHTML = '<div class="empty-state">N/A · 阶段未加载</div>';
+      list.innerHTML = '<div class="empty-state">N/A · Stage not loaded</div>';
       if (badge) {
         badge.className = "status-pill";
         badge.textContent = "N/A";
@@ -2232,7 +2232,7 @@
         '<span class="stage-icon" aria-hidden="true">' + stageIcon(status) + '</span>' +
         '<div class="stage-copy"><div class="stage-title-row"><strong>' + escapeHtml(stage.title) + '</strong><span class="status-pill ' + status + '">' + label + '</span></div><p>' + escapeHtml(stage.message) + '</p></div>' +
         '<span class="stage-meta">' + escapeHtml(stage.duration || "—") + '</span>' +
-        '<details class="stage-log"><summary>查看日志</summary><pre class="log-output">' + escapeHtml(stage.log || "No log output.") + '</pre></details>' +
+        '<details class="stage-log"><summary>View logs</summary><pre class="log-output">' + escapeHtml(stage.log || "No log output.") + '</pre></details>' +
       '</article>';
     }).join("");
     var success = stages.filter(function (stage) { return statusName(stage.status) === "success"; }).length;
@@ -2248,8 +2248,8 @@
     var time = new Date(value);
     if (Number.isNaN(time.getTime())) return String(value);
     var seconds = Math.max(0, Math.round((Date.now() - time.getTime()) / 1000));
-    if (seconds < 10) return "刚刚";
-    if (seconds < 60) return seconds + " 秒前";
+    if (seconds < 10) return "just now";
+    if (seconds < 60) return seconds + " seconds ago";
     return time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
@@ -2259,10 +2259,10 @@
     var mainMeta = byId("found-main-meta");
     var replicaMeta = byId("found-replica-meta");
     if (!discovered) {
-      if (mainNode) { mainNode.textContent = "N/A"; mainNode.title = "未加载"; }
-      if (replicaNode) { replicaNode.textContent = "N/A"; replicaNode.title = "未加载"; }
-      if (mainMeta) mainMeta.textContent = "未加载";
-      if (replicaMeta) replicaMeta.textContent = "未加载";
+      if (mainNode) { mainNode.textContent = "N/A"; mainNode.title = "Not loaded"; }
+      if (replicaNode) { replicaNode.textContent = "N/A"; replicaNode.title = "Not loaded"; }
+      if (mainMeta) mainMeta.textContent = "Not loaded";
+      if (replicaMeta) replicaMeta.textContent = "Not loaded";
       return;
     }
     var data = discovered || {};
@@ -2277,8 +2277,8 @@
     if (replicaNode) { replicaNode.textContent = replicaPath; replicaNode.title = replicaPath; }
     var mainTest = main.selected_test && main.selected_test.name || main.test;
     var replicaTest = replica.selected_test && replica.selected_test.name || replica.test;
-    if (mainMeta) mainMeta.textContent = mainTest ? "MAESTRO · test=" + mainTest : "等待绑定";
-    if (replicaMeta) replicaMeta.textContent = replicaTest ? "MAESTRO · test=" + replicaTest : "等待绑定";
+    if (mainMeta) mainMeta.textContent = mainTest ? "MAESTRO · test=" + mainTest : "Waiting for binding";
+    if (replicaMeta) replicaMeta.textContent = replicaTest ? "MAESTRO · test=" + replicaTest : "Waiting for binding";
   }
 
   function canStopAfterOffset(job) {
@@ -2294,9 +2294,9 @@
       await apiRequest("/api/jobs/" + encodeURIComponent(job.id) + "/stop-after-offset", { method: "POST", body: {}, timeout: 10000 });
       job.offsetSweep = Object.assign({}, job.offsetSweep || {}, { stop_requested: true });
       renderJob(job);
-      toast("已请求：当前频偏完整完成后停止，已完成结果保留，可继续恢复。", undefined, 7000);
+      toast("Requested: Stop after the current offset completes, completed results are retained, can resume. ", undefined, 7000);
       return true;
-    } catch (error) { reportError(error, "停止后续频偏的请求失败"); return false; }
+    } catch (error) { reportError(error, "Stop-after-offset request failed"); return false; }
     finally { setButtonBusy(button, false); if (button) button.disabled = !canStopAfterOffset(state.currentJob); }
   }
 
@@ -2309,7 +2309,7 @@
       "job-status": job.source === "api" ? (job.rawStatus || status).toUpperCase() : "N/A",
       "job-duration": typeof job.duration === "number" ? job.duration.toFixed(1) + " s" : (job.duration || "N/A"),
       "job-updated": formatUpdated(job.updated_at),
-      "job-message": job.message || "任务未加载",
+      "job-message": job.message || "No job loaded",
       "job-progress-label": job.progress + "%",
       "job-source": job.source === "api" ? "Live API" : "N/A"
     };
@@ -2349,15 +2349,15 @@
     if (stopButton) {
       stopButton.hidden = !job.isOffsetSweep || ["running", "pending", "queued"].indexOf(job.status) < 0;
       stopButton.disabled = !state.apiOnline || !canStopAfterOffset(job);
-      stopButton.textContent = job.offsetSweep && job.offsetSweep.stop_requested ? "已请求 · 等当前频偏完成" : "当前频偏完成后停止";
-      stopButton.title = "不会中断当前 Spectre；完成当前频偏后不再启动下一频偏。已完成部分可查看并恢复。";
+      stopButton.textContent = job.offsetSweep && job.offsetSweep.stop_requested ? "Requested · wait for current offset to complete" : "Stop after current offset";
+      stopButton.title = "does not interrupt the current Spectre; no further offset starts after the current one completes. completed results can be inspected and remaining work resumed. ";
     }
     var errorPanel = byId("job-error-panel");
     if (errorPanel) {
       if (job.error) {
         var error = job.error;
         errorPanel.hidden = false;
-        errorPanel.innerHTML = '<strong>' + escapeHtml(error.code || "ISF-E9000") + '</strong><span>' + escapeHtml(error.message || job.message || "任务失败") + '</span><a href="errors.html?code=' + encodeURIComponent(error.code || "ISF-E9000") + '">排障说明</a>';
+        errorPanel.innerHTML = '<strong>' + escapeHtml(error.code || "ISF-E9000") + '</strong><span>' + escapeHtml(error.message || job.message || "Job failed") + '</span><a href="errors.html?code=' + encodeURIComponent(error.code || "ISF-E9000") + '">Troubleshooting details</a>';
       } else {
         errorPanel.hidden = true;
         errorPanel.textContent = "";
@@ -2367,7 +2367,7 @@
     if (resultLink) {
       resultLink.href = job.id && job.resultAvailable ? "results.html?id=" + encodeURIComponent(job.id) : "#";
       resultLink.setAttribute("aria-disabled", job.id && job.resultAvailable ? "false" : "true");
-      resultLink.textContent = job.isOffsetSweep ? "查看已完成频偏" : "查看当前结果";
+      resultLink.textContent = job.isOffsetSweep ? "View completed offsets" : "View current results";
     }
   }
 
@@ -2375,13 +2375,13 @@
     var input = byId("job-id-input");
     var id = input && input.value.trim() ? input.value.trim() : readStorage(STORAGE.jobId, "");
     if (!id) {
-      if (feedback) toast("没有可加载的任务 ID", "error");
+      if (feedback) toast("No jobs to load ID", "error");
       return;
     }
     if (!state.apiOnline) {
       var cached = readStorage(STORAGE.job, null);
-      renderJob(cached ? jobFromResponse(cached) : unavailableJob(id, "API 不可达，任务未加载"));
-      if (feedback) toast("API 不可达，无法刷新任务", "error");
+      renderJob(cached ? jobFromResponse(cached) : unavailableJob(id, "API unreachable, No job loaded"));
+      if (feedback) toast("API unreachable, Cannot refresh jobs", "error");
       return;
     }
     try {
@@ -2389,10 +2389,10 @@
       var job = jobFromResponse(response);
       saveJob(job);
       renderJob(job);
-      if (feedback) toast("任务状态已更新");
+      if (feedback) toast("Job status updated");
       if (job.status === "running" || job.status === "pending") scheduleJobPoll();
     } catch (error) {
-      if (feedback) reportError(error, "无法读取任务 " + id);
+      if (feedback) reportError(error, "Cannot read job " + id);
     }
   }
 
@@ -2404,7 +2404,7 @@
   async function startRemoteRun(button) {
     var config = flatConfig(readStorage(STORAGE.config, DEFAULT_CONFIG));
     if (!state.apiOnline) {
-      toast("API 不可达，未创建运行任务", "error");
+      toast("API unreachable, No execution job created", "error");
       return;
     }
     if (state.executionPending) return;
@@ -2415,14 +2415,14 @@
       var jobs = await apiRequest("/api/jobs", { timeout: 5000 });
       var active = activeJobRows(jobs);
       if (active.length) {
-        toast("已有 queued/running 任务，未启动新任务：" + active.map(function (job) { return job.id || job.job_id || "unknown"; }).join("、"), "error", 7000);
+        toast("existing queued/running Job, No new job started: " + active.map(function (job) { return job.id || job.job_id || "unknown"; }).join(", "), "error", 7000);
         return;
       }
       var requestConfig = executionRequestConfig(config);
       var preflight = await requestPreflight(requestConfig, false);
       if (!preflight || !preflight.ok) {
         if (preflight) renderPreflight(preflight);
-        reportError({ code: "ISF-E1101", message: "预检未通过，未创建运行任务" });
+        reportError({ code: "ISF-E1101", message: "Preflight failed, No execution job created" });
         return;
       }
       var runConfig = configPayload(requestConfig);
@@ -2440,10 +2440,10 @@
       var job = jobFromResponse(response);
       saveJob(job);
       renderJob(job);
-      toast("分析任务已提交：" + job.id);
+      toast("Analysis job submitted: " + job.id);
       scheduleJobPoll();
     } catch (error) {
-      reportError(error, "运行接口失败，未创建任务");
+      reportError(error, "Run API failed, No job created");
     } finally {
       state.executionPending = false;
       setButtonBusy(button, false);
@@ -2453,16 +2453,16 @@
   function initDiscover() {
     var config = flatConfig(readStorage(STORAGE.config, DEFAULT_CONFIG));
     var storedJob = readStorage(STORAGE.job, null);
-    renderJob(storedJob ? jobFromResponse(storedJob) : unavailableJob(readStorage(STORAGE.jobId, ""), "任务未加载"));
+    renderJob(storedJob ? jobFromResponse(storedJob) : unavailableJob(readStorage(STORAGE.jobId, ""), "No job loaded"));
     var cachedPreflight = readStorage(STORAGE.preflight, null);
     if (cachedPreflight) {
       renderPreflight(cachedPreflight);
       renderDiscoveryInputs(cachedPreflight.detected && (cachedPreflight.detected.maestro_pair || cachedPreflight.detected.inputs), config);
       var readiness = byId("run-readiness");
-      if (readiness) readiness.textContent = cachedPreflight.ok ? "预检已通过，可开始运行。" : "预检未通过，请返回配置页补充 FAIL 项。";
+      if (readiness) readiness.textContent = cachedPreflight.ok ? "Preflight passed, ready to run. " : "Preflight failed, Return to Setup to complete FAIL items. ";
     }
     if (byId("run-project-name")) byId("run-project-name").textContent = config.projectName;
-    if (byId("run-profile-copy")) byId("run-profile-copy").textContent = (config.offsetMode === "single" ? config.offsetValue + " " + config.offsetUnit : "多频偏 · " + config.offsetMode) + " · k = 0…" + config.harmonics + " · " + config.phaseSamples + " samples";
+    if (byId("run-profile-copy")) byId("run-profile-copy").textContent = (config.offsetMode === "single" ? config.offsetValue + " " + config.offsetUnit : "Multi-offset · " + config.offsetMode) + " · k = 0…" + config.harmonics + " · " + config.phaseSamples + " samples";
     if (byId("run-command")) byId("run-command").textContent = config.vcoCommand || config.submitCommand || "Bundled runner · stage commands resolved at runtime";
 
     var refresh = byId("refresh-job");
@@ -2477,14 +2477,14 @@
       if (!report) return;
       renderDiscoveryInputs(report.detected && (report.detected.maestro_pair || report.detected.inputs), config);
       var readiness = byId("run-readiness");
-      if (readiness) readiness.textContent = report.ok ? "预检已通过，可开始运行。" : "发现存在 FAIL，请返回配置页处理。";
+      if (readiness) readiness.textContent = report.ok ? "Preflight passed, ready to run. " : "discovered FAIL, Return to Setup to resolve. ";
     });
     var runButton = byId("start-run");
     if (runButton) runButton.addEventListener("click", function () { startRemoteRun(runButton); });
     var resumeButton = byId("resume-job");
     if (resumeButton) resumeButton.addEventListener("click", async function () {
       var id = state.currentJob && state.currentJob.id;
-      if (!id) return reportError({ code: "ISF-E5001", message: "没有可恢复的任务 ID" });
+      if (!id) return reportError({ code: "ISF-E5001", message: "No resumable job ID" });
       if (state.executionPending) return;
       state.executionPending = true;
       state.workspaceStateSequence += 1;
@@ -2493,7 +2493,7 @@
         var jobs = await apiRequest("/api/jobs", { timeout: 5000 });
         var active = activeJobRows(jobs);
         if (active.length) {
-          toast("已有 queued/running 任务，未恢复另一任务：" + active.map(function (job) { return job.id || job.job_id || "unknown"; }).join("、"), "error", 7000);
+          toast("existing queued/running Job, No other job was resumed: " + active.map(function (job) { return job.id || job.job_id || "unknown"; }).join(", "), "error", 7000);
           return;
         }
         // This explicit click resumes only the selected job; the backend still
@@ -2503,11 +2503,11 @@
           body: { background: true },
           timeout: 10000
         });
-        toast("恢复任务已提交：" + id);
+        toast("Job resume submitted: " + id);
         await refreshRemoteJob(false);
         scheduleJobPoll();
       } catch (error) {
-        reportError(error, "任务恢复失败");
+        reportError(error, "Job resume failed");
       } finally {
         state.executionPending = false;
         setButtonBusy(resumeButton, false);
@@ -2517,7 +2517,7 @@
       if (report) {
         renderDiscoveryInputs(report.detected && (report.detected.maestro_pair || report.detected.inputs), config);
         var readiness = byId("run-readiness");
-        if (readiness) readiness.textContent = report.ok ? "预检已通过，可开始运行。" : "发现存在 FAIL，请返回配置页处理。";
+        if (readiness) readiness.textContent = report.ok ? "Preflight passed, ready to run. " : "discovered FAIL, Return to Setup to resolve. ";
       }
     });
   }
@@ -2526,7 +2526,7 @@
     return {
       id: String(id || ""),
       source: "error",
-      error: String(message || "结果不可用"),
+      error: String(message || "Results unavailable"),
       runKind: "unavailable",
       signoff: false,
       metadata: {},
@@ -2685,7 +2685,7 @@
       if (!isPlainObject(recorded)) recorded = {};
       row.thermal_noise = {schema_version: 1, status: "unavailable",
         previous_scope: recorded.previous_scope || recorded.scope || "unknown",
-        reason: recorded.status === "unavailable" && recorded.reason || "该历史 thermal 预算不符合当前 gm + LC 计算范围；请重新运行。"};
+        reason: recorded.status === "unavailable" && recorded.reason || "This historical thermal budget differs from current gm + LC Calculation scope; rerun. "};
       if (Object.prototype.hasOwnProperty.call(row, "thermal_noise_json")) row.thermal_noise_json = JSON.stringify(row.thermal_noise);
     }
     return row;
@@ -2717,13 +2717,13 @@
     }
     var pair = scope === "pair";
     var phase = [
-      { name: "ISF 计算 · " + (pair ? "双器件 flicker" : "单器件 flicker"), color: COLORS.teal, values: values(pair ? "predicted_pair_dBc_Hz" : "dynamic_dBc_Hz") },
-      { name: "VCO 总仿真相噪 · PM-SSB（全部噪声源）", color: COLORS.orange, values: values("spectre_total_dBc_Hz"), dash: true }
+      { name: "ISF calculated · " + (pair ? "two-device flicker" : "single device flicker"), color: COLORS.teal, values: values(pair ? "predicted_pair_dBc_Hz" : "dynamic_dBc_Hz") },
+      { name: "VCO simulated total phase noise · PM-SSB (all noise sources)", color: COLORS.orange, values: values("spectre_total_dBc_Hz"), dash: true }
     ];
     var palette = [COLORS.blue, COLORS.purple, COLORS.amber, COLORS.orange, COLORS.gray];
-    var harmonics = orders.map(function (k, index) { return { id: "flicker-k-" + k, name: "Flicker k=" + k + " 单阶等效 · " + (pair ? "双器件" : "单器件"), color: palette[index % palette.length], values: values("harmonic_equivalent_dBc_Hz", k) }; });
-    harmonics.push({ id: "flicker-total", name: "Flicker 全部阶相干总和 · " + (pair ? "双器件" : "单器件"), color: COLORS.teal, values: values(pair ? "predicted_pair_dBc_Hz" : "dynamic_dBc_Hz"), total: true });
-    if (cumulativeK !== null && cumulativeK !== undefined && orders.indexOf(Number(cumulativeK)) >= 0) harmonics.push({ name: "累计 k=0…" + cumulativeK, color: "#222c35", dash: true, values: values("cumulative_dBc_Hz", Number(cumulativeK)) });
+    var harmonics = orders.map(function (k, index) { return { id: "flicker-k-" + k, name: "Flicker k=" + k + " single-order equivalent · " + (pair ? "two-device" : "single device"), color: palette[index % palette.length], values: values("harmonic_equivalent_dBc_Hz", k) }; });
+    harmonics.push({ id: "flicker-total", name: "Flicker coherent sum of all orders · " + (pair ? "two-device" : "single device"), color: COLORS.teal, values: values(pair ? "predicted_pair_dBc_Hz" : "dynamic_dBc_Hz"), total: true });
+    if (cumulativeK !== null && cumulativeK !== undefined && orders.indexOf(Number(cumulativeK)) >= 0) harmonics.push({ name: "Cumulative k=0…" + cumulativeK, color: "#222c35", dash: true, values: values("cumulative_dBc_Hz", Number(cumulativeK)) });
     return { phase: phase, harmonics: harmonics, orders: orders };
   }
 
@@ -2799,9 +2799,9 @@
       var rows = group.rows.filter(function (sample) { return sample.offset === hz; });
       return { x: hz, y: rows.length === 1 ? calculate(rows[0].row) : null };
     }); }
-    var flicker = { id: "flicker", name: "ISF 双器件 flicker", color: "#555", dashPattern: "8 4", values: values(function (row) { return predictedNoiseDbc(row, "flicker"); }) };
-    var thermal = { id: "thermal", name: "ISF thermal · gm 双器件及 LC", color: "#222", dashPattern: "3 4", values: values(function (row) { return predictedNoiseDbc(row, "thermal"); }) };
-    var total = { id: "predicted-total", name: "ISF flicker + thermal · 功率和", color: "#000", total: true, values: values(function (row) { return predictedNoiseDbc(row, "both"); }) };
+    var flicker = { id: "flicker", name: "ISF two-device flicker", color: "#555", dashPattern: "8 4", values: values(function (row) { return predictedNoiseDbc(row, "flicker"); }) };
+    var thermal = { id: "thermal", name: "ISF thermal · gm two-device and LC", color: "#222", dashPattern: "3 4", values: values(function (row) { return predictedNoiseDbc(row, "thermal"); }) };
+    var total = { id: "predicted-total", name: "ISF flicker + thermal · power sum", color: "#000", total: true, values: values(function (row) { return predictedNoiseDbc(row, "both"); }) };
     var reference = Object.assign({}, existing.phase[1], { id: "spectre-total", color: "#777", dash: false, dashPattern: "12 3 2 3", total: true });
     var phase = kind === "flicker" ? [flicker, reference] : kind === "thermal" ? [thermal, reference] : [flicker, thermal, total, reference];
     var harmonics = kind === "flicker" ? existing.harmonics.map(function (item, index) { return Object.assign({}, item, { color: item.total ? "#000" : "#555", dashPattern: ["", "8 4", "2 3", "8 3 2 3"][index % 4] }); }) : [];
@@ -2815,7 +2815,7 @@
         }); });
       });
       bands.sort(function (a, b) { return a - b; }).filter(function (band) { return kind === "thermal" || existing.orders.indexOf(band) >= 0; }).forEach(function (band, index) {
-        harmonics.push({ id: (kind === "both" ? "combined-k-" : "thermal-band-") + band, name: kind === "both" ? "k=" + band + " · Flicker 等效 + thermal |m| 功率" : "Thermal 独立输入频带 |m|=" + band + " · 功率和", color: "#777", dashPattern: ["3 3", "9 3", "9 3 2 3"][index % 3], values: values(function (row) {
+        harmonics.push({ id: (kind === "both" ? "combined-k-" : "thermal-band-") + band, name: kind === "both" ? "k=" + band + " · Flicker equivalent + thermal |m| power" : "Thermal independent input bands |m|=" + band + " · power sum", color: "#777", dashPattern: ["3 3", "9 3", "9 3 2 3"][index % 3], values: values(function (row) {
           var thermalPower = thermalBandPsd(row, band, true);
           if (kind === "thermal") return outputPsdDbc(thermalPower, row);
           var flickerPower = flickerHarmonicPairPsd(source, row, band);
@@ -2842,7 +2842,7 @@
         return '<option value="' + escapeHtml(group.id) + '"' + (group.id === choice.group.id ? " selected" : "") + ">" + escapeHtml(group.id + (group.corner ? " · " + group.corner : "")) + "</option>";
       }).join("");
     }
-    if (offsetSelector) offsetSelector.innerHTML = choice.group.rows.map(function (sample) { return '<option value="' + escapeHtml(sample.offset) + '"' + (sample.point === selected ? ' selected' : '') + '>' + escapeHtml(sample.offset === null ? "频偏未提供" : formatOffsetHz(sample.offset)) + '</option>'; }).join("");
+    if (offsetSelector) offsetSelector.innerHTML = choice.group.rows.map(function (sample) { return '<option value="' + escapeHtml(sample.offset) + '"' + (sample.point === selected ? ' selected' : '') + '>' + escapeHtml(sample.offset === null ? "Offset not provided" : formatOffsetHz(sample.offset)) + '</option>'; }).join("");
     var summary = noiseSummaryForDisplay(choice.sample.row);
     var point = source.points[selected] || {};
     var workpoint = Array.isArray(point.workpoint) ? point.workpoint : [];
@@ -2925,7 +2925,7 @@
       return value === null ? NaN : value;
     });
     if (pairValues.some(Number.isFinite)) {
-      comparisonSeries.push({ name: "双器件 flicker", color: "#333", values: pairValues });
+      comparisonSeries.push({ name: "two-device flicker", color: "#333", values: pairValues });
     }
     result.charts.comparison = {
       labels: fixedOffsetRows.map(function (row) { return String(row.operating_point_id || row.point || "point"); }),
@@ -3018,7 +3018,7 @@
 
   function normalizeResults(payload, id, pointOverride) {
     var source = payload && (payload.result || payload.data) ? (payload.result || payload.data) : (payload || {});
-    if (!source || typeof source !== "object") return unavailableResults(id, "结果 payload 无效");
+    if (!source || typeof source !== "object") return unavailableResults(id, "Result payload Invalid");
     var result = unavailableResults(id, "");
     delete result.error;
     result.source = "api";
@@ -3142,7 +3142,7 @@
   function frequencyChartMarkup(series, logX) {
     var allX = [], finiteValues = [];
     (series || []).forEach(function (item) { item.values.forEach(function (point) { if (Number.isFinite(point.x) && point.x > 0) { allX.push(point.x); if (typeof point.y === "number" && Number.isFinite(point.y)) finiteValues.push(point.y); } }); });
-    if (!allX.length || !finiteValues.length) return '<div class="empty-state">当前没有可用的真实频偏相噪数据；缺失值不会补零或外推。</div>';
+    if (!allX.length || !finiteValues.length) return '<div class="empty-state">No actual offset phase-noise data available; missing values are not zero-filled or extrapolated. </div>';
     var width = 820, height = 300, left = 80, right = 25, top = 20, bottom = 50;
     var transform = logX ? Math.log10 : function (x) { return x; };
     var xmin = transform(Math.min.apply(null, allX)), xmax = transform(Math.max.apply(null, allX));
@@ -3151,7 +3151,7 @@
     var padding = Math.max(1, (ymax - ymin) * 0.12); ymin -= padding; ymax += padding;
     var xscale = function (x) { return left + (transform(x) - xmin) / (xmax - xmin) * (width - left - right); };
     var yscale = function (y) { return top + (ymax - y) / (ymax - ymin) * (height - top - bottom); };
-    var html = '<svg class="chart-svg frequency-svg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="真实频偏与相噪，dBc/Hz；点击曲线突出，悬停采样点查看真实值"><text class="chart-label" x="12" y="14">dBc/Hz</text>';
+    var html = '<svg class="chart-svg frequency-svg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="Actual offsets & phase noise, dBc/Hz; Click curve to highlight, hover over samples for actual values"><text class="chart-label" x="12" y="14">dBc/Hz</text>';
     for (var i = 0; i <= 4; i += 1) {
       var y = top + (height - top - bottom) * i / 4;
       html += '<line class="chart-gridline" x1="' + left + '" y1="' + y + '" x2="' + (width - right) + '" y2="' + y + '"/><text class="chart-label" x="' + (left - 9) + '" y="' + (y + 4) + '" text-anchor="end">' + (ymax - (ymax - ymin) * i / 4).toFixed(1) + '</text>';
@@ -3160,7 +3160,7 @@
       var hz = logX ? Math.pow(10, coordinate) : coordinate;
       html += '<line class="chart-gridline" x1="' + x + '" y1="' + top + '" x2="' + x + '" y2="' + (height - bottom) + '"/><text class="chart-label" x="' + x + '" y="' + (height - 28) + '" text-anchor="middle">' + escapeHtml(formatOffsetHz(hz)) + '</text>';
     }
-    html += '<text class="chart-label" x="' + (width / 2) + '" y="' + (height - 6) + '" text-anchor="middle">频偏 / Hz · ' + (logX ? '对数轴' : '线性轴') + '</text>';
+    html += '<text class="chart-label" x="' + (width / 2) + '" y="' + (height - 6) + '" text-anchor="middle">Offset / Hz · ' + (logX ? 'Log axis' : 'Linear axis') + '</text>';
     series.forEach(function (item, index) {
       var connected = false, path = "";
       item.values.forEach(function (point) {
@@ -3232,14 +3232,14 @@
     var metrics = state.metricCatalog && state.metricCatalog.metrics || {};
     if (Object.prototype.hasOwnProperty.call(metrics, key)) return metrics[key];
     var name = Object.keys(metrics).find(function (name) { return Array.isArray(metrics[name].aliases) && metrics[name].aliases.indexOf(key) >= 0; });
-    return name ? metrics[name] : { label: key, meaning: "此字段来自结果记录；共享词典未提供解释。", purpose: "保留原值供核对，不推断其口径。", unit: "未提供" };
+    return name ? metrics[name] : { label: key, meaning: "This field comes from the result record; No definition in the shared catalog. ", purpose: "retain original values for review, scope is not inferred. ", unit: "Not provided" };
   }
 
   function metricHelpHtml(key) {
     var definition = metricDefinition(key);
     return '<h3>' + escapeHtml(definition.label || key) + '</h3><code>' + escapeHtml(key) + '</code><dl class="metric-definition">' +
-      [["unit", "单位"], ["meaning", "含义"], ["purpose", "用途"], ["scope", "比较口径"], ["formula", "公式"], ["unavailable", "缺失值"]].filter(function (entry) { return definition[entry[0]]; }).map(function (entry) { return '<dt>' + entry[1] + '</dt><dd>' + escapeHtml(definition[entry[0]]) + '</dd>'; }).join('') +
-      '</dl><p>未提供、非有限或无法定义的数值显示 N/A，不当作零。零分母下的比值和 dB 不补算。</p>';
+      [["unit", "Unit"], ["meaning", "Meaning"], ["purpose", "Purpose"], ["scope", "Comparison scope"], ["formula", "Formula"], ["unavailable", "missing values"]].filter(function (entry) { return definition[entry[0]]; }).map(function (entry) { return '<dt>' + entry[1] + '</dt><dd>' + escapeHtml(definition[entry[0]]) + '</dd>'; }).join('') +
+      '</dl><p>Not provided, non-finite or undefined values show N/A, not treated as zero. ratios with zero denominator and dB not recalculated. </p>';
   }
 
   function metricButton(key, label) {
@@ -3265,7 +3265,7 @@
     var keys = Object.keys(summary || {}).filter(visibleResultMetric);
     var harmonicKeys = [];
     (harmonics || []).forEach(function (row) { Object.keys(row).forEach(function (key) { if (visibleResultMetric(key) && harmonicKeys.indexOf(key) < 0) harmonicKeys.push(key); }); });
-    panel.innerHTML = '<h3>当前工况 / 频偏摘要</h3><div class="table-scroll"><table class="data-table"><tbody>' + keys.map(function (key) { return '<tr><th>' + metricButton(key) + '</th><td>' + escapeHtml(display(summary[key])) + '</td><td>' + escapeHtml(metricDefinition(key).unit || "") + '</td></tr>'; }).join('') + '</tbody></table></div><h3>当前频偏全部谐波字段</h3><div class="table-scroll"><table class="data-table"><thead><tr>' + harmonicKeys.map(function (key) { return '<th>' + metricButton(key) + '</th>'; }).join('') + '</tr></thead><tbody>' + (harmonics || []).map(function (row) { return '<tr>' + harmonicKeys.map(function (key) { return '<td>' + escapeHtml(display(row[key])) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div>';
+    panel.innerHTML = '<h3>Current operating point / Offset summary</h3><div class="table-scroll"><table class="data-table"><tbody>' + keys.map(function (key) { return '<tr><th>' + metricButton(key) + '</th><td>' + escapeHtml(display(summary[key])) + '</td><td>' + escapeHtml(metricDefinition(key).unit || "") + '</td></tr>'; }).join('') + '</tbody></table></div><h3>All harmonic fields at the current offset</h3><div class="table-scroll"><table class="data-table"><thead><tr>' + harmonicKeys.map(function (key) { return '<th>' + metricButton(key) + '</th>'; }).join('') + '</tr></thead><tbody>' + (harmonics || []).map(function (row) { return '<tr>' + harmonicKeys.map(function (key) { return '<td>' + escapeHtml(display(row[key])) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div>';
   }
 
   async function loadMetricCatalog() {
@@ -3318,9 +3318,9 @@
     });
     var thermalReferencePsd = covered ? selectedReference.reduce(function (sum, item) { return sum + Number(item.psd_V2_Hz); }, 0) : null;
     var thermalReferenceDbc = thermalReferencePsd > 0 && carrier > 0 ? 10 * Math.log10(2 * thermalReferencePsd / (carrier * carrier)) : null;
-    var rows = [row("VCO 总仿真 / 已覆盖计算总量", "全部器件 / 已计算源", "全部机制 · PM-SSB / flicker + thermal", totalAsd, owned ? summary.spectre_total_dBc_Hz : null, predictedNoiseDbc(summary, "both"), "aggregate")];
-    if (noiseKind !== "thermal") rows.push(row("独立双器件 flicker 对比", "目标 + 配对器件", "fn", summary.spectre_pair_pm_asd_V_rtHz, summary.spectre_pair_dBc_Hz, summary.predicted_pair_dBc_Hz, "aggregate"));
-    if (noiseKind !== "flicker") rows.push(row("Thermal 同源对比" + (sources.length && !covered ? "（参考源不完整）" : ""), "已计算的 gm 双器件及 LC", "thermal（仅精确匹配源）", null, thermalReferenceDbc, predictedNoiseDbc(summary, "thermal"), "aggregate", thermalReferencePsd));
+    var rows = [row("VCO simulated total / calculated total covered", "all devices / calculated sources", "all mechanisms · PM-SSB / flicker + thermal", totalAsd, owned ? summary.spectre_total_dBc_Hz : null, predictedNoiseDbc(summary, "both"), "aggregate")];
+    if (noiseKind !== "thermal") rows.push(row("independent device pair flicker comparison", "Target + Peer device", "fn", summary.spectre_pair_pm_asd_V_rtHz, summary.spectre_pair_dBc_Hz, summary.predicted_pair_dBc_Hz, "aggregate"));
+    if (noiseKind !== "flicker") rows.push(row("Thermal Matched-source comparison" + (sources.length && !covered ? " (reference sources incomplete)" : ""), "calculated gm two-device and LC", "thermal (only exactly matched sources)", null, thermalReferenceDbc, predictedNoiseDbc(summary, "thermal"), "aggregate", thermalReferencePsd));
     referenceSources.filter(function (item) { return finiteOrNull(item.psd_V2_Hz) !== null && item.psd_V2_Hz >= 0 && includedSource(item); }).slice().sort(function (a, b) { return b.psd_V2_Hz - a.psd_V2_Hz; }).forEach(function (item) {
       var psd = Number(item.psd_V2_Hz), asd = Math.sqrt(psd);
       var dbc = psd > 0 && carrier !== null && carrier > 0 ? 10 * Math.log10(2) + 20 * (Math.log10(asd) - Math.log10(carrier)) : null;
@@ -3337,14 +3337,14 @@
         // never infer a partner from an M0/M1 spelling or from table position.
         calculated = isTarget || isSymmetricPeer ? finiteOrNull(summary.dynamic_dBc_Hz) : null;
       }
-      rows.push(row(String(item.device || "未知器件") + " · " + String(item.mechanism || "未知机制"), item.device || "未知器件", item.mechanism || "未知机制", asd, dbc, calculated, "source", psd));
+      rows.push(row(String(item.device || "unknown device") + " · " + String(item.mechanism || "unknown mechanism"), item.device || "unknown device", item.mechanism || "unknown mechanism", asd, dbc, calculated, "source", psd));
     });
     sources.filter(function (source) {
       var references = matchedReferences(source);
       return includedSource(source) && (!references.length || references.length === 1 && (finiteOrNull(references[0].psd_V2_Hz) === null || references[0].psd_V2_Hz < 0));
     }).forEach(function (source) {
       var invalidReference = matchedReferences(source).length === 1;
-      rows.push(row(String(source.device || "未提供器件") + " · " + String(source.mechanism || "thermal") + (invalidReference ? "（仿真参考无效）" : ""), source.device, source.mechanism, null, null, source.phase_noise_dBc_Hz, "source", null));
+      rows.push(row(String(source.device || "No device provided") + " · " + String(source.mechanism || "thermal") + (invalidReference ? " (invalid simulation reference)" : ""), source.device, source.mechanism, null, null, source.phase_noise_dBc_Hz, "source", null));
     });
     return rows;
   }
@@ -3354,14 +3354,14 @@
     var thermal = thermalResult(summary), predicted = [], measured = [], calculatedMissing = [], simulatedMissing = [];
     var sources = thermal && Array.isArray(thermal.sources) ? thermal.sources : [];
     function key(item) { return JSON.stringify([item.device, item.mechanism]); }
-    function label(item) { return String(item.device || "未知器件") + " · " + String(item.mechanism || "未知机制"); }
+    function label(item) { return String(item.device || "unknown device") + " · " + String(item.mechanism || "unknown mechanism"); }
     function independent(item) { return item && typeof item === "object" && item.kind !== "aggregate" && item.noise_family !== "aggregate" && ["total", "totalsrc", "all"].indexOf(item.mechanism) < 0; }
     function selected(item) {
       if (noiseKind === "flicker") return item.mechanism === "fn";
       return noiseKind !== "thermal" || item.mechanism === "rn" || ["channel_thermal", "resistive_thermal"].indexOf(item.noise_family) >= 0 || sources.some(function (source) { return key(source) === key(item); });
     }
     if (noiseKind !== "flicker") {
-      if (!thermal || !sources.length) calculatedMissing.push("thermal 独立源未提供");
+      if (!thermal || !sources.length) calculatedMissing.push("thermal independent source not provided");
       else predicted = sources.filter(independent).map(function (source) { return {device: source.device, mechanism: source.mechanism, psd_V2_Hz: finiteOrNull(source.psd_V2_Hz)}; });
     }
     if (noiseKind !== "thermal") {
@@ -3370,13 +3370,13 @@
       var power = amplitude !== null && amplitude >= 0 ? amplitude * amplitude : dbc !== null && carrier !== null && carrier > 0 ? Math.pow(10, dbc / 10) * carrier * carrier / 2 : null;
       var targetKnown = typeof target === "string" && target.trim().length > 0;
       if (targetKnown) predicted.push({device: target, mechanism: "fn", psd_V2_Hz: power});
-      else calculatedMissing.push("flicker 目标源身份未提供");
+      else calculatedMissing.push("flicker Target source identity not provided");
       var pairEvidence = finiteOrNull(summary.predicted_pair_dBc_Hz) !== null || (finiteOrNull(summary.predicted_pair_pm_asd_V_rtHz) !== null && Number(summary.predicted_pair_pm_asd_V_rtHz) >= 0);
       if (targetKnown && typeof peer === "string" && peer.trim().length > 0 && peer !== target && thermal.pair_model === "symmetric_independent" && summary.pair_model === "symmetric_independent" && pairEvidence) predicted.push({device: peer, mechanism: "fn", psd_V2_Hz: power});
-      else calculatedMissing.push("flicker 配对源缺少明确对称配对证据");
+      else calculatedMissing.push("flicker Paired sources lack explicit symmetric-pair evidence");
     }
     if (hasTotalNoiseReference(summary) && Array.isArray(summary.spectre_noise_contributions)) measured = summary.spectre_noise_contributions.filter(independent).filter(selected);
-    else simulatedMissing.push("同一 VCO 结果的独立源参考未提供");
+    else simulatedMissing.push("same VCO Independent-source reference not provided in result");
     function dataset(records, missing) {
       var counts = {};
       records.forEach(function (item) { var identity = key(item); counts[identity] = (counts[identity] || 0) + 1; });
@@ -3384,7 +3384,7 @@
       records.forEach(function (item) {
         var psd = finiteOrNull(item.psd_V2_Hz), description = label(item);
         if (counts[key(item)] !== 1 || psd === null || psd < 0 || !item.device || !item.mechanism) {
-          var reason = description + (counts[key(item)] !== 1 ? "（来源重复）" : "（PSD 缺失或无效）");
+          var reason = description + (counts[key(item)] !== 1 ? " (duplicate sources)" : " (PSD missing or invalid)");
           if (missing.indexOf(reason) < 0) missing.push(reason);
         } else slices.push({key: key(item), label: description, psd: psd});
       });
@@ -3401,11 +3401,11 @@
 
   function noisePieMarkup(data, title, scope) {
     var positive = data.total !== null && data.total > 0, angle = -Math.PI / 2;
-    var svg = positive ? '<svg class="noise-pie" viewBox="0 0 220 220" role="img" aria-label="' + escapeHtml(title + '：已列独立源 PSD 份额') + '">' : '';
+    var svg = positive ? '<svg class="noise-pie" viewBox="0 0 220 220" role="img" aria-label="' + escapeHtml(title + ': listed independent sources PSD fraction') + '">' : '';
     var legend = data.slices.map(function (slice) {
       var fraction = positive ? slice.psd / data.total : 0, next = angle + fraction * Math.PI * 2;
       var fill = ["#222", "#666", "#aaa", "#ddd", "#444", "#888", "#bbb"][slice.color_index % 7];
-      var text = slice.label + ' · ' + slice.psd.toExponential(5) + ' V²/Hz · ' + (positive ? (100 * fraction).toFixed(2) + '%' : '份额 N/A');
+      var text = slice.label + ' · ' + slice.psd.toExponential(5) + ' V²/Hz · ' + (positive ? (100 * fraction).toFixed(2) + '%' : 'fraction N/A');
       if (fraction > 0) {
         var shape = fraction >= 1 - 1e-12 ? '<circle cx="110" cy="110" r="94"' : '<path d="M110 110 L' + (110 + 94 * Math.cos(angle)).toFixed(3) + ' ' + (110 + 94 * Math.sin(angle)).toFixed(3) + ' A94 94 0 ' + (fraction > 0.5 ? 1 : 0) + ' 1 ' + (110 + 94 * Math.cos(next)).toFixed(3) + ' ' + (110 + 94 * Math.sin(next)).toFixed(3) + ' Z"';
         svg += shape + ' fill="' + fill + '" stroke="#fff" stroke-width="1" tabindex="0"><title>' + escapeHtml(text) + '</title></' + (fraction >= 1 - 1e-12 ? 'circle' : 'path') + '>';
@@ -3414,16 +3414,16 @@
       return '<li><i style="background:' + fill + '" aria-hidden="true"></i><span>' + escapeHtml(text) + '</span></li>';
     }).join('');
     if (positive) svg += '</svg>';
-    else svg = '<p class="empty-state">' + (data.slices.length && data.total === 0 ? '已列源 PSD 均明确为 0，无可绘制份额。' : 'N/A · 没有可用的独立源 PSD。') + '</p>';
-    return '<figure class="noise-pie-card"><figcaption><strong>' + escapeHtml(title) + '</strong><p>' + escapeHtml(scope) + '</p></figcaption>' + svg + '<p>占比仅以本图已列来源为分母，不等同于全 VCO 覆盖率。' + (data.missing.length ? '部分来源缺失，不能作为完整预算。' : '') + '</p><ul class="noise-pie-legend">' + legend + data.missing.map(function (label) { return '<li class="noise-pie-missing">' + escapeHtml(label) + '：N/A</li>'; }).join('') + '</ul></figure>';
+    else svg = '<p class="empty-state">' + (data.slices.length && data.total === 0 ? 'listed sources PSD all explicitly 0, No plottable fractions. ' : 'N/A · No independent sources available PSD. ') + '</p>';
+    return '<figure class="noise-pie-card"><figcaption><strong>' + escapeHtml(title) + '</strong><p>' + escapeHtml(scope) + '</p></figcaption>' + svg + '<p>fractions use only sources listed in this chart as denominator, does not equal the entire VCO coverage. ' + (data.missing.length ? 'Some sources missing, cannot serve as a complete budget. ' : '') + '</p><ul class="noise-pie-legend">' + legend + data.missing.map(function (label) { return '<li class="noise-pie-missing">' + escapeHtml(label) + ': N/A</li>'; }).join('') + '</ul></figure>';
   }
 
   function renderNoiseContributions(results) {
     var panel = byId("noise-contribution-table");
     if (!panel) return;
     if (!results.rawCanonical || results.error) {
-      panel.textContent = "等待真实 VCO 仿真结果";
-      if (byId("noise-contribution-pies")) byId("noise-contribution-pies").textContent = "等待真实 VCO 仿真结果";
+      panel.textContent = "Waiting for actual VCO simulation results";
+      if (byId("noise-contribution-pies")) byId("noise-contribution-pies").textContent = "Waiting for actual VCO simulation results";
       return;
     }
     var summary = results.sampleSummary || {};
@@ -3433,13 +3433,13 @@
     var rows = state.noiseKind === "both" ? allRows : noiseContributionRows(summary, state.noiseKind);
     if (byId("noise-contribution-pies")) {
       var pies = noisePieData(summary, state.noiseKind);
-      byId("noise-contribution-pies").innerHTML = noisePieMarkup(pies.calculated, "ISF 计算 · 独立源", "仅 gm 的 flicker / thermal 与 LC 的 thermal；未建模源不补零。") + noisePieMarkup(pies.simulated, "VCO 仿真 · 独立源", "仅同一工况、频偏已采集的器件与机制，按当前噪声类型筛选；不混入总量或汇总行。");
+      byId("noise-contribution-pies").innerHTML = noisePieMarkup(pies.calculated, "ISF calculated · Independent sources", "Only gm flicker/thermal and passive LC thermal; unmodeled sources remain N/A. ") + noisePieMarkup(pies.simulated, "VCO Simulation · Independent sources", "same operating point only, collected devices and mechanisms at this offset, filtered by current noise kind; excluded from totals and aggregate rows. ");
     }
     if (byId("metric-thermal-error")) byId("metric-thermal-error").textContent = thermalComparison.calculated_dbc !== null && thermalComparison.simulated_dbc !== null ? signedDb(thermalComparison.calculated_dbc - thermalComparison.simulated_dbc) : "N/A";
-    var missing = !hasTotalNoiseReference(summary) || finiteOrNull(summary.spectre_total_dBc_Hz) === null ? '<p class="notice-box">该结果未采集 VCO 总相噪；请用新版运行后查看。未用器件 flicker 替代总噪声。</p>' : '';
-    var detailMissing = !rows.some(function (item) { return item.kind === "source"; }) ? '<p>当前筛选下没有可用的器件噪声机制明细。</p>' : '';
-    var filterNote = state.noiseKind === "thermal" ? ' Thermal 明细仅列明确的沟道/电阻热噪声或已计算的同名热噪声源；散粒噪声和未分类来源可切换到两类合并视图查看。' : '';
-    panel.innerHTML = missing + '<p>工况：' + escapeHtml(results.operatingPointId) + ' · ' + escapeHtml(formatOffsetHz(results.metrics.offsetHz)) + '。汇总/对比行与源明细有重叠，不能再次相加。占比 = 仿真源 PSD / VCO 总 PM-SSB PSD；仿真和计算仅按完整器件名及机制精确对应，不按行序猜测。N/A 表示未计算或没有同源参考。' + filterNote + '</p>' + detailMissing + '<div class="table-scroll"><table class="data-table"><thead><tr><th>项目 / 器件</th><th>噪声机制</th><th>仿真 dBc/Hz</th><th>ISF 计算 dBc/Hz</th><th>占总噪声 %</th></tr></thead><tbody>' + rows.map(function (item) { return '<tr class="noise-row-' + item.kind + '"><td>' + escapeHtml(item.label) + '</td><td>' + escapeHtml(item.mechanism) + '</td><td>' + cell(item.simulated_dbc, 4) + '</td><td>' + cell(item.calculated_dbc, 4) + '</td><td>' + cell(item.fraction_pct, 4) + (item.kind === "source" && item.fraction_pct !== null ? '<span class="noise-power-bar" aria-hidden="true"><i style="width:' + clamp(item.fraction_pct, 0, 100) + '%"></i></span>' : '') + '</td></tr>'; }).join('') + '</tbody></table></div>';
+    var missing = !hasTotalNoiseReference(summary) || finiteOrNull(summary.spectre_total_dBc_Hz) === null ? '<p class="notice-box">This result did not collect VCO total phase noise. Rerun with the current version; device flicker does not substitute for total noise. </p>' : '';
+    var detailMissing = !rows.some(function (item) { return item.kind === "source"; }) ? '<p>No device/mechanism details available for this filter. </p>' : '';
+    var filterNote = state.noiseKind === "thermal" ? ' Thermal details list only explicit channel/resistor thermal noise or calculated same-name thermal source; Use the combined view to inspect shot noise and unclassified sources. ' : '';
+    panel.innerHTML = missing + '<p>Operating point: ' + escapeHtml(results.operatingPointId) + ' · ' + escapeHtml(formatOffsetHz(results.metrics.offsetHz)) + '. Summary/comparison rows overlap source details, cannot be added again. Fraction = simulation source PSD / VCO total PM-SSB PSD; simulation and calculation match only by full device name and mechanism, row order is not used to guess. N/A means not calculated or no matched-source reference. ' + filterNote + '</p>' + detailMissing + '<div class="table-scroll"><table class="data-table"><thead><tr><th>Project / Device</th><th>noise mechanism</th><th>Simulation dBc/Hz</th><th>ISF calculated dBc/Hz</th><th>of total noise %</th></tr></thead><tbody>' + rows.map(function (item) { return '<tr class="noise-row-' + item.kind + '"><td>' + escapeHtml(item.label) + '</td><td>' + escapeHtml(item.mechanism) + '</td><td>' + cell(item.simulated_dbc, 4) + '</td><td>' + cell(item.calculated_dbc, 4) + '</td><td>' + cell(item.fraction_pct, 4) + (item.kind === "source" && item.fraction_pct !== null ? '<span class="noise-power-bar" aria-hidden="true"><i style="width:' + clamp(item.fraction_pct, 0, 100) + '%"></i></span>' : '') + '</td></tr>'; }).join('') + '</tbody></table></div>';
   }
 
   function renderFlickerResults(results) {
@@ -3449,8 +3449,8 @@
     var raw = results.rawCanonical;
     var phase = byId("phase-noise-chart"), harmonic = byId("harmonic-noise-chart");
     if (!raw || results.error) {
-      if (phase) phase.innerHTML = '<div class="empty-state">等待已完成的相噪结果</div>';
-      if (harmonic) harmonic.innerHTML = '<div class="empty-state">等待谐波结果</div>';
+      if (phase) phase.innerHTML = '<div class="empty-state">Waiting for completed phase-noise results</div>';
+      if (harmonic) harmonic.innerHTML = '<div class="empty-state">Waiting for harmonic results</div>';
       ["metric-calculated-dbc", "metric-spectre-dbc", "metric-thermal-error"].forEach(function (id) { if (byId(id)) byId(id).textContent = "N/A"; });
       ["noise-scope-note", "sample-quality-note", "result-operating-parameters", "result-metric-tables"].forEach(function (id) { if (byId(id)) byId(id).textContent = ""; });
       if (byId("sweep-result-note")) byId("sweep-result-note").hidden = true;
@@ -3460,7 +3460,7 @@
     var cumulative = byId("cumulative-k-select");
     var oldK = cumulative && cumulative.value;
     var series = resultNoiseSeries(raw, results.operatingPointId, state.noiseKind, oldK === "" || oldK === null || oldK === undefined ? null : Number(oldK));
-    if (cumulative) cumulative.innerHTML = '<option value="">不显示累计曲线</option>' + series.orders.map(function (k) { return '<option value="' + k + '"' + (String(k) === oldK ? ' selected' : '') + '>累计 k=0…' + k + '</option>'; }).join('');
+    if (cumulative) cumulative.innerHTML = '<option value="">No cumulative curve</option>' + series.orders.map(function (k) { return '<option value="' + k + '"' + (String(k) === oldK ? ' selected' : '') + '>Cumulative k=0…' + k + '</option>'; }).join('');
     var logX = !byId("noise-x-scale") || byId("noise-x-scale").value !== "linear";
     if (phase) phase.innerHTML = frequencyChartMarkup(series.phase, logX);
     if (harmonic) harmonic.innerHTML = frequencyChartMarkup(series.harmonics, logX);
@@ -3474,30 +3474,30 @@
     if (byId("calculated-dbc-help")) byId("calculated-dbc-help").dataset.metricKey = state.noiseKind === "flicker" ? "predicted_pair_dBc_Hz" : "thermal_noise";
     if (byId("spectre-dbc-help")) byId("spectre-dbc-help").dataset.metricKey = "spectre_total_dBc_Hz";
     var summary = results.sampleSummary || {};
-    if (byId("noise-scope-note")) byId("noise-scope-note").textContent = "计算范围：gm 的 flicker / thermal 与 LC 的 thermal。仿真曲线始终为 VCO 总 PM-SSB 相噪。Flicker 为独立双器件的对称预测，各器件内部先相干合成；thermal 按独立输入频带及独立源的功率相加，再与 flicker 加功率。计算只覆盖列出的源，不能把与全 VCO 的差值当作同源误差。" + (!thermalResult(summary) ? " 当前结果未提供可用 thermal 数据，thermal 和两类计算总和显示 N/A，不以零代替。" : "") + (finiteOrNull(reference) === null ? " 当前结果未采集总相噪，不用器件 flicker 顶替。" : "");
-    if (byId("result-operating-parameters")) byId("result-operating-parameters").textContent = "工况：" + results.operatingPointId + " · 实际参数：" + (summary.operating_parameters ? JSON.stringify(summary.operating_parameters) : "未提供") + " · 当前表格频偏：" + formatOffsetHz(results.metrics.offsetHz);
+    if (byId("noise-scope-note")) byId("noise-scope-note").textContent = "Calculation scope: gm flicker/thermal and passive LC thermal. Simulation shows total VCO PM-SSB phase noise. Flicker is a symmetric prediction for independent devices, with coherent summation within each device. Thermal adds independent band and source powers; flicker and thermal then add in power. Only listed sources are calculated. A difference from the whole-VCO total is not a matched-source error. " + (!thermalResult(summary) ? " Thermal is unavailable; thermal and combined totals show N/A, never zero. " : "") + (finiteOrNull(reference) === null ? " Current result did not collect total phase noise, do not use device flicker substitute. " : "");
+    if (byId("result-operating-parameters")) byId("result-operating-parameters").textContent = "Operating point: " + results.operatingPointId + " · Actual parameters: " + (summary.operating_parameters ? JSON.stringify(summary.operating_parameters) : "Not provided") + " · Current table offset: " + formatOffsetHz(results.metrics.offsetHz);
     var thermal = thermalResult(summary), thermalQuality = thermal && thermal.numerical_quality;
-    if (summary.thermal_noise && !thermal && byId("noise-scope-note")) byId("noise-scope-note").textContent += " " + (summary.thermal_noise.reason || "该历史结果的计算范围不符合当前 gm + LC 范围；thermal 和总计算值显示 N/A，请重新运行。");
+    if (summary.thermal_noise && !thermal && byId("noise-scope-note")) byId("noise-scope-note").textContent += " " + (summary.thermal_noise.reason || "This historical result’s calculation scope differs from current gm + LC range; thermal and calculated total show N/A, rerun. ");
     if (state.noiseKind !== "flicker" && byId("noise-scope-note")) {
       var inputLimit = finiteOrNull(thermal && thermal.input_max_harmonic);
       byId("noise-scope-note").textContent += inputLimit !== null && Number.isInteger(inputLimit) && inputLimit >= 0
-        ? " Thermal 有限带预算：独立输入频带 |m|≤" + inputLimit + "；更高频带不计。"
-        : " Thermal 实际输入频带范围未记录，不能把它解释为无限频带预算。";
+        ? " Thermal finite-band budget: independent input bands |m|≤" + inputLimit + "; higher bands are excluded. "
+        : " Thermal actual input-band limits not recorded, must not be interpreted as an infinite-band budget. ";
     }
-    var quality = [[summary.pm_magnitude_projection_valid, "PM 近似"], [summary.numerical_quality_pass, "Flicker 数值质量"], [thermalQuality ? thermalQuality.pass : undefined, "Thermal 数值质量"], [summary.hbac_secondary_validation_pass, "HBAC 辅助检查"]].map(function (entry) { return entry[1] + "：" + (entry[0] === true ? "通过" : entry[0] === false ? "未通过" : "未提供"); });
-    [[summary.numerical_quality_issues, "Flicker 问题"], [thermalQuality && thermalQuality.issues, "Thermal 问题"]].forEach(function (entry) {
-      if (entry[0] && (!Array.isArray(entry[0]) || entry[0].length)) quality.push(entry[1] + "：" + (typeof entry[0] === "object" ? JSON.stringify(entry[0]) : entry[0]));
+    var quality = [[summary.pm_magnitude_projection_valid, "PM approximation"], [summary.numerical_quality_pass, "Flicker Numerical quality"], [thermalQuality ? thermalQuality.pass : undefined, "Thermal Numerical quality"], [summary.hbac_secondary_validation_pass, "HBAC Secondary check"]].map(function (entry) { return entry[1] + ": " + (entry[0] === true ? "Passed" : entry[0] === false ? "Failed" : "Not provided"); });
+    [[summary.numerical_quality_issues, "Flicker Issues"], [thermalQuality && thermalQuality.issues, "Thermal Issues"]].forEach(function (entry) {
+      if (entry[0] && (!Array.isArray(entry[0]) || entry[0].length)) quality.push(entry[1] + ": " + (typeof entry[0] === "object" ? JSON.stringify(entry[0]) : entry[0]));
     });
-    if (byId("sample-quality-note")) byId("sample-quality-note").textContent = quality.join(" · ") + "。运行完成不代表验证通过；曲线接近不能单独证明计算可信。";
+    if (byId("sample-quality-note")) byId("sample-quality-note").textContent = quality.join(" · ") + ". Completion does not imply validation; similar curves alone do not prove calculation validity. ";
     var sweep = results.offsetSweep;
-    if (byId("sweep-result-note")) { byId("sweep-result-note").hidden = !sweep; byId("sweep-result-note").textContent = sweep ? (sweep.complete ? "全部频偏已完成" : "部分结果：仅展示已完成的频偏") + " · 已完成 " + (sweep.completed_offsets_hz || []).length + "/" + (sweep.offsets_hz || []).length + " 个频偏；批任务状态不替代各点质量检查。" : ""; }
+    if (byId("sweep-result-note")) { byId("sweep-result-note").hidden = !sweep; byId("sweep-result-note").textContent = sweep ? (sweep.complete ? "All offsets completed" : "Partial results: only completed offsets are shown") + " · Completed " + (sweep.completed_offsets_hz || []).length + "/" + (sweep.offsets_hz || []).length + " offsets; batch status does not replace per-point quality checks. " : ""; }
     renderMetricTables(summary, results.sampleHarmonics);
   }
 
   function renderLineChart(element, series) {
     if (!element) return;
     if (!series || !series.length) {
-      element.innerHTML = '<div class="empty-state">当前导入格式未包含这组逐点曲线；请导入 canonical workpoint.csv 或自动提取 PSF。</div>';
+      element.innerHTML = '<div class="empty-state">The imported format lacks these per-point curves; Import canonical workpoint.csv or automatic extraction PSF. </div>';
       return;
     }
     var width = 760;
@@ -3590,7 +3590,7 @@
   function renderPhasorChart(element, values) {
     if (!element) return;
     if (!values || !values.length) {
-      element.innerHTML = '<div class="empty-state">当前结果没有 Qk 累计复数数据。</div>';
+      element.innerHTML = '<div class="empty-state">Current result lacks Qk cumulative complex data. </div>';
       return;
     }
     var width = 980;
@@ -3650,7 +3650,7 @@
   function renderComparisonChart(element, data) {
     if (!element) return;
     if (!data || !Array.isArray(data.labels) || !data.labels.length || !Array.isArray(data.series)) {
-      element.innerHTML = '<div class="empty-state">需要至少一个设计点的 DC、统一延迟和动态误差数据。</div>';
+      element.innerHTML = '<div class="empty-state">requires at least one design point DC, uniform-delay and dynamic error data. </div>';
       return;
     }
     var width = 980;
@@ -3663,7 +3663,7 @@
       (series.values || []).forEach(function (value) { if (Number.isFinite(Number(value))) finiteValues.push(Number(value)); });
     });
     if (!finiteValues.length) {
-      element.innerHTML = '<div class="empty-state">当前结果没有可绘制的方法误差。</div>';
+      element.innerHTML = '<div class="empty-state">Current result has no plottable method errors. </div>';
       return;
     }
     var yMin = Math.min.apply(null, finiteValues.concat([-3, 0]));
@@ -3699,7 +3699,7 @@
       markup += '<path class="chart-line" d="' + valid.map(function (point, index) { return (index ? "L" : "M") + xScale(point.index).toFixed(2) + ' ' + yScale(point.value).toFixed(2); }).join(' ') + '" stroke="' + escapeHtml(series.color) + '"/>';
       valid.forEach(function (point) {
         markup += '<circle class="chart-point" cx="' + xScale(point.index) + '" cy="' + yScale(point.value) + '" r="4" fill="' + escapeHtml(series.color) + '"/>';
-        if (series.name === "动态") markup += '<text class="chart-label" x="' + xScale(point.index) + '" y="' + (yScale(point.value) - 9) + '" text-anchor="middle">' + (point.value > 0 ? "+" : "") + point.value.toFixed(2) + '</text>';
+        if (series.name === "dynamic") markup += '<text class="chart-label" x="' + xScale(point.index) + '" y="' + (yScale(point.value) - 9) + '" text-anchor="middle">' + (point.value > 0 ? "+" : "") + point.value.toFixed(2) + '</text>';
       });
     });
     markup += '<text class="chart-label" x="' + (width - margin.right) + '" y="' + (gateTop - 5) + '" text-anchor="end">±3 dB absolute gate</text>';
@@ -3784,13 +3784,13 @@
       ["result-operating-parameters", "sample-quality-note", "result-metric-tables"].forEach(function (id) { if (byId(id)) byId(id).textContent = ""; });
       if (byId("sweep-result-note")) byId("sweep-result-note").hidden = true;
       renderFlickerResults(results);
-      if (byId("metric-period")) byId("metric-period").textContent = "无可验证结果";
-      if (byId("metric-error-gates")) byId("metric-error-gates").textContent = "N/A · 未加载";
-      if (byId("metric-pair-detail")) byId("metric-pair-detail").textContent = "无可验证双管结果";
+      if (byId("metric-period")) byId("metric-period").textContent = "No verifiable result";
+      if (byId("metric-error-gates")) byId("metric-error-gates").textContent = "N/A · Not loaded";
+      if (byId("metric-pair-detail")) byId("metric-pair-detail").textContent = "No verifiable pair result";
       var failedClosure = byId("closure-status");
-      if (failedClosure) { failedClosure.className = "status-pill"; failedClosure.textContent = "N/A · 未加载"; }
+      if (failedClosure) { failedClosure.className = "status-pill"; failedClosure.textContent = "N/A · Not loaded"; }
       var failedNote = byId("result-source-note");
-      if (failedNote) $("span", failedNote).innerHTML = '<strong>结果未加载：</strong>' + escapeHtml(results.error) + (results.id ? '；任务 <code>' + escapeHtml(results.id) + '</code> 未通过来源验证。' : "。");
+      if (failedNote) $("span", failedNote).innerHTML = '<strong>No results loaded: </strong>' + escapeHtml(results.error) + (results.id ? '; Job <code>' + escapeHtml(results.id) + '</code> provenance validation failed. ' : ". ");
       renderComparisonChart(byId("comparison-chart"), null);
       renderLineChart(byId("voltage-chart"), []);
       renderLineChart(byId("current-chart"), []);
@@ -3828,7 +3828,7 @@
     }
     if (byId("metric-pair-detail")) byId("metric-pair-detail").textContent = pairAvailable
       ? ("power sum " + (pairPass ? "PASS" : "FAIL") + " · pred " + scientificText(metrics.pairPredictedAsd, 2) + " / ref " + scientificText(metrics.pairReferenceAsd, 2) + " V/√Hz")
-      : "未提供第二只器件与 pair reference";
+      : "No second device and pair reference";
     var closure = byId("closure-status");
     if (closure) {
       closure.className = "status-pill" + (!absoluteAvailable ? "" : " " + (!absolutePass ? "failed" : !trendAvailable || trendPass ? "success" : "warning"));
@@ -3836,8 +3836,8 @@
     }
     var note = byId("result-source-note");
     if (note) $("span", note).innerHTML = results.source === "api"
-      ? '显示任务 <code>' + escapeHtml(results.id) + '</code>' + (results.point ? '、设计点 <code>' + escapeHtml(results.point) + '</code>' : '') + ' 的 API 结果 · <strong>' + (results.signoff ? "SIGNOFF" : escapeHtml((results.runKind || "replay").toUpperCase()) + " NON-SIGNOFF") + '</strong>。'
-      : '当前没有经过后端 provenance 验证的结果。';
+      ? 'Show job <code>' + escapeHtml(results.id) + '</code>' + (results.point ? ', Design point <code>' + escapeHtml(results.point) + '</code>' : '') + ' of API Result · <strong>' + (results.signoff ? "SIGNOFF" : escapeHtml((results.runKind || "replay").toUpperCase()) + " NON-SIGNOFF") + '</strong>. '
+      : 'No backend-verified data for provenance validated results. ';
     renderComparisonChart(byId("comparison-chart"), results.charts.comparison);
     renderLineChart(byId("voltage-chart"), results.charts.voltage);
     renderLineChart(byId("current-chart"), results.charts.current);
@@ -3861,9 +3861,9 @@
     var view = restored && restored.view && restored.view.job_id ? restored.view : null;
     var id = view ? view.job_id : select && select.value ? select.value : currentJobId();
     if (!state.apiOnline) {
-      var offline = unavailableResults(id, "API 不可达");
+      var offline = unavailableResults(id, "API unreachable");
       renderResults(offline);
-      if (feedback) toast("API 不可达，结果未加载", "error");
+      if (feedback) toast("API unreachable, No results loaded", "error");
       return offline;
     }
     try {
@@ -3876,14 +3876,14 @@
         writeStorage(STORAGE.workspaceState, {loaded: true, view: {}});
       }
       renderResults(results);
-      if (feedback) toast("结果已从 API 更新");
+      if (feedback) toast("Results loaded from API Update");
       return results;
     } catch (error) {
       if (view) writeStorage(STORAGE.workspaceState, {loaded: true, view: {}});
       state.currentRawResults = null;
-      var unavailable = unavailableResults(id, "结果接口不可用：" + errorMessage(error));
+      var unavailable = unavailableResults(id, "Result API unavailable: " + errorMessage(error));
       renderResults(unavailable);
-      if (feedback) toast("结果接口不可用，结果未加载", "error");
+      if (feedback) toast("Result API unavailable, No results loaded", "error");
       return unavailable;
     }
   }
@@ -3930,7 +3930,7 @@
       state.workspaceStateSequence += 1;
       if (state.currentResults) { renderFlickerResults(state.currentResults); writeStorage(STORAGE.resultView, workspaceStateView()); }
     }); });
-    renderResults(unavailableResults(id, "等待 API 结果"));
+    renderResults(unavailableResults(id, "Waiting API Result"));
     var reload = byId("reload-results");
     if (reload) reload.addEventListener("click", async function () {
       setButtonBusy(reload, true);
@@ -3945,13 +3945,13 @@
     var body = byId("file-table-body");
     if (!body) return;
     if (!files || !files.length) {
-      body.innerHTML = '<tr><td colspan="7"><div class="empty-state">没有经过后端 provenance 验证的可导出文件。</div></td></tr>';
+      body.innerHTML = '<tr><td colspan="7"><div class="empty-state">No backend-verified provenance validated exportable files. </div></td></tr>';
       return;
     }
     body.innerHTML = files.map(function (file, index) {
       var status = statusName(file.status);
       return "<tr>" +
-        '<td><input class="file-select" type="checkbox" data-index="' + index + '" checked aria-label="选择 ' + escapeHtml(file.name) + '"></td>' +
+        '<td><input class="file-select" type="checkbox" data-index="' + index + '" checked aria-label="Select ' + escapeHtml(file.name) + '"></td>' +
         '<td><button class="btn ghost small file-preview" type="button" data-index="' + index + '" style="padding-left:0;text-align:left"><span><span class="file-name">' + escapeHtml(file.name) + '</span><span class="file-path" title="' + escapeHtml(file.path) + '">' + escapeHtml(file.path) + "</span></span></button></td>" +
         '<td><span class="file-type">' + escapeHtml(file.type) + "</span></td>" +
         '<td class="numeric">' + escapeHtml(file.rows) + "</td>" +
@@ -4005,7 +4005,7 @@
         content = await fetchFileText(file.path);
       } catch (error) {
         content = "Unable to load provenance file from API.\n" + error.message;
-        toast("文件接口不可用，内容未加载", "error");
+        toast("File API unavailable, Content not loaded", "error");
       }
     }
     state.currentPreview = { file: file, content: content };
@@ -4061,7 +4061,7 @@
 
   async function downloadFiles(files) {
     if (!files.length) {
-      toast("请至少选择一个文件", "error");
+      toast("Select at least one file", "error");
       return;
     }
     var generated = 0;
@@ -4072,17 +4072,17 @@
         try {
           content = await fetchFileText(file.path);
         } catch (error) {
-          toast("无法读取 provenance 文件：" + file.name, "error");
+          toast("Cannot read provenance File: " + file.name, "error");
           continue;
         }
       } else if (!content) {
-        toast("API 不可达，无法读取：" + file.name, "error");
+        toast("API unreachable, Cannot read: " + file.name, "error");
         continue;
       }
       downloadBlob(content, safeFilename(file.name), file.type === "json" ? "application/json" : "text/plain;charset=utf-8");
       generated += 1;
     }
-    toast("已生成 " + generated + " 个下载文件", generated ? undefined : "error");
+    toast("Generated " + generated + " downloaded files", generated ? undefined : "error");
   }
 
   function csvEscape(value) {
@@ -4097,14 +4097,14 @@
   }
 
   function exportData() {
-    var results = state.currentResults || unavailableResults(currentJobId(), "没有可导出的后端结果");
+    var results = state.currentResults || unavailableResults(currentJobId(), "No backend results to export");
     if (results.source !== "api" || results.error) {
-      toast(results.error || "没有可导出的后端结果", "error");
+      toast(results.error || "No backend results to export", "error");
       return;
     }
     var formats = $$('input[name="export-format"]:checked').map(function (input) { return input.value; });
     if (!formats.length) {
-      toast("请至少选择一种导出格式", "error");
+      toast("Select at least one export format", "error");
       return;
     }
     var prefixInput = byId("export-prefix");
@@ -4128,7 +4128,7 @@
       downloadBlob(JSON.stringify(manifest, null, 2), prefix + "_manifest.json", "application/json");
       count += 1;
     }
-    toast("已生成 " + count + " 个导出文件");
+    toast("Generated " + count + " export files");
   }
 
   function setInspectPill(id, label, stateName) {
@@ -4179,12 +4179,12 @@
     if (!available) {
       ["quality-complete", "quality-phase", "quality-nan", "quality-unit"].forEach(function (id) { setInspectText(id, "N/A"); });
       ["quality-complete-status", "quality-phase-status", "quality-nan-status", "quality-unit-status"].forEach(function (id) { setInspectPill(id, "N/A", ""); });
-      setInspectText("quality-complete-copy", results.error || "未加载");
-      setInspectText("quality-phase-copy", "未加载");
-      setInspectText("quality-nan-copy", "未加载");
-      setInspectText("quality-unit-copy", "未加载");
+      setInspectText("quality-complete-copy", results.error || "Not loaded");
+      setInspectText("quality-phase-copy", "Not loaded");
+      setInspectText("quality-nan-copy", "Not loaded");
+      setInspectText("quality-unit-copy", "Not loaded");
       var pendingList = byId("validation-list");
-      if (pendingList) pendingList.innerHTML = '<li class="check-item"><span class="check-copy"><strong>N/A</strong><span>验证结果未加载</span></span><span class="status-pill">N/A</span></li>';
+      if (pendingList) pendingList.innerHTML = '<li class="check-item"><span class="check-copy"><strong>N/A</strong><span>Validation results not loaded</span></span><span class="status-pill">N/A</span></li>';
       setInspectPill("validation-summary", "N/A", "");
       return;
     }
@@ -4196,39 +4196,39 @@
     var present = requiredNames.filter(function (name) { return presentNames.indexOf(name) >= 0; }).length;
     var completenessOk = available && present === requiredNames.length;
     setInspectText("quality-complete", available ? ((100 * present / requiredNames.length).toFixed(1) + "%") : "N/A");
-    setInspectText("quality-complete-copy", available ? (present + " / " + requiredNames.length + " provenance 文件") : (results.error || "等待后端结果"));
+    setInspectText("quality-complete-copy", available ? (present + " / " + requiredNames.length + " provenance File") : (results.error || "Waiting for backend results"));
     setInspectPill("quality-complete-status", completenessOk ? "pass" : (available ? "fail" : "N/A"), completenessOk ? "success" : (available ? "failed" : ""));
 
     var spread = finiteOrNull(metadata.raw_t0_spread_s);
     var noShift = metadata.manual_waveform_shift === false;
     var originOk = available && spread !== null && Math.abs(spread) <= 1e-15 && noShift;
     setInspectText("quality-phase", spread !== null ? ((spread * 1e15).toFixed(3) + " fs") : "N/A");
-    setInspectText("quality-phase-copy", originOk ? "共同原点；manual_waveform_shift=false" : "共同原点或无平移证据不完整");
+    setInspectText("quality-phase-copy", originOk ? "Common origin; manual_waveform_shift=false" : "Common-origin or no-shift evidence incomplete");
     setInspectPill("quality-phase-status", originOk ? "pass" : (available ? "fail" : "N/A"), originOk ? "success" : (available ? "failed" : ""));
 
     var finiteStats = inspectFiniteStats(results);
     var finiteOk = available && finiteStats.total > 0 && finiteStats.invalid === 0;
     setInspectText("quality-nan", available ? (finiteStats.invalid + " / " + finiteStats.total) : "N/A");
-    setInspectText("quality-nan-copy", finiteOk ? "当前渲染数值均为有限值" : "数值结果不可用或包含非有限值");
+    setInspectText("quality-nan-copy", finiteOk ? "All currently rendered values are finite" : "Numerical results unavailable or contain non-finite values");
     setInspectPill("quality-nan-status", finiteOk ? "clean" : (available ? "fail" : "N/A"), finiteOk ? "success" : (available ? "failed" : ""));
 
     var unitOk = metadata.canonical_noise_quantity === "ASD_A_per_sqrt_Hz" && metadata.source_noise_quantity === "PSD_A2_per_Hz" && metadata.current_direction === "drain_to_source" && metadata.carrier_amplitude === "differential_peak" && metadata.output_noise === "PM_SSB";
     setInspectText("quality-unit", unitOk ? "ASD · PM-SSB" : "N/A");
-    setInspectText("quality-unit-copy", unitOk ? "PSD 开方一次 · D→S · differential peak" : "单位/方向/载波合同不完整");
+    setInspectText("quality-unit-copy", unitOk ? "PSD take the square root once · D→S · differential peak" : "Unit/direction/Carrier contract incomplete");
     setInspectPill("quality-unit-status", unitOk ? "pass" : (available ? "fail" : "N/A"), unitOk ? "success" : (available ? "failed" : ""));
 
     var checks = [];
     var rowCountOk = available && Number(dualTb.vco_rows) > 0 && Number(dualTb.replica_rows) > 0 && Number(dualTb.workpoint_rows) > 0 && (results.summaryRows || []).length > 0;
-    checks.push({ title: "Canonical 数据完整", detail: rowCountOk ? ((results.summaryRows || []).length + " points · " + dualTb.vco_rows + "/" + dualTb.replica_rows + "/" + dualTb.workpoint_rows + " rows") : "缺少 summary 或双 TB 行数", state: rowCountOk ? "success" : "failed", label: rowCountOk ? "pass" : "fail" });
-    checks.push({ title: "共同时间原点", detail: originOk ? ("raw t0 spread " + (spread * 1e15).toFixed(3) + " fs；无人工平移") : "原始 t0/replica 驱动原点证据不足", state: originOk ? "success" : "failed", label: originOk ? "pass" : "fail" });
+    checks.push({ title: "Canonical Data complete", detail: rowCountOk ? ((results.summaryRows || []).length + " points · " + dualTb.vco_rows + "/" + dualTb.replica_rows + "/" + dualTb.workpoint_rows + " rows") : "Missing summary or dual TB Row count", state: rowCountOk ? "success" : "failed", label: rowCountOk ? "pass" : "fail" });
+    checks.push({ title: "common time origin", detail: originOk ? ("raw t0 spread " + (spread * 1e15).toFixed(3) + " fs; no manual shift") : "raw t0/replica Insufficient driving-origin evidence", state: originOk ? "success" : "failed", label: originOk ? "pass" : "fail" });
     var sharedOk = metadata.common_source_normalization === "Mdyn[k]=Dk*sqrt_Sxi";
-    checks.push({ title: "共享 flicker 归一化", detail: sharedOk ? "所有谐波共享同一个 sqrt(Sxi)" : "未证明 Mdyn[k]=Dk·sqrt(Sxi)", state: sharedOk ? "success" : "failed", label: sharedOk ? "pass" : "fail" });
+    checks.push({ title: "shared flicker normalized", detail: sharedOk ? "all harmonics share one sqrt(Sxi)" : "Not proven Mdyn[k]=Dk·sqrt(Sxi)", state: sharedOk ? "success" : "failed", label: sharedOk ? "pass" : "fail" });
     var phaseOk = String(metadata.phase_selection || "").indexOf("HBNOISE_AM_PM") >= 0;
     var hbacSecondary = metadata.hbac_role === "secondary_validation_only";
-    checks.push({ title: "动态相位路径", detail: phaseOk ? ("HBNOISE AM/PM 工程选角；HBAC " + (hbacSecondary ? "仅二次验证" : "角色未锁定")) : "未记录 AM/PM 默认选角", state: phaseOk && hbacSecondary ? "success" : "warning", label: phaseOk && hbacSecondary ? "pass" : "warn" });
+    checks.push({ title: "dynamic phase path", detail: phaseOk ? ("HBNOISE AM/PM engineering phase selection; HBAC " + (hbacSecondary ? "secondary validation only" : "Role not locked")) : "Not recorded AM/PM default phase selection", state: phaseOk && hbacSecondary ? "success" : "warning", label: phaseOk && hbacSecondary ? "pass" : "warn" });
     var closureEvidence = closureGateEvidence(results.summaryRows, results.metrics && results.metrics.trendDb);
     checks.push({
-      title: "Spectre 闭合双 gate",
+      title: "Spectre close both gate",
       detail: "max |error| " + (closureEvidence.maxAbs === null ? "N/A" : closureEvidence.maxAbs.toFixed(3) + " dB") + " · trend " + (closureEvidence.trend === null ? "N/A" : closureEvidence.trend.toFixed(3) + " dB"),
       state: closureEvidence.absPass ? (closureEvidence.trendPass ? "success" : "warning") : "failed",
       label: closureEvidence.absPass ? (closureEvidence.trendPass ? "pass" : "warn") : "fail"
@@ -4236,7 +4236,7 @@
     var provenance = results.provenance || {};
     var provenanceOk = available && provenance.job_id === results.id && Boolean(provenance.manifest_sha256);
     var isSignoff = results.signoff && results.runKind === "signoff";
-    checks.push({ title: "任务与 PSF provenance", detail: provenanceOk ? ((results.runKind || "import").toUpperCase() + " · " + Number(provenance.psf_runs || 0) + " PSF · manifest " + String(provenance.manifest_sha256).slice(0, 12)) : "缺少 job/manifest 归属证明", state: provenanceOk ? (isSignoff ? "success" : "warning") : "failed", label: provenanceOk ? (isSignoff ? "signoff" : "replay") : "fail" });
+    checks.push({ title: "job and PSF provenance", detail: provenanceOk ? ((results.runKind || "import").toUpperCase() + " · " + Number(provenance.psf_runs || 0) + " PSF · manifest " + String(provenance.manifest_sha256).slice(0, 12)) : "Missing job/manifest ownership evidence", state: provenanceOk ? (isSignoff ? "success" : "warning") : "failed", label: provenanceOk ? (isSignoff ? "signoff" : "replay") : "fail" });
 
     var list = byId("validation-list");
     if (list) list.innerHTML = checks.map(function (item) { return validationItem(item.title, item.detail, item.state, item.label); }).join("");
@@ -4257,22 +4257,22 @@
   async function loadInspectResults(feedback) {
     var id = currentJobId();
     if (!state.apiOnline) {
-      renderInspect(unavailableResults(id, "API 不可达"));
-      if (feedback) toast("API 不可达，结果未加载", "error");
+      renderInspect(unavailableResults(id, "API unreachable"));
+      if (feedback) toast("API unreachable, No results loaded", "error");
       return;
     }
     try {
       var payload = await apiRequest("/api/results/" + encodeURIComponent(id), { timeout: 8000 });
       renderInspect(normalizeResults(payload, id));
-      if (feedback) toast("数据清单已从 API 更新");
+      if (feedback) toast("Data inventory loaded from API Update");
     } catch (error) {
-      renderInspect(unavailableResults(id, "结果接口不可用：" + errorMessage(error)));
-      if (feedback) toast("结果接口不可用，结果未加载", "error");
+      renderInspect(unavailableResults(id, "Result API unavailable: " + errorMessage(error)));
+      if (feedback) toast("Result API unavailable, No results loaded", "error");
     }
   }
 
   function initInspect() {
-    renderInspect(unavailableResults(currentJobId(), "等待 API 结果"));
+    renderInspect(unavailableResults(currentJobId(), "Waiting API Result"));
     var selectAll = byId("select-all-files");
     if (selectAll) selectAll.addEventListener("change", function () {
       $$(".file-select").forEach(function (checkbox) { checkbox.checked = selectAll.checked; });
@@ -4294,13 +4294,13 @@
     var copy = byId("copy-preview");
     if (copy) copy.addEventListener("click", function () {
       if (!state.currentPreview) return;
-      copyText(state.currentPreview.content).then(function () { toast("预览内容已复制"); }).catch(function () { toast("复制失败，请手动选择文本", "error"); });
+      copyText(state.currentPreview.content).then(function () { toast("Preview content copied"); }).catch(function () { toast("Copy failed, Select the text manually", "error"); });
     });
     var downloadPreview = byId("download-preview");
     if (downloadPreview) downloadPreview.addEventListener("click", function () {
       if (!state.currentPreview) return;
       downloadBlob(state.currentPreview.content, safeFilename(state.currentPreview.file.name), "text/plain;charset=utf-8");
-      toast("文件已生成");
+      toast("File generated");
     });
   }
 
@@ -4318,11 +4318,11 @@
       return '<article class="error-entry" id="' + escapeHtml(entry.code) + '" data-code="' + escapeHtml(entry.code) + '">' +
         '<header><code>' + escapeHtml(entry.code) + '</code><span class="status-pill ' + (entry.severity === "warning" ? "warning" : "failed") + '">' + escapeHtml(entry.severity || "error") + '</span></header>' +
         '<h2>' + escapeHtml(entry.title || "") + '</h2><p>' + escapeHtml(entry.summary || "") + '</p>' +
-        '<div class="error-entry-grid"><div><strong>常见原因</strong><ul>' + causes + '</ul></div><div><strong>建议动作</strong><ol>' + actions + '</ol></div></div>' +
+        '<div class="error-entry-grid"><div><strong>Common causes</strong><ul>' + causes + '</ul></div><div><strong>Suggested action</strong><ol>' + actions + '</ol></div></div>' +
       '</article>';
-    }).join("") || '<div class="empty-state">没有匹配的错误码。</div>';
+    }).join("") || '<div class="empty-state">No matching error codes. </div>';
     var meta = byId("error-catalog-meta");
-    if (meta) meta.textContent = entries.length + " / " + (catalog && catalog.entries ? catalog.entries.length : 0) + " 项 · schema " + finite(catalog && catalog.schema_version, 1);
+    if (meta) meta.textContent = entries.length + " / " + (catalog && catalog.entries ? catalog.entries.length : 0) + " items · schema " + finite(catalog && catalog.schema_version, 1);
   }
 
   async function initErrors() {
@@ -4335,7 +4335,7 @@
         if (!response.ok) throw new Error("catalog unavailable");
         catalog = await response.json();
       } catch (error) {
-        reportError(error, "本地错误码目录无法读取");
+        reportError(error, "Cannot read local error catalog");
         return;
       }
     }

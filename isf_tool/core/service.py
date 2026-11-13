@@ -1348,9 +1348,9 @@ class ToolService(object):
             if job is None:
                 raise JobNotFoundError("unknown job: %s" % job_id)
             if job.get("status") not in ("queued", "running") or not is_sweep(job.get("_config_snapshot", {})):
-                raise ValidationError("此操作仅用于正在运行的多频偏任务")
+                raise ValidationError("This action applies only to running multi-offset jobs")
             job["cancel_requested"] = True
-            job["message"] = "将在当前频偏完成后停止，已完成结果会保留"
+            job["message"] = "will stop after the current offset completes, completed results will be retained"
         self._persist_job(str(job_id))
         return {"ok": True, "job_id": str(job_id), "stop_after_current_offset": True}
 

@@ -1,24 +1,23 @@
-# 输入噪声频带与 Qk 展示
+# Input noise bands and Qk presentation
 
-结果页的“频带 → 相噪”是主力扫频图，总览包含缩略图。频带 n=|m| 指周期平稳源 i_n=i_n0·α 中平稳过程 i_n0 的绝对输入频带，不是 α 或 Γ 的傅里叶配对阶。
+**Input noise band → phase noise** is the main offset-sweep view; **Overview** includes its thumbnail. Band n=|m| identifies the absolute input band of stationary process i_n0 in the cyclostationary source i_n=i_n0·α. It is not a Fourier pairing order of α or Γ.
 
-- n=0 包含全部 flicker 相干总和（双管功率 2·|ΣQk|²）与 thermal 的 m=0 功率。
-- n≥1 汇总 thermal 的 m=±n 功率；所有独立输入频带按功率相加。
-- 强调色粗线为已纳入频带的总和；虚线为整个 VCO 的 HBnoise 仿真参考。缺分量时只画已有数据，注明缺失；部分总和不改写原预测总值，不授予 SIGNOFF。
-- 每条图例的斜率是在该曲线最低两个十倍频程内对有效原始点做 dB 对 log10(频偏) 的最小二乘拟合。参考斜率线可关闭。单频偏只画点并说明不能拟合斜率。
-- 表格行为输入频带，列为各频偏的相噪与占比；右键显示全部列。点曲线/图例选择行；选行加粗对应曲线。其余视图的普通图例保留显隐功能。
+- n=0 includes the entire coherent flicker sum (two-device power 2·|ΣQk|²) and thermal m=0 power.
+- n≥1 combines thermal m=±n power. All independent input bands add in power.
+- The bold accent curve sums included bands; the dashed curve is the whole-VCO HBnoise reference. Missing components remain missing and are identified. A partial sum never replaces the original prediction or grants SIGNOFF.
+- Legend slopes use least-squares fits of dB against log10(offset) over valid raw points in the lowest two decades of each curve. Reference slopes can be hidden. A single offset shows a point and states that slope fitting is unavailable.
+- Table rows are input bands; columns show phase noise and fractions at each offset. Right-click to show all columns. Clicking a curve or legend selects its row; selecting a row emphasizes the curve. Ordinary legends in other views retain visibility controls.
 
-“谐波分解”只显示所选频偏的 Qk 单阶等效条形、投影占比及 ΣQk 复平面。投影 c_k=Re(Qk·conj(ΣQ))/|ΣQ|²，正负相加为 1；负值表示相消。|Qk|>|ΣQ| 时端点空心，悬停读数说明相消；ΣQ=0 时占比未定义。
+**Harmonic decomposition** shows Qk single-order equivalent bars, projection fractions and the ΣQk complex plane at the selected offset. The projection is c_k=Re(Qk·conj(ΣQ))/|ΣQ|². Signed fractions sum to 1; negative values indicate cancellation. If |Qk|>|ΣQ|, the endpoint is hollow and the hover readout explains cancellation. Fractions are undefined when ΣQ=0.
 
-“thermal 频带”按源和 |m| 显示所选频偏的独立频带功率。下拉选源或选中表行切源；绘图每次显示一个源，全源数据保留在抽屉表格。旧预算若未满足当前证据合同，只作为明确标注的未验证诊断，不参与主力图或当前计算总值。
+**Thermal bands** shows independent band powers by source and |m| at the selected offset. Select a source from the list or a table row. One source is plotted at a time; the table drawer retains all sources. Legacy budgets that fail the current evidence contract appear only as labeled unverified diagnostics, outside the main band plot and current calculated total.
 
-“ISF 全过程”的“叠加显示 · Fig.14”将 Γ、文献准静态 α（m_DC）、本地动态矫正 α（m_dyn）及两种 Γ·α 按各自峰值归一化。周期均值用原值和原相位网格的梯形积分显示，并列均值比 20log10(|<Γ·m_DC>|/|<Γ·m_dyn>|) 和 summary 的 dc−dynamic 差值。只做显示，不修改输入与计算数学。
+In **ISF process**, **Overlay · Fig.14** normalizes Γ, published quasi-static α (m_DC), locally corrected dynamic α (m_dyn), and both Γ·α products by their own peaks. Period means use trapezoidal integration of raw values on the original phase grid. The display compares 20log10(|<Γ·m_DC>|/|<Γ·m_dyn>|) with the summary dc−dynamic difference. This changes neither inputs nor calculation mathematics.
 
-依据：Hajimiri & Lee, *A General Theory of Phase Noise in Electrical Oscillators*, IEEE JSSC 33(2), 1998，Fig.12(a)、Fig.14、式(19)(23)(27)。flicker 的 k 属于 c0_eff 的配对拆分，不代表原始噪声位于 k·f0。
+Reference: Hajimiri & Lee, *A General Theory of Phase Noise in Electrical Oscillators*, IEEE JSSC 33(2), 1998, Fig.12(a), Fig.14, Eqs.(19)(23)(27). Flicker k decomposes c0_eff by paired harmonic order; it does not place input noise at k·f0.
 
-测试夹具与仓库自带示例均为公式生成的合成多频偏数据，不代表电路实测。
+Fixtures and bundled examples are formula-generated synthetic multi-offset data, not circuit measurements.
 
+View 04, **Noise contributions**, retains **symmetric gm pair · flicker comparison** as the first comparison row, with HBnoise and ISF bars and the simulated fraction. This aggregate overlaps subsequent source details and must not be added to source powers again. M1/M0 fn identities come from recorded target_noise_trace/peer_noise_trace, not inferred device names. An invalid legacy thermal budget affects thermal eligibility only and must not discard these flicker identities. The sources are marked **included in symmetric gm pair comparison**; single-device predictions are not fabricated.
 
-视图 04“噪声贡献”首行保留“对称 gm pair · flicker 对比”，同时画出 HBnoise 与 ISF 条形，并列仿真占比。这是聚合比较，与其后的逐源明细重叠，不能再次计入源功率和。M1/M0 的 fn 身份来自结果明确记录的 target_noise_trace/peer_noise_trace，不按器件名字猜测。旧 thermal 预算失效只影响 thermal 资格，不应丢弃这两条 flicker 源的聚合身份；源标为“计入对称 gm pair 对比”，不凭空分配单管预测值。
-
-Fig.14 均值比从原始波形及其相位网格做整周期梯形积分；summary 差值直接读取 dc/dynamic 字段。两者独立展示，不强制相等。理论与合成示例见 `ISF_THEORY.md`。
+Fig.14 mean ratios use full-period trapezoidal integration on raw waveforms and their phase grid. Summary differences read dc/dynamic fields independently. The two are displayed without forcing equality. See [ISF_THEORY.md](ISF_THEORY.md) for theory and synthetic examples.

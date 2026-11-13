@@ -35,7 +35,7 @@ class MultiOffsetGeometryTests(unittest.TestCase):
                     self.assertEqual("", frame.winfo_manager())
         app.vars["offset_start"].set("1k")
         app.vars["offset_stop"].set("100M")
-        self.assertIn("6 个频偏", app.offset_preview_var.get())
+        self.assertIn("6 offsets", app.offset_preview_var.get())
         app._toggle_advanced()
         self.assertEqual(str(app.mapping_tab), app.advanced_tabs.select())
         self.assertNotIn(str(app.inventory_tab), app.advanced_tabs.tabs())
@@ -75,7 +75,7 @@ class MultiOffsetGeometryTests(unittest.TestCase):
             self.assertTrue(app.phase_noise_chart.find_all())
         with mock.patch("isf_tool.tk.app.messagebox.showinfo") as explanation:
             app._show_metric("Q_real_V_rtHz")
-            self.assertIn("复数", explanation.call_args.args[1])
+            self.assertIn("complex", explanation.call_args.args[1])
 
 
 if __name__ == "__main__":

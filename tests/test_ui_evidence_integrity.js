@@ -80,15 +80,15 @@ test("setup starts from exactly two Maestro bindings and keeps overrides advance
   assert.match(setup, /id="replica-history-fingerprint"/);
   assert.match(setup, /id="main-history"[^>]*name="mainHistory"/);
   assert.match(setup, /id="replica-history"[^>]*name="replicaHistory"/);
-  assert.match(setup, /检测并绑定当前设置/);
-  assert.match(setup, /唯一完整候选自动选择，多个完整候选须手选后重新检测/);
-  assert.doesNotMatch(setup, /再次点击即明确接受/);
+  assert.match(setup, /Detect & bind current settings/);
+  assert.match(setup, /a unique complete candidate is selected automatically, select manually when multiple complete candidates exist, then detect again/);
+  assert.doesNotMatch(setup, /Click again to explicitly accept/);
   assert.match(setup, /name="projectRoot"/);
   assert.match(setup, /name="adapterMode"/);
   assert.match(setup, /name="pdkRoot"/);
   assert.match(app, /\/api\/maestro\/pair/);
   assert.match(app, /\/api\/maestro\/discover/);
-  assert.match(app, /mode === "maestro_pair" \? "双 TB 主链"/);
+  assert.match(app, /mode === "maestro_pair" \? "dual TB primary workflow"/);
   assert.doesNotMatch(setup, /name="sourceRoot"/);
   assert.doesNotMatch(setup + app, /\/project\/isf_runs|createDemoResults/i);
 });
@@ -283,34 +283,34 @@ test("changing a history invalidates its binding and history fingerprints", () =
     },
     "main-fingerprint": { value: "old-binding-fp" },
     "main-history-fingerprint": { value: "old-history-fp" },
-    "vco-bind-status": { textContent: "已绑定", className: "tag" },
+    "vco-bind-status": { textContent: "Bound", className: "tag" },
     "vco-bind-detail": { innerHTML: "old detail" },
     "preflight-status": { textContent: "PASS", className: "status-pill success" },
-    "preflight-required": { textContent: "无需手动补充字段" },
-    "inspect-maestro-pair": { textContent: "检测并绑定当前设置" }
+    "preflight-required": { textContent: "no manual fields required" },
+    "inspect-maestro-pair": { textContent: "Detect & bind current settings" }
   };
   const { invalidateMaestroHistory } = loadUiFunctions(elements);
   invalidateMaestroHistory("vco");
 
   assert.equal(elements["main-fingerprint"].value, "");
   assert.equal(elements["main-history-fingerprint"].value, "");
-  assert.equal(elements["vco-bind-status"].textContent, "需重新检测");
+  assert.equal(elements["vco-bind-status"].textContent, "Detection required again");
   assert.match(elements["vco-bind-detail"].innerHTML, /Interactive\.9/);
   assert.match(elements["vco-bind-detail"].innerHTML, /\/exact\/vco\/results\/maestro\/Interactive\.9\.rdb/);
   assert.match(elements["vco-bind-detail"].innerHTML, /complete\/checked · 4\/4/);
-  assert.match(elements["vco-bind-detail"].innerHTML, /history fingerprint · 待重新检测/);
-  assert.equal(elements["preflight-status"].textContent, "需重跑");
-  assert.equal(elements["inspect-maestro-pair"].textContent, "重新检测并绑定当前 history");
+  assert.match(elements["vco-bind-detail"].innerHTML, /history fingerprint · Detection required again/);
+  assert.equal(elements["preflight-status"].textContent, "Rerun required");
+  assert.equal(elements["inspect-maestro-pair"].textContent, "Detect & bind current history");
 });
 
 test("run page renders the bound pair instead of generic discovery candidates", () => {
   const discover = fs.readFileSync(DISCOVER_PATH, "utf8");
   const app = fs.readFileSync(APP_PATH, "utf8");
-  assert.match(discover, /已绑定的输入/);
+  assert.match(discover, /Bound inputs/);
   assert.match(discover, /VCO Maestro/);
   assert.match(discover, /Flicker-noise Maestro/);
   assert.match(app, /detected\.maestro_pair \|\| cachedPreflight\.detected\.inputs/);
-  assert.doesNotMatch(discover, /路径来自[^<]*唯一候选/);
+  assert.doesNotMatch(discover, /Path from[^<]*unique candidate/);
 });
 
 test("V2 diagnostics and recovery controls are locally packaged", () => {
@@ -525,7 +525,7 @@ test("null and empty dynamic errors cannot become zero-valued closure evidence",
     assert.equal(result.metrics.trendDb, null);
     assert.ok(Number.isNaN(result.charts.comparison.series[0].values[0]));
     assert.equal(result.charts.comparison.series.length, 1);
-    assert.equal(result.charts.comparison.series[0].name, "双器件 flicker");
+    assert.equal(result.charts.comparison.series[0].name, "two-device flicker");
     const evidence = closureGateEvidence(result.summaryRows, result.metrics.trendDb);
     assert.equal(evidence.maxAbs, null);
     assert.equal(evidence.trend, null);
@@ -536,7 +536,7 @@ test("null and empty dynamic errors cannot become zero-valued closure evidence",
 
 test("results offset copy uses result or explicit config without a fabricated default", () => {
   const html = fs.readFileSync(RESULTS_PATH, "utf8");
-  assert.match(html, /id="comparison-offset">offset 未提供</);
+  assert.match(html, /id="comparison-offset">offset Not provided</);
   assert.doesNotMatch(html, /contribution\s*·\s*10 kHz/);
 
   const { normalizeResults, formatOffsetHz, state } = loadUiFunctions();
@@ -556,5 +556,5 @@ test("results offset copy uses result or explicit config without a fabricated de
   state.rawConfig = {};
   const missing = normalizeResults({ job_id: "offset-missing" }, "offset-missing");
   assert.equal(missing.metrics.offsetHz, null);
-  assert.equal(formatOffsetHz(missing.metrics.offsetHz), "offset 未提供");
+  assert.equal(formatOffsetHz(missing.metrics.offsetHz), "offset Not provided");
 });

@@ -23,44 +23,44 @@ _ALIASES = {"vgs": ("vgs", "gatesource", "vgstos"), "vds": ("vds", "drainsource"
 
 # (key, label, required, help). These are semantic roles, never hard-coded TB names.
 VCO_MAPPING_SCHEMA = (
-    ("periodic_analysis", "周期稳态分析", True, "选择已启用的 HB/PSS 分析；当前内置执行器支持 HB。"),
-    ("noise_analysis", "周期噪声分析", True, "选择已启用的 HBNOISE/PNOISE 分析。"),
-    ("output_p", "差分输出正端", True, "优先读取噪声分析的正端节点；可以覆盖为已发现的节点。"),
-    ("output_n", "差分输出负端", True, "与正端一起决定差分输出方向。"),
-    ("transfer_output", "传递幅值系列 / 注入支路来源", False, "选择幅值输出系列（如 harm_mag）或单个输出；表达式用于定位本次结果读取来源，物理对应关系由用户确认。按本次噪声输出端重新测量完整复数响应，不直接采用原 mag 数值。未选择时明确使用私有漏到源注入。"),
-    ("transfer_phase_output", "传递相位系列 / 输出", False, "选择相位系列（如 harm_ph）或单个输出；保留来源及表达式供对照，不强制与幅值来源相同。本次完整复数幅相由实际传递源重新测量，不拼接不同来源的幅值和相位。"),
-    ("vgs_output", "栅源电压波形 VGS(t)", False, "对应另一 TB 的栅源偏压变量；支持节点电压差，以及网表证明源极接地的单端时域电压。复杂表达式仅供核对。"),
-    ("vds_output", "漏源电压波形 VDS(t)", False, "对应另一 TB 的漏源偏压变量，不能与 VGS 对调。"),
-    ("vbs_output", "体源电压波形 VBS(t)", False, "对应另一 TB 的体源偏压；源体同节点时可不指定。"),
-    ("noise_output_at_offset", "指定频偏的相噪表达式", False, "保留 Maestro 输出名及表达式供对照；内置提取器读取原始噪声数据，不执行 calculator。"),
-    ("target_instance", "待分析的噪声器件", False, "从电压波形的节点和真实网表推断；多个候选时需要选择。"),
-    ("peer_instance", "配对器件", False, "从相同模型及另一输出支路推断；无法唯一确定时不自动选择。"),
-    ("drain", "目标器件漏端 D", False, "来自所选器件的网表端口顺序，手动覆盖必须与真实连接一致。"),
-    ("gate", "目标器件栅端 G", False, "来自所选器件的网表端口顺序。"),
-    ("source", "目标器件源端 S", False, "来自所选器件的网表端口顺序。"),
-    ("bulk", "目标器件体端 B", False, "来自所选器件的网表端口顺序。"),
-    ("current_trace", "已有目标电流保存项（供对照）", False, "此项供对照。计算使用私有副本新增的零伏漏极探针；其实际名称在执行设置中显示并可覆盖。"),
-    ("noise_trace", "已有器件噪声保存项", False, "仅列出已保存或表达式明确引用的噪声路径；不猜测 PDK 内部 primitive。"),
+    ("periodic_analysis", "Periodic steady-state analysis", True, "Select enabled HB/PSS Analysis; the bundled executor currently supports HB. "),
+    ("noise_analysis", "Periodic noise analysis", True, "Select enabled HBNOISE/PNOISE Analysis. "),
+    ("output_p", "Differential output positive node", True, "prefer the positive node from the noise analysis; may be overridden with a discovered node. "),
+    ("output_n", "Differential output negative node", True, "sets the differential output direction with the positive node. "),
+    ("transfer_output", "Transfer magnitude family / Injection branch source", False, "Select magnitude output family (such as harm_mag)or single output; expression locates this run’s result read source, the user confirms physical mapping. remeasure the full complex response at the current noise output, does not directly use the original mag Value. uses private drain-to-source injection when not selected. "),
+    ("transfer_phase_output", "Transfer phase family / Output", False, "Select phase family (such as harm_ph)or single output; retain source and expression for reference, need not share the magnitude source. full complex magnitude and phase are remeasured from the actual transfer source, does not splice magnitude and phase from different sources. "),
+    ("vgs_output", "Gate-source voltage waveform VGS(t)", False, "maps to another TB gate-source bias variable; supports node-voltage differences, and single-ended time-domain voltage with netlist-proven source grounding. complex expressions are for review only. "),
+    ("vds_output", "Drain-source voltage waveform VDS(t)", False, "maps to another TB drain-source bias variable, cannot share with VGS reversed. "),
+    ("vbs_output", "Body-source voltage waveform VBS(t)", False, "maps to another TB body-source bias; optional when source and bulk share a node. "),
+    ("noise_output_at_offset", "Phase-noise expression at the requested offset", False, "retain Maestro output name and expression are for reference; the bundled extractor reads raw noise data, not executed calculator. "),
+    ("target_instance", "Noise device to analyze", False, "inferred from voltage waveform nodes and the actual netlist; select explicitly when multiple candidates exist. "),
+    ("peer_instance", "Peer device", False, "inferred from the same model and the other output branch; not selected automatically if ambiguous. "),
+    ("drain", "Target device drain D", False, "from the selected device’s netlist terminal order, manual overrides must match actual connections. "),
+    ("gate", "Target device gate G", False, "from the selected device’s netlist terminal order. "),
+    ("source", "Target device source S", False, "from the selected device’s netlist terminal order. "),
+    ("bulk", "Target device bulk B", False, "from the selected device’s netlist terminal order. "),
+    ("current_trace", "Existing saved target-current item (for reference)", False, "This item is for reference. calculation uses a new zero-volt drain probe in the private copy; its actual name is shown and can be overridden in execution settings. "),
+    ("noise_trace", "Existing saved device-noise item", False, "lists only saved noise paths or paths explicitly referenced by expressions; not guessed PDK internal primitive. "),
 )
 REPLICA_MAPPING_SCHEMA = (
-    ("noise_analysis", "噪声分析", True, "选择已启用的独立 noise 分析。"),
-    ("vgs_variable", "栅源偏压变量 VGS", True, "与 VCO 的 VGS(t) 对应；按电源连接或变量语义识别。"),
-    ("vds_variable", "漏源偏压变量 VDS", True, "与 VCO 的 VDS(t) 对应；按电源连接或变量语义识别。"),
-    ("vbs_variable", "体源偏压变量 VBS", False, "与 VCO 的 VBS(t) 对应；源体同电位时可不指定。"),
-    ("vgs_source", "栅源偏置电压源", False, "选择真实连接目标栅源端的电压源；本次动态副本接入 VCO 的 VGS(t)。"),
-    ("vds_source", "漏源偏置电压源", False, "选择真实连接目标漏源端的电压源，可经零伏电流探针连接。"),
-    ("vbs_source", "体源偏置电压源", False, "选择真实连接目标体源端的电压源；源体短接时由脚本生成零电压。"),
-    ("vgs_pwl_variable", "VGS 波形文件全局变量", False, "Maestro global 中保存 VGS 周期波形文件名的变量；运行时采用任务目录中的新波形。"),
-    ("vds_pwl_variable", "VDS 波形文件全局变量", False, "Maestro global 中保存 VDS 周期波形文件名的变量；变量名可任意命名。"),
-    ("vbs_pwl_variable", "VBS 波形文件全局变量", False, "Maestro global 中保存 VBS 周期波形文件名的变量；缺失时在任务中生成，明确显示来源。"),
-    ("vs_pwl_variable", "源极共模 VS 波形文件全局变量", False, "保存 VCO 源极对地电压，供私有动态副本的 VS 源保留公共电平；不要求原噪声 TB 有对应电压源。原 Maestro 未声明时在本次任务中生成。"),
-    ("noise_output_at_offset", "指定频偏的噪声表达式", False, "显示 Maestro 输出名供对照；计算读取 raw noise，不执行 calculator。"),
-    ("output_p", "噪声测量正端", False, "读取 noise 分析的输出节点。"),
-    ("output_n", "噪声测量负端", False, "读取 noise 分析的参考节点。"),
-    ("dc_instance", "噪声 TB 中的目标器件", False, "用于确认栅源、漏源偏压与器件模型。"),
-    ("dc_sense_source", "漏电流检测源", False, "读取实际零伏检测源或电流探针，必须与漏端支路一致。"),
-    ("dc_transducer", "电流转电压元件", False, "读取 noise 输出上的受控源及其 probe 引用。"),
-    ("dc_noise_output", "原始噪声输出正端", False, "用于执行配置，与噪声分析正端保持一致。"),
+    ("noise_analysis", "Noise analysis", True, "Select enabled independent noise Analysis. "),
+    ("vgs_variable", "Gate-source bias variable VGS", True, "and VCO of VGS(t) Mapping; detected by supply connections or variable semantics. "),
+    ("vds_variable", "Drain-source bias variable VDS", True, "and VCO of VDS(t) Mapping; detected by supply connections or variable semantics. "),
+    ("vbs_variable", "Body-source bias variable VBS", False, "and VCO of VBS(t) Mapping; optional when source and bulk are equipotential. "),
+    ("vgs_source", "Gate-source bias voltage source", False, "Select the voltage source connected to the target gate-source terminals; connected to this run’s dynamic replica VCO of VGS(t). "),
+    ("vds_source", "Drain-source bias voltage source", False, "Select the voltage source connected to the target drain-source terminals, may connect through a zero-volt current probe. "),
+    ("vbs_source", "Body-source bias voltage source", False, "Select the voltage source connected to the target bulk-source terminals; script generates zero voltage when source and bulk are shorted. "),
+    ("vgs_pwl_variable", "VGS Waveform file global variable", False, "Maestro global saved in VGS periodic waveform filename variable; uses new waveforms from the job directory at runtime. "),
+    ("vds_pwl_variable", "VDS Waveform file global variable", False, "Maestro global saved in VDS periodic waveform filename variable; variable names are arbitrary. "),
+    ("vbs_pwl_variable", "VBS Waveform file global variable", False, "Maestro global saved in VBS periodic waveform filename variable; generated inside the job when missing, source explicitly shown. "),
+    ("vs_pwl_variable", "source common mode VS Waveform file global variable", False, "Save VCO source-to-ground voltage, for the private dynamic replica VS source preserves common-mode level; does not require the original noise TB has a corresponding voltage source. original Maestro generated in this job if undeclared. "),
+    ("noise_output_at_offset", "Noise expression at the requested offset", False, "show Maestro output name is for reference; calculation reads raw noise, not executed calculator. "),
+    ("output_p", "Noise measurement positive node", False, "Read noise analysis output node. "),
+    ("output_n", "Noise measurement negative node", False, "Read noise analysis reference node. "),
+    ("dc_instance", "Noise TB target device in", False, "used to confirm gate-source, drain-source bias and device model. "),
+    ("dc_sense_source", "Drain-current sensing source", False, "read the actual zero-volt sensing source or current probe, must match the drain branch. "),
+    ("dc_transducer", "Current-to-voltage element", False, "Read noise controlled source on the output and its probe Reference. "),
+    ("dc_noise_output", "Raw noise output positive node", False, "used for execution configuration, matches the positive noise-analysis node. "),
 )
 
 
@@ -195,7 +195,7 @@ def parse_netlist(text, source="generated netlist", additional_texts=None):
         port_map = port_map or {}
         for item in records:
             if len(result["devices"]) >= MAX_EXPANDED_DEVICES:
-                result["warnings"].append("层级器件数超过只读发现限制；请缩小 TB 或手动提供经过核对的执行配置。")
+                result["warnings"].append("Hierarchical device count exceeds read-only discovery limit; narrow TB or supply reviewed execution settings manually. ")
                 return
             record = copy.deepcopy(item)
             name = prefix + item["name"]
@@ -208,7 +208,7 @@ def parse_netlist(text, source="generated netlist", additional_texts=None):
             if item["model"] in definitions:
                 sub = definitions[item["model"]]
                 if item["model"] in stack or len(stack) >= 12 or len(nodes) != len(sub["ports"]):
-                    result["warnings"].append("无法安全展开层级 %s；端口数量或递归层级需人工核对。" % name)
+                    result["warnings"].append("Cannot safely expand hierarchy %s; terminal count or recursive hierarchy requires manual review. " % name)
                     continue
                 expand(sub["instances"], name + ".", dict(zip(sub["ports"], nodes)), stack + (item["model"],))
     expand(top)
@@ -229,7 +229,7 @@ def inspect_history_topology(history, selected_test=None):
             continue
         try:
             if os.path.getsize(path) > MAX_NETLIST_BYTES:
-                raise ValueError("网表超过只读发现大小限制")
+                raise ValueError("Netlist exceeds read-only discovery size limit")
             with open(path, "r", encoding="utf-8", errors="replace") as stream:
                 main_text = stream.read()
             # Only read includes inside this bound generated-netlist tree. PDK
@@ -249,17 +249,17 @@ def inspect_history_topology(history, selected_test=None):
                         continue
                     visited.add(candidate)
                     if len(visited) > 64:
-                        local_warnings.append("本地 include 数超过只读限制；部分层级未解析。")
+                        local_warnings.append("Local include count exceeds read-only limit; Some hierarchy remains unresolved. ")
                         continue
                     try:
                         total_bytes += os.path.getsize(candidate)
                         if total_bytes > MAX_NETLIST_BYTES:
-                            local_warnings.append("本地 include 总量超过只读限制；部分层级未解析。")
+                            local_warnings.append("Local include total exceeds read-only limit; Some hierarchy remains unresolved. ")
                             continue
                         with open(candidate, "r", encoding="utf-8", errors="replace") as stream:
                             included_text = stream.read()
                     except OSError as exc:
-                        local_warnings.append("本地 include 不可读取 %s: %s" % (candidate, exc))
+                        local_warnings.append("Local include unreadable %s: %s" % (candidate, exc))
                         continue
                     local_texts.append((candidate, included_text))
                     pending.append((candidate, included_text))
@@ -278,7 +278,7 @@ def inspect_history_topology(history, selected_test=None):
                     seen[identity] = record
                 elif key in ("devices", "sources") and (old["model"] != record["model"] or old["terminals"] != record["terminals"]):
                     old["ambiguous"] = True
-                    merged["warnings"].append("不同 history 点的器件 %s 拓扑不同；不能共用一个自动映射。" % record["name"])
+                    merged["warnings"].append("different history point device %s topology differs; cannot share one automatic mapping. " % record["name"])
                 if old is not None and key == "sources" and old.get("parameters") != record.get("parameters"):
                     old["voltage_constraint_ambiguous"] = True
         merged["nets"] = _unique(merged["nets"] + current["nets"])
@@ -472,12 +472,12 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
     issues, fields, mapping = [], [], {}
     overrides = {} if overrides is None else overrides
     if not isinstance(overrides, dict):
-        issues.append({"key": "mapping_overrides", "severity": "error", "message": "手动覆盖必须是名称到字符串的对象。"})
+        issues.append({"key": "mapping_overrides", "severity": "error", "message": "Manual overrides must be a name-to-string object. "})
         overrides = {}
     valid_keys = {item[0] for item in schema}
     for key in overrides:
         if key not in valid_keys:
-            issues.append({"key": key, "severity": "error", "message": "未知的手动映射字段 %s；请删除旧覆盖后重新检测。" % key})
+            issues.append({"key": key, "severity": "error", "message": "Unknown manual mapping field %s; Remove old overrides, then detect again. " % key})
     outputs = [record for record in catalog if record["kind"] == "output"]
     output_names = _unique(record["name"] for record in outputs)
     variables = _unique(record["name"] for record in catalog if record["kind"] == "variable" or (record["kind"] == "parameter" and not record["details"].get("scope")))
@@ -512,7 +512,7 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
             return 'trace'
         return 'net'
 
-    def choose(key, candidates, detected=None, source="自动识别", expected=None):
+    def choose(key, candidates, detected=None, source="Automatic detection", expected=None):
         candidates = _unique(candidates)
         evidence = _unique(detected if isinstance(detected, (list, tuple)) else [detected])
         auto = evidence[0] if len(evidence) == 1 else None
@@ -532,21 +532,21 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
         status = "manual" if manual else ("auto" if auto else ("ambiguous" if len(evidence) > 1 else "missing"))
         if not valid_string:
             value, status = None, "invalid"
-            issues.append({"key": key, "severity": "error", "message": "手动覆盖必须是一个名称字符串；留空表示自动。"})
+            issues.append({"key": key, "severity": "error", "message": "Manual override must be a name string; blank means automatic. "})
         elif manual and manual not in candidates:
             value, status = None, "invalid"
             reference_only = key in ('noise_output_at_offset', 'current_trace')
             issues.append({"key": key, "severity": "warning" if reference_only else "error",
-                           "message": ("参考名称 %s 在当前 TB/test/history 中不存在；参考项已失效，不影响原始数据计算，可重新选择或清空。" if reference_only
-                                       else "手动名称 %s 在当前 TB/test/history 中不存在；请重新选择或清空以自动识别。") % manual})
+                           "message": ("Reference name %s in the current TB/test/history does not exist in; reference item is stale, does not affect the raw-data calculation, select again or clear. " if reference_only
+                                       else "Manual name %s in the current TB/test/history does not exist in; select again or clear for automatic detection. ") % manual})
         elif manual and kind == 'net' and topology.get('files') and canonical_net(manual) not in {canonical_net(node) for node in topology.get('nets', [])}:
             value, status = None, 'invalid'
-            issues.append({'key': key, 'severity': 'error', 'message': '节点 %s 只出现在 Maestro 声明中，所选 history 的真实网表不存在该节点；请选匹配 history。' % manual})
+            issues.append({'key': key, 'severity': 'error', 'message': 'Node %s appears only in Maestro in declaration, Selected history actual netlist does not contain this node; select matching history. ' % manual})
         if len(evidence) > 1 and not manual:
-            issues.append({"key": key, "severity": "warning", "message": "存在多个候选：%s；请在高级设置中选择，未自动绑定第一个。" % ", ".join(evidence)})
+            issues.append({"key": key, "severity": "warning", "message": "has multiple candidates: %s; Select in Advanced settings, The first candidate was not automatically bound for. " % ", ".join(evidence)})
         if manual and expected and canonical_net(manual) != canonical_net(expected):
             status = "invalid"
-            issues.append({"key": key, "severity": "error", "message": "覆盖 %s 与已选器件的真实连接 %s 不一致。" % (manual, expected)})
+            issues.append({"key": key, "severity": "error", "message": "override %s and the actual connections of the selected device %s inconsistent. " % (manual, expected)})
         _key, label, required, help_text = definitions[key]
         selected_record = next((record for record in catalog if record['kind'] == kind and record['name'] == value), {})
         details = copy.deepcopy(selected_record.get('details', {}))
@@ -563,10 +563,10 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
     periodic = None
     if role == "vco":
         names = [item["name"] for item in analyses if item["analysis_type"] in ("hb", "pss")]
-        periodic = choose("periodic_analysis", names, names, "已启用的周期分析")
+        periodic = choose("periodic_analysis", names, names, "enabled periodic analysis")
     types = ("hbnoise", "pnoise") if role == "vco" else ("noise", "hbnoise", "pnoise")
     names = [item["name"] for item in analyses if item["analysis_type"] in types]
-    noise = choose("noise_analysis", names, names, "已启用的噪声分析")
+    noise = choose("noise_analysis", names, names, "enabled noise analysis")
     analysis = next((item for item in analyses if item["name"] == noise), {})
     periodic_record = next((item for item in analyses if item["name"] == periodic), {})
     for key in ("output_p", "output_n"):
@@ -574,7 +574,7 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
         nodes = analysis.get("terminals", [])
         other_nodes = periodic_record.get("terminals", [])
         value = nodes[index] if len(nodes) > index and nodes[index] else (other_nodes[index] if len(other_nodes) > index else None)
-        choose(key, nets, value, "已选噪声分析的 %s 端" % ("正" if index == 0 else "负"))
+        choose(key, nets, value, "selected noise analysis %s terminal" % ("positive" if index == 0 else "negative"))
     topology["net_aliases"] = {}
     for key, index in (("output_p", 0), ("output_n", 1)):
         actual_analyses = [item for item in topology.get("analyses", []) if item["name"] == noise]
@@ -588,13 +588,13 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
                     topology["net_aliases"][state_nodes[index]] = actual_nodes[index]
                     topology["net_aliases"][canonical_net(state_nodes[index])] = actual_nodes[index]
                 else:
-                    issues.append({"key": key, "severity": "error", "message": "当前 Maestro 的噪声节点 %s 与所选 history 网表节点 %s 不一致；请选择匹配的 history，不能将不同节点当作别名。" % (state_nodes[index], actual_nodes[index])})
+                    issues.append({"key": key, "severity": "error", "message": "Current Maestro noise node %s and selected history Netlist node %s inconsistent; select matching history, different nodes cannot be treated as aliases. " % (state_nodes[index], actual_nodes[index])})
         value = mapping.get(key)
         mapping[key + "_netlist"] = topology["net_aliases"].get(value, canonical_net(value)) if value else None
     mapping["periodic_analysis_type"] = periodic_record.get("analysis_type")
     mapping["noise_analysis_type"] = analysis.get("analysis_type")
     mapping["noise_analysis_fields"] = analysis.get("fields", {})
-    choose("noise_output_at_offset", output_names, _noise_outputs(outputs, offset_hz), "表达式依赖与 %.6g Hz 频偏（仅对照，不执行 calculator）" % offset_hz)
+    choose("noise_output_at_offset", output_names, _noise_outputs(outputs, offset_hz), "expression dependencies and %.6g Hz Offset (reference only, not executed calculator)" % offset_hz)
 
     semantic_outputs = {}
     if role == "vco":
@@ -609,7 +609,7 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
                 # meaning outranks an arbitrary (possibly misleading) label.
                 if matches or (not pair or not devices) and semantic in _semantic_name(output["name"]):
                     candidates.append(output["name"])
-            semantic_outputs[semantic] = choose(semantic + "_output", output_names, candidates, "输出表达式的节点差与电压语义")
+            semantic_outputs[semantic] = choose(semantic + "_output", output_names, candidates, "output expression node difference and voltage semantics")
         matched_devices = list(devices)
         constrained = False
         for semantic, output_name in semantic_outputs.items():
@@ -621,14 +621,14 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
                 matched_devices = [device for device in matched_devices if matches_voltage(pair, device, semantic)]
         target_candidates = [item["name"] for item in matched_devices] if constrained else device_names
         if constrained and devices and not matched_devices:
-            issues.append({"key": "target_instance", "severity": "error", "message": "所选 VGS/VDS/VBS 波形的节点差无法对应同一个真实器件；请按栅源、漏源、体源的电气含义核对。"})
-        target = choose("target_instance", device_names, target_candidates, "电压波形的节点差与真实器件端口" if constrained else "实际网表 MOS 候选")
+            issues.append({"key": "target_instance", "severity": "error", "message": "Selected VGS/VDS/VBS Waveform node differences do not map to the same actual device; use gate-source, drain-source, body-source electrical meaning check. "})
+        target = choose("target_instance", device_names, target_candidates, "voltage-waveform node differences and actual device terminals" if constrained else "actual netlist MOS Candidates")
         device = by_device.get(target, {})
         peer_candidates = [item["name"] for item in devices if target and item["name"] != target and item["model"] == device["model"] and canonical_net(item["terminals"][0]) in (canonical_net(mapping.get("output_p")), canonical_net(mapping.get("output_n"))) and canonical_net(item["terminals"][0]) != canonical_net(device["terminals"][0])]
-        choose("peer_instance", [name for name in device_names if name != target], peer_candidates, "相同器件模型、另一差分输出支路")
+        choose("peer_instance", [name for name in device_names if name != target], peer_candidates, "same device model, other differential output branch")
         for index, key in enumerate(("drain", "gate", "source", "bulk")):
             value = device.get("terminals", [None] * 4)[index]
-            choose(key, nets, value, "所选器件的 D/G/S/B 端口", expected=value)
+            choose(key, nets, value, "selected device D/G/S/B terminal", expected=value)
         transfer_records = {}
         transfer_errors = {}
         for output in outputs:
@@ -659,18 +659,18 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
                 original_output=list(nodes), effective_output=[mapping.get('output_p_netlist'), mapping.get('output_n_netlist')],
                 algorithm_harmonic=reference['sideband'] + 1, source_definition=actual.get('definition'),
                 consumption_mode='source_binding_remeasured',
-                notice='由 %s 定位 %s / %s；本次输出 %s−%s，方向因子 %s（%s）；重新测量完整复数，不采用原幅值数值。' %
+                notice='from %s locate %s / %s; current output %s−%s, direction factor %s (%s); remeasure full complex response, original magnitude values are not used. ' %
                     (name, reference['analysis'], actual.get('name', reference['source']), mapping.get('output_p_netlist'), mapping.get('output_n_netlist'), factor,
-                     '已知反向支路，沿用原换向' if direction_basis == 'topology_reverse' else '已知同向支路' if direction_basis == 'topology_forward' else '按用户声明的来源方向'))
+                     'known reverse branch, retain original direction' if direction_basis == 'topology_reverse' else 'known forward branch' if direction_basis == 'topology_forward' else 'use the user-declared source direction'))
         transfer_records, transfer_errors, transfer_details, transfer_families = transfer_choices(outputs, transfer_records, transfer_errors)
         transfer_candidates = output_names + list(transfer_families)
         preferred = preferred_transfer_choices(transfer_records, transfer_errors, transfer_families, 'magnitude')
         if not preferred:
             preferred = preferred_transfer_choices(transfer_records, transfer_errors, transfer_families, 'complex')
         selected_transfer = choose('transfer_output', transfer_candidates, preferred,
-            '输出系列及表达式中的结果读取来源（物理绑定由用户确认）')
+            'result read source in output family and expression (physical binding confirmed by the user)')
         if selected_transfer and selected_transfer not in transfer_records and selected_transfer not in transfer_errors:
-            transfer_errors[selected_transfer] = '该命名输出不能静态对应 HBXF/PXF 的原始电流源与边带；不能将任意 Calculator 数值当作复数传递响应。'
+            transfer_errors[selected_transfer] = 'This named output cannot be mapped statically HBXF/PXF original current source and sidebands; cannot treat arbitrary Calculator values as complex transfer responses. '
         if selected_transfer and selected_transfer in transfer_errors:
             issues.append({'key': 'transfer_output', 'severity': 'error', 'message': transfer_errors[selected_transfer]})
             mapping['transfer_contract'] = {'mode': 'invalid', 'output_name': selected_transfer}
@@ -682,15 +682,15 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
         else:
             mapping['transfer_contract'] = {'mode': 'private_injection', 'source': None,
                 'direction_factor': 1, 'sideband': 0, 'algorithm_harmonic': 1,
-                'notice': '使用私有副本新增的漏到源注入；没有采用 Maestro 幅值输出。'}
+                'notice': 'uses the new drain-to-source injection in the private copy; not used Maestro Magnitude output. '}
         anchor = mapping['transfer_contract']
         phase_candidates = preferred_transfer_choices(transfer_records, transfer_errors, transfer_families, 'phase', anchor)
         phase_output = choose('transfer_phase_output', transfer_candidates, phase_candidates,
-                              '相位输出系列及读取来源（保留对照，不重复校验物理绑定）')
+                              'phase output family and read source (retained for reference, physical binding is not checked twice)')
         if phase_output:
             phase = transfer_records.get(phase_output, {})
             if phase_output in transfer_errors or phase.get('mode') != 'existing_source':
-                issues.append({'key': 'transfer_phase_output', 'severity': 'error', 'message': transfer_errors.get(phase_output) or '请选择能够识别原始电流源和边带的 phase/phaseDeg 输出。'})
+                issues.append({'key': 'transfer_phase_output', 'severity': 'error', 'message': transfer_errors.get(phase_output) or 'Select an output identifying the original current source and sideband phase/phaseDeg Output. '})
             else:
                 if anchor.get('mode') == 'private_injection':
                     mapping['transfer_contract'] = dict(phase, phase_output_name=phase_output)
@@ -709,15 +709,15 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
             if field['value'] in transfer_details:
                 field['selected_details'] = copy.deepcopy(transfer_details[field['value']])
             if field['key'] == 'transfer_phase_output':
-                field['selected_details']['role_consumption'] = '参考来源；本次幅相从实际传递源重测完整复数，不合成不同来源。'
+                field['selected_details']['role_consumption'] = 'Reference source; magnitude and phase are remeasured as a full complex response from the actual transfer source, does not combine different sources. '
             field_errors = [item['message'] for item in issues if item['key'] == field['key'] and item['severity'] == 'error']
             if field_errors:
                 field['status'] = 'invalid'
                 field['selected_details']['errors'] = field_errors
             field['selection_kind'] = field['selected_details'].get('kind', 'transfer_output')
         traces = _unique(record["name"] for record in catalog if record["kind"] in ("save", "trace") or (record["kind"] == "output" and record["details"].get("signal")))
-        choose("current_trace", traces, [name for name in traces if target and (name.startswith(target + ":") or name.startswith("/" + target.replace(".", "/") + "/"))], "已有 save/信号输出")
-        choose("noise_trace", traces, [name for name in traces if target and name.startswith(target + ".") and "noise" in name.lower()], "已明确保存的噪声路径")
+        choose("current_trace", traces, [name for name in traces if target and (name.startswith(target + ":") or name.startswith("/" + target.replace(".", "/") + "/"))], "existing save/Signal output")
+        choose("noise_trace", traces, [name for name in traces if target and name.startswith(target + ".") and "noise" in name.lower()], "explicitly saved noise paths")
     else:
         sources = topology.get("sources", [])
         source_by_name = {canonical_net(item['name']): item for item in sources}
@@ -729,7 +729,7 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
         selected_readouts = [item for item in transducers if not manual_transducer or canonical_net(item['name']) == manual_transducer]
         probe_names = [manual_sense] if manual_sense else [canonical_net(item.get('parameters', {}).get('probe')) for item in selected_readouts]
         linked_devices = [item['name'] for item in devices if any(item['terminals'][0] in source_by_name.get(probe, {}).get('terminals', []) for probe in probe_names)]
-        target = choose("dc_instance", device_names, linked_devices or device_names, "检测支路连接的 MOS 候选（可手动选择器件或检测源）")
+        target = choose("dc_instance", device_names, linked_devices or device_names, "connected to the sensing branch MOS Candidates (device or sensing source may be selected manually)")
         device = by_device.get(target, {})
         # Bias names follow electrical connectivity, not the spelling of VGS/VDS.
         zero_edges = [item["terminals"] for item in _zero_voltage_edges(topology)]
@@ -758,62 +758,62 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
                         if expression in variables:
                             inferred.append(expression)
             chosen_source = choose(semantic + '_source', [item['name'] for item in sources if item['model'].lower() == 'vsource'],
-                                   [item['name'] for item in bias_sources], '偏置源与目标器件端口的真实连接（含零伏探针等价连接）')
+                                   [item['name'] for item in bias_sources], 'actual connections between bias sources and target device terminals (including equivalent connections through zero-volt probes)')
             actual_source = next((item for item in sources if item['name'] == chosen_source), {})
             if chosen_source and chosen_source not in [item['name'] for item in bias_sources] and device:
-                issues.append({'key': semantic + '_source', 'severity': 'error', 'message': '所选电压源不对应目标器件的 %s 正负端；请按真实连接选择。' % semantic.upper()})
+                issues.append({'key': semantic + '_source', 'severity': 'error', 'message': 'Selected voltage source does not match the target device’s %s positive and negative terminals; select by actual connections. ' % semantic.upper()})
             if actual_source:
                 inferred = [actual_source.get('parameters', {}).get('dc')] if actual_source.get('parameters', {}).get('dc') in variables else []
             if not inferred:
                 inferred = [name for name in variables if semantic in _semantic_name(name)]
             semantic_variables[semantic] = _unique(inferred)
-            bias_variable = choose(semantic + "_variable", variables, inferred, "实际偏置电源的 dc 参数与 D/G/S/B 连接；名称为辅助")
+            bias_variable = choose(semantic + "_variable", variables, inferred, "actual bias supply dc parameters and D/G/S/B connection; name is auxiliary")
             if bias_variable and actual_source and actual_source.get('parameters', {}).get('dc') != bias_variable:
-                issues.append({'key': semantic + '_variable', 'severity': 'error', 'message': '变量 %s 未直接驱动已选 %s 的 dc 参数，不能假称已影响偏置。' % (bias_variable, chosen_source)})
+                issues.append({'key': semantic + '_variable', 'severity': 'error', 'message': 'Variable %s does not directly drive the selected %s of dc Parameters, cannot claim the bias was affected. ' % (bias_variable, chosen_source)})
             file_reference = actual_source.get('parameters', {}).get('file', '')
             if file_reference not in variables:
                 file_reference = None
             pwl_candidates = [file_reference] if file_reference else [name for name in variables
                 if semantic in _semantic_name(name) and re.search(r'pwl|wave.*file|file.*wave', name, re.I)]
             pwl_variable = choose(semantic + '_pwl_variable', variables, pwl_candidates,
-                                  '已选电压源的 file 变量，或已声明的周期波形文件 global 变量')
+                                  'selected voltage source file Variable, or a declared periodic waveform file global Variable')
             if pwl_variable:
                 record = next((item for item in catalog if item['kind'] == 'variable' and item['name'] == pwl_variable), {})
                 expression = str(record.get('expression', '')).strip()
                 if expression and re.fullmatch(r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?[a-zA-Z]*', expression):
-                    issues.append({'key': semantic + '_pwl_variable', 'severity': 'error', 'message': '波形文件变量必须保存文件名字符串；%s 当前是数值变量。' % pwl_variable})
+                    issues.append({'key': semantic + '_pwl_variable', 'severity': 'error', 'message': 'Waveform file variable must contain a filename string; %s currently a numeric variable. ' % pwl_variable})
         vs_globals = [item['name'] for item in catalog if item['kind'] == 'variable'
                       and item['name'] == 'ISF_VS_PWL_FILE' and item['details'].get('scope') == 'global']
         vs_variable = choose('vs_pwl_variable', variables, vs_globals,
-                             '私有 VS 源的共模波形文件变量；不要求原 TB 存在 VS 电压源')
+                             'private VS source common-mode waveform file variable; does not require the original TB exists VS voltage source')
         if vs_variable:
             record = next((item for item in catalog if item['kind'] == 'variable' and item['name'] == vs_variable), {})
             expression = str(record.get('expression', '')).strip()
             if expression and re.fullmatch(r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?[a-zA-Z]*', expression):
-                issues.append({'key': 'vs_pwl_variable', 'severity': 'error', 'message': 'VS 共模波形文件变量必须保存文件名字符串；%s 当前是数值变量。' % vs_variable})
+                issues.append({'key': 'vs_pwl_variable', 'severity': 'error', 'message': 'VS Common-mode waveform variable must contain a filename string; %s currently a numeric variable. ' % vs_variable})
         if manual_sense:
             transducers = [item for item in transducers if canonical_net(item.get('parameters', {}).get('probe')) == manual_sense]
         elif device:
             transducers = [item for item in transducers if device['terminals'][0] in source_by_name.get(canonical_net(item.get('parameters', {}).get('probe')), {}).get('terminals', [])]
-        transducer = choose("dc_transducer", [item["name"] for item in sources if item["model"].lower() == "ccvs"], [item["name"] for item in transducers], "噪声输出和已选电流检测源共同约束的电流转电压元件")
+        transducer = choose("dc_transducer", [item["name"] for item in sources if item["model"].lower() == "ccvs"], [item["name"] for item in transducers], "current-to-voltage element constrained by the noise output and selected sensing source")
         chosen = next((item for item in sources if item["name"] == transducer), {})
         sense = chosen.get("parameters", {}).get("probe")
-        actual_sense = choose("dc_sense_source", [item["name"] for item in sources if item["model"].lower() in ("vsource", "iprobe")], sense, "受控源 probe 引用；手选后同步定位检测支路与目标器件")
+        actual_sense = choose("dc_sense_source", [item["name"] for item in sources if item["model"].lower() in ("vsource", "iprobe")], sense, "controlled source probe Reference; manual selection also locates the sensing branch and target device")
         sense_record = source_by_name.get(canonical_net(actual_sense), {})
         if chosen and (len(chosen.get('terminals', [])) != 2 or [canonical_net(node) for node in chosen['terminals']] != [canonical_net(mapping.get('output_p')), canonical_net(mapping.get('output_n'))]):
-            issues.append({'key': 'dc_transducer', 'severity': 'error', 'message': '所选电流转电压元件未连接所选 noise 正负测量节点。'})
+            issues.append({'key': 'dc_transducer', 'severity': 'error', 'message': 'Selected current-to-voltage element is not connected to the selected noise positive and negative measurement nodes. '})
         if chosen and actual_sense and canonical_net(sense) != canonical_net(actual_sense):
-            issues.append({'key': 'dc_sense_source', 'severity': 'error', 'message': '所选检测源与电流转电压元件的 probe 引用不同，请同时选择对应读出元件。'})
+            issues.append({'key': 'dc_sense_source', 'severity': 'error', 'message': 'selected sensing source and current-to-voltage element probe references differ, also select the corresponding readout element. '})
         if actual_sense and device:
             valid_zero = any(item['name'] == sense_record.get('name') for item in _zero_voltage_edges(topology))
             if not valid_zero or device['terminals'][0] not in sense_record.get('terminals', []):
-                issues.append({'key': 'dc_sense_source', 'severity': 'error', 'message': '检测源必须是连接目标 MOS 漏极的零伏电压源或理想电流探针；偏置电源和其他支路不能替代。'})
-        choose("dc_noise_output", nets, mapping.get("output_p"), "noise 分析正端", expected=mapping.get("output_p"))
+                issues.append({'key': 'dc_sense_source', 'severity': 'error', 'message': 'sensing source must connect to the target MOS drain zero-volt voltage source or ideal current probe; bias supplies and other branches cannot substitute. '})
+        choose("dc_noise_output", nets, mapping.get("output_p"), "noise Analysis positive node", expected=mapping.get("output_p"))
         for semantic in _SEMANTICS:
             selected = mapping.get(semantic + "_variable")
             others = [other for other in _SEMANTICS if other != semantic and selected in semantic_variables[other]]
             if selected and others and selected not in semantic_variables[semantic]:
-                issues.append({"key": semantic + "_variable", "severity": "error", "message": "%s 实际对应 %s，不能作为 %s 偏压。" % (selected, "/".join(others).upper(), semantic.upper())})
+                issues.append({"key": semantic + "_variable", "severity": "error", "message": "%s Effective mapping %s, cannot be used as %s Bias. " % (selected, "/".join(others).upper(), semantic.upper())})
 
     for semantic, output_name in semantic_outputs.items():
         if not output_name:
@@ -822,15 +822,15 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
         pair = output.get("details", {}).get("voltage_pair")
         names = _semantic_name(output_name)
         if names and semantic not in names:
-            issues.append({"key": semantic + "_output", "severity": "info", "message": "%s 的名称与 %s 电压语义不同；实际对应关系以表达式的节点差和器件端口为准。" % (output_name, semantic.upper())})
+            issues.append({"key": semantic + "_output", "severity": "info", "message": "%s name and %s voltage semantics differ; actual mapping follows expression node differences and device terminals. " % (output_name, semantic.upper())})
         if not pair:
-            issues.append({"key": semantic + "_output", "severity": "warning", "message": "%s 不是可静态识别的两节点时域电压差；表达式仅供对照，不会执行 calculator。请选择明确波形或手动选择器件端口。" % output_name})
+            issues.append({"key": semantic + "_output", "severity": "warning", "message": "%s is not a statically identifiable two-node time-domain voltage difference; Expression for reference only, will not execute calculator. Select an explicit waveform or device terminals manually. " % output_name})
         elif mapping.get("target_instance"):
             device = by_device.get(mapping["target_instance"], {})
             a, b = _PORTS[semantic]
             expected = [canonical_net(device["terminals"][a]), canonical_net(device["terminals"][b])]
             if not matches_voltage(pair, device, semantic):
-                issues.append({"key": semantic + "_output", "severity": "error", "message": "%s 的节点差 %s 与所选器件 %s 的 %s %s 不一致。" % (output_name, pair, mapping["target_instance"], semantic.upper(), expected)})
+                issues.append({"key": semantic + "_output", "severity": "error", "message": "%s node difference %s and the selected device %s of %s %s inconsistent. " % (output_name, pair, mapping["target_instance"], semantic.upper(), expected)})
     for warning in topology["warnings"]:
         issues.append({"key": "topology", "severity": "warning", "message": warning})
     for field in fields:
@@ -860,17 +860,17 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
                     field['selected_details']['effective_nodes'] = [nodes[a], nodes[b]]
                 field['maestro_presence'] = 'named_output' if field['value'] else ('script_derived' if len(nodes) == 4 else 'unresolved')
                 if not field['value'] and len(nodes) == 4:
-                    field['source'] = 'Maestro 缺少对应 output；脚本按真实器件端口提取'
-                    field['help'] += ' 实际使用 %s；这不是已有 Maestro output。' % field['effective_derivation']
+                    field['source'] = 'Maestro missing corresponding output; script extracts from actual device terminals'
+                    field['help'] += ' Actually used %s; this is not an existing Maestro output. ' % field['effective_derivation']
                 pair = field['selected_details'].get('voltage_pair')
                 if pair and len(nodes) == 4 and pair[1] == '0' and canonical_net(nodes[2]) != '0':
                     field['selected_details']['single_ended_ground_proof'] = copy.deepcopy(topology['voltage_equivalence']['evidence'])
-                    field['help'] += ' 该命名输出是单端对地电压；网表零伏连接证明源端与地等电位后才作为器件端电压。'
+                    field['help'] += ' This named output is a single-ended ground-referenced voltage; used as a terminal voltage only after zero-volt connections prove the source is grounded. '
             elif key.endswith('_pwl_variable'):
                 field['consumption_mode'] = 'task_local_pwl_parameter'
                 field['maestro_presence'] = 'global_variable' if field['selected_details'].get('scope') == 'global' else ('test_variable' if field['value'] else 'script_derived')
                 if not field['value']:
-                    field['source'] = 'Maestro 未声明；任务内生成周期波形文件'
+                    field['source'] = 'Maestro Undeclared; generates periodic waveform files inside the job'
             elif key.endswith('_source'):
                 field['consumption_mode'] = 'periodic_bias_source'
             if key.endswith('_variable'):
@@ -880,10 +880,10 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
                 if field['value'] and scope == 'test':
                     details = field['selected_details']
                     if details.get('shadows_global') or 'global_expression' in details:
-                        message = '变量 %s 已存在全局变量，test 另有同名值（可能缓存或局部默认）；本次按已选 history 实际值恢复，不需要重复迁移。' % field['value']
+                        message = 'Variable %s Global variable already exists, test another same-name value exists (possibly cached or locally defaulted); this run uses the selected history restore actual values, no repeated migration needed. ' % field['value']
                         severity = 'info'
                     else:
-                        message = '变量 %s 当前为 test 局部作用域；便携配置要求移到 Maestro global。' % field['value']
+                        message = 'Variable %s currently test local scope; portable configuration requires moving to Maestro global. ' % field['value']
                         severity = 'warning'
                     field['help'] += ' ' + message
                     issues.append({'key': key, 'severity': severity, 'message': message})
@@ -926,11 +926,11 @@ def cross_tb_mapping(vco, replica):
             status = "derived" if source_kind == "pin_derived" else "mapped"
         else:
             status = "unresolved"
-        help_text = "%s 波形对应 %s 偏压；按电气含义配对。" % (semantic.upper(), semantic.upper())
+        help_text = "%s Waveform mapping %s Bias; match by electrical meaning. " % (semantic.upper(), semantic.upper())
         if source_kind == "pin_derived":
-            help_text += "使用私有 HB 运行的原始节点波形；无需创建或改名 Maestro output。"
+            help_text += "uses private HB raw node waveforms from the run; no creation or renaming needed Maestro output. "
         elif source_kind == "reference_only":
-            help_text += "此表达式仅供对照，未建立可执行波形映射；清空覆盖并选择真实器件端口可按节点提取。"
+            help_text += "This expression is for reference only, No executable waveform mapping established; clear overrides and select actual device terminals for node-based extraction. "
         replica_mapping = (replica or {}).get('mapping', {})
         variable_record = next((item for item in (replica or {}).get('signal_catalog', []) if item['kind'] == 'variable' and item['name'] == destination), {})
         rows.append({"semantic": semantic.upper(), "vco_key": vco_key, "vco_value": source, "vco_expression": expression, "vco_source": source_kind, "replica_key": replica_key, "replica_value": destination, "status": status, "help": help_text,

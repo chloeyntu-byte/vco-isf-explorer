@@ -348,14 +348,14 @@ def _history_run_root(rdb_path, declared):
     if not os.path.lexists(candidate):
         return declared, None
     if os.path.lexists(declared):
-        raise DiscoveryError("RDB rawDir 与同名 history 目录同时存在，拒绝猜测运行归属",
+        raise DiscoveryError("RDB rawDir and the same-name history directory also exists, refusing to guess run ownership",
                              details={"declared_raw_dir": declared, "named_history_dir": candidate})
     parent = os.path.realpath(os.path.dirname(declared))
     effective = os.path.realpath(candidate)
     if (history_name in ("", ".", "..") or os.path.islink(candidate)
             or not os.path.isdir(candidate) or effective == parent
             or os.path.commonpath((parent, effective)) != parent):
-        raise DiscoveryError("命名 history 目录无效或越出原 rawDir 的父目录",
+        raise DiscoveryError("named history directory is invalid or outside the original rawDir parent directory",
                              details={"declared_raw_dir": declared, "named_history_dir": candidate})
     return effective, {"method": "exact_rdb_stem_same_parent", "rdb": rdb_path,
                        "history_name": history_name, "declared_raw_dir": declared,
@@ -387,14 +387,14 @@ def _renamed_run_evidence(root, psf_dir, status, terminal):
             valid = valid and matches
         except (KeyError, TypeError, ValueError, OverflowError):
             evidence["run_interval"] = {"checked": True, "matches": False,
-                                         "reason": "无法证明 RDB 与 Spectre 日志的运行时间对应"}
+                                         "reason": "Cannot prove RDB and Spectre log run times correspond"}
             valid = False
     elif any(value not in (None, "") for value in expected):
         evidence["run_interval"] = {"checked": True, "matches": False,
-                                     "reason": "RDB 只提供单边运行时间，不能作为无时间旧格式接受"}
+                                     "reason": "RDB provides only one endpoint of the run interval, cannot be accepted as a legacy format without timestamps"}
         valid = False
     else:
-        evidence["run_interval"] = {"checked": False, "reason": "RDB 未提供绝对运行时间"}
+        evidence["run_interval"] = {"checked": False, "reason": "RDB no absolute run times provided"}
     return bool(valid), evidence
 
 

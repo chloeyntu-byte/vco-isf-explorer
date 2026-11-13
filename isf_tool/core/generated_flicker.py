@@ -44,23 +44,23 @@ def replica_source(testbenches):
         return "maestro"
     if source == "generated":
         return source
-    raise ValidationError("Flicker 测试台来源必须为 generated 或 maestro")
+    raise ValidationError("Flicker Testbench source must be generated or maestro")
 
 
 def _read(path):
     if not path.is_file() or path.stat().st_size > _MAX_NETLIST:
-        raise ValidationError("网表或模型不可读或超过自动识别大小限制：" + str(path))
+        raise ValidationError("Netlist or model is unreadable or exceeds the automatic detection size limit: " + str(path))
     return path.read_text(encoding="utf-8", errors="replace")
 
 
 def _include(statement, parent):
     match = _INCLUDE.fullmatch(statement.strip())
     if not match:
-        raise ValidationError("自动副本需要字面路径和明确的模型 section：" + statement[:160])
+        raise ValidationError("Generated replica requires literal paths and explicit models section: " + statement[:160])
     kind, path, section = match.groups()
     path = (parent / Path(path).expanduser()).resolve()
     if not path.is_file():
-        raise ValidationError("所选 VCO 工况的 include 不可读取：" + str(path))
+        raise ValidationError("Selected VCO operating point include unreadable: " + str(path))
     return kind, path, section
 
 
@@ -73,16 +73,16 @@ def _section_index(text, path):
         kind, token = marker.groups()
         if kind.lower() == "section":
             if name is not None:
-                raise ValidationError("模型 section 未闭合：" + str(path))
+                raise ValidationError("Model section not closed: " + str(path))
             ranges[None].append((start, marker.start()))
             start, name = marker.end(), token
         else:
             if name is None or token and token != name:
-                raise ValidationError("模型 section 边界不一致：" + str(path))
+                raise ValidationError("Model section boundary mismatch: " + str(path))
             ranges.setdefault(name, []).append((start, marker.start()))
             start, name = marker.end(), None
     if name is not None:
-        raise ValidationError("模型 section 未闭合：" + str(path))
+        raise ValidationError("Model section not closed: " + str(path))
     ranges[None].append((start, len(text)))
     return ranges
 
@@ -100,14 +100,14 @@ def active_subckt(path, section, name, read_cache=None):
         read_cache[index_key] = _section_index(text, path)
     spans = read_cache[index_key].get(section, [])
     if section is not None and len(spans) != 1:
-        raise ValidationError("无法唯一定位模型 section：{} in {}".format(section, path))
+        raise ValidationError("Cannot uniquely locate model section: {} in {}".format(section, path))
     active = "\n".join(text[start:end] for start, end in spans)
     block_pattern = r"(?ims)^[ \t]*(?:inline[ \t]+)?subckt[ \t]+" + re.escape(name)
     block_pattern += r"(?=\s|\().*?^[ \t]*ends(?:[ \t]+" + re.escape(name) + r")?[ \t]*(?:$|\n)"
     blocks = re.findall(block_pattern, active)
     names = [match.group(1) for match in _SUBCKT.finditer(active)]
     if names.count(name) > 1 or (name in names and len(blocks) != 1):
-        raise ValidationError("活动模型 section 的 MOS 定义重复或未闭合：" + name)
+        raise ValidationError("active model section of MOS definition is duplicated or not closed: " + name)
     return active, blocks[0] if blocks else None
 
 
@@ -124,7 +124,7 @@ def model_definition(includes, model, read_cache=None):
         if identity in visited:
             continue
         if len(visited) >= 160 or depth >= 12:
-            raise ValidationError("所选 VCO 模型 include 链超过安全解析范围")
+            raise ValidationError("Selected VCO Model include chain exceeds safe parsing scope")
         visited.add(identity)
         active, block = active_subckt(path, section, model, read_cache)
         if block:
@@ -138,13 +138,13 @@ def model_definition(includes, model, read_cache=None):
             _, child, child_section = _include(line, path.parent)
             queue.append((child, child_section, root, depth + 1))
     if len(matches) != 1:
-        raise ValidationError("所选工况的活动模型中无法唯一确认四端 MOS 定义：" + model)
+        raise ValidationError("Cannot uniquely confirm the four terminals in the selected operating point’s active model MOS definition: " + model)
     (owner, section), (root, block) = next(iter(matches.items()))
     header = _lines(block)[0]
     pins = re.search(r"\(([^)]*)\)", header)
     outer_pins = pins.group(1).lower().split() if pins else []
     if not _ordered_mos_pins(outer_pins, _lines(block)[1:]):
-        raise ValidationError("无法证明该 PDK MOS 的外部端口顺序为 D G S B：" + model)
+        raise ValidationError("Cannot prove this PDK MOS external terminal order is D G S B: " + model)
     return {
         "model_file": str(root),
         "device_subckt_file": str(owner),
@@ -194,15 +194,15 @@ def generated_fixture(source, target_instance, offset_hz, *, text=None, read_cac
     topology = inspect_history_topology({"source_netlists": [{"path": str(source)}]})
     devices = [item for item in topology["devices"] if item["name"] == target_instance]
     if len(devices) != 1 or len(devices[0]["terminals"]) != 4:
-        raise ValidationError("所选 VCO 工况中找不到唯一四端 MOS 实例：" + str(target_instance))
+        raise ValidationError("Selected VCO No unique four-terminal device in the operating point MOS instance: " + str(target_instance))
     target = devices[0]
     model, tail = target["model"], target["parameter_text"]
     if not tail or not list(_assignment_spans(tail)):
-        raise ValidationError("所选 MOS 未提供可确认的实例参数：" + target_instance)
+        raise ValidationError("Selected MOS no verifiable instance parameters provided: " + target_instance)
     if target["scope"]:
         values = [tail[begin:end] for _, begin, end in _assignment_spans(tail)]
         if any(not _NUMBER.fullmatch(value) for value in values):
-            raise ValidationError("层级 MOS 含未求值参数表达式，请用已有 Maestro noise TB：" + target_instance)
+            raise ValidationError("hierarchy MOS contains unevaluated parameter expressions, use existing Maestro noise TB: " + target_instance)
         ancestor_names = [".".join(target_instance.split(".")[:index])
                           for index in range(1, target_instance.count(".") + 1)]
         parents = [item for item in topology["devices"] if item["name"] in ancestor_names]
@@ -214,7 +214,7 @@ def generated_fixture(source, target_instance, offset_hz, *, text=None, read_cac
             parameter["scope"] in {parent["model"] for parent in parents}
             and parameter["name"].lower() == "m" for parameter in topology["parameters"]
         ):
-            raise ValidationError("无法保留层级 MOS 的继承实例倍乘参数：" + target_instance)
+            raise ValidationError("Cannot preserve hierarchy MOS inherited instance multiplier parameters: " + target_instance)
 
     statements = list(_root_statements(text))
     parameters, options, includes, include_lines = [], [], [], []
@@ -224,7 +224,7 @@ def generated_fixture(source, target_instance, offset_hz, *, text=None, read_cac
             parameters.append(statement.strip())
             for name, _, _ in _assignment_spans(statement):
                 if name.lower() in parameter_names:
-                    raise ValidationError("VCO 根层参数重复：" + name)
+                    raise ValidationError("VCO duplicate root parameter: " + name)
                 parameter_names.add(name.lower())
         elif re.match(r"(?i)^\s*(?:include|ahdl_include)\b", statement):
             kind, path, section = _include(_lines(statement)[0], source.parent)
@@ -238,12 +238,12 @@ def generated_fixture(source, target_instance, offset_hz, *, text=None, read_cac
                     continue
             options.append(statement.strip())
     if len(options) != 1:
-        raise ValidationError("所选 VCO 工况缺少唯一的根层 simulator options，无法继承温度和模型选项")
+        raise ValidationError("Selected VCO Operating point lacks a unique root-level simulator options, cannot inherit temperature and model options")
     reserved = {key.lower() for key in DC_MAPPING.values() if key.startswith("ISF_DC_")}
     reserved.update("isf_{}_pwl_file".format(name) for name in ("vgs", "vds", "vbs", "vs"))
     reserved.update(("isf_f0", "isf_t0"))
     if parameter_names & reserved:
-        raise ValidationError("VCO 参数与自动副本保留名称冲突：" + ", ".join(sorted(parameter_names & reserved)))
+        raise ValidationError("VCO parameter conflicts with a reserved generated-replica name: " + ", ".join(sorted(parameter_names & reserved)))
 
     evidence, model_block = model_definition(includes, model, read_cache=read_cache)
     evidence.update({"target_instance": target_instance, "model": model, "device_parameters": tail})

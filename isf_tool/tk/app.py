@@ -63,7 +63,7 @@ from .viewmodel import (
 
 DEFAULT_WORKSPACE = Path.home() / ".vco_isf_explorer"
 TERMINAL_STATES = frozenset(("succeeded", "failed", "interrupted"))
-AUTOMATIC_TARGET = "自动识别"
+AUTOMATIC_TARGET = "Automatic detection"
 
 # Retain legacy representative-device values in exported evidence, but do not
 # surface them as alternative PN comparisons in the fixed symmetric-pair UI.
@@ -119,9 +119,9 @@ THEME_PALETTES = {
 
 
 def _ui_font_family(families: Sequence[str], fallback: str) -> str:
-    """Use an installed CJK sans face instead of relying on mismatched fallback metrics."""
+    """Prefer a Latin sans-serif family with consistent display metrics."""
     available = {name.casefold(): name for name in families}
-    for family in ("Noto Sans CJK SC", "Source Han Sans SC", "Microsoft YaHei", "PingFang SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Liberation Sans", "DejaVu Sans"):
+    for family in ("Inter", "Noto Sans", "Liberation Sans", "DejaVu Sans", "Helvetica"):
         if family.casefold() in available:
             return available[family.casefold()]
     return fallback
@@ -275,30 +275,30 @@ def active_jobs(jobs_payload: Mapping[str, Any] | None) -> list[dict[str, Any]]:
 def history_provenance_rows(report: Mapping[str, Any]) -> list[dict[str, str]]:
     """Display exact per-point history ownership without inferring current OA."""
     rows = []
-    for key, label in (("vco", "VCO"), ("flicker", "噪声 TB")):
+    for key, label in (("vco", "VCO"), ("flicker", "Noise TB")):
         role = _mapping(_mapping(report.get("roles")).get(key))
         if not role:
             continue
         design = _mapping(_mapping(role.get("selected_test")).get("design"))
-        current = tuple(str(design.get(name) or (design.get("library") if name == "lib" else "") or "未知") for name in ("lib", "cell", "view"))
+        current = tuple(str(design.get(name) or (design.get("library") if name == "lib" else "") or "Unknown") for name in ("lib", "cell", "view"))
         history = _mapping(role.get("selected_history"))
         manifest = _mapping(role.get("history_manifest")) or _mapping(history.get("history_manifest")) or _mapping(history.get("manifest"))
         entries = manifest.get("source_netlists", history.get("source_netlists", []))
         sources = [item for item in _sequence(entries) if isinstance(item, Mapping)] or [{}]
         for source in sources:
             design = _mapping(source.get("source_design"))
-            old = tuple(str(design.get(name) or (design.get("library") if name == "lib" else "") or "未知") for name in ("lib", "cell", "view"))
+            old = tuple(str(design.get(name) or (design.get("library") if name == "lib" else "") or "Unknown") for name in ("lib", "cell", "view"))
             modified = source.get("source_mtime")
             if isinstance(modified, (int, float)) and not isinstance(modified, bool):
                 try:
                     modified = datetime.fromtimestamp(modified).astimezone().isoformat(timespec="seconds")
                 except (ValueError, ArithmeticError, OSError):
-                    modified = "未知"
-            known = "未知" not in old and "未知" not in current
-            status = "视图名一致；内容以 History 为准" if known and current == old else "与当前设计不一致；仍按 History 运行" if known else "来源未完整记录，不推测"
+                    modified = "Unknown"
+            known = "Unknown" not in old and "Unknown" not in current
+            status = "View names match; content follows History is authoritative" if known and current == old else "differs from the current design; still uses History Run" if known else "source was not fully recorded, not inferred"
             rows.append({"role": label, "current": "/".join(current), "history": "/".join(old),
-                         "point": f"{source.get('point_id', source.get('point', '未知'))} / {source.get('corner', '未知')}",
-                         "mtime": str(modified or "未知"), "sha256": str(source.get("sha256") or "未知"), "status": status})
+                         "point": f"{source.get('point_id', source.get('point', 'Unknown'))} / {source.get('corner', 'Unknown')}",
+                         "mtime": str(modified or "Unknown"), "sha256": str(source.get("sha256") or "Unknown"), "status": status})
     return rows
 
 
@@ -349,7 +349,7 @@ class IsfApplication:
         self._preferences: dict[str, Any] = {}
         self._restored_mapping_keys: set[str] = set()
         self._preferences_saving = False
-        self.preference_status_var = tk.StringVar(value="项目偏好仅保存频偏、采样、主题与已验证的 VCO 映射。")
+        self.preference_status_var = tk.StringVar(value="Project preferences save only offsets, Sample, theme and validated VCO Mapping. ")
         self._history_choices: dict[str, dict[str, str]] = {"vco": {}, "replica": {}}
         self._history_display_vars = {role: tk.StringVar() for role in ("vco", "replica")}
         self._inspection_after_id: str | None = None
@@ -396,26 +396,26 @@ class IsfApplication:
         self.allow_execute_var = tk.BooleanVar(value=False)
         self.theme_var = tk.StringVar(value="dark")
         self.advanced_visible_var = tk.BooleanVar(value=False)
-        self.status_var = tk.StringVar(value="正在读取本地配置…")
-        self.execution_summary_var = tk.StringVar(value="实际运行 · 非正式签核")
+        self.status_var = tk.StringVar(value="Reading local configuration…")
+        self.execution_summary_var = tk.StringVar(value="Live execution · not signoff")
         self.preflight_note_var = tk.StringVar(
-            value="点击预检会检查绑定并短时探测所选 Cadence 环境与分析 Python，不启动仿真；"
-            "点击开始会预检后实际调用 Spectre。绑定和保存配置不会启动仿真，也不会保存执行授权。"
+            value="Preflight checks bindings and briefly probes the selected Cadence environment and analysis Python without starting simulation. "
+            "Start runs preflight and then invokes Spectre. Binding and saving configuration do not run simulations or save execution consent. "
         )
-        self.binding_status_var = tk.StringVar(value="选择一个已完成的 VCO History。")
-        self.binding_provenance_var = tk.StringVar(value="实际仿真复制所选 History 的固定网表，不会自动改用当前 schematic / config。绑定后可查看来源视图、时间与哈希。")
-        self.mapping_status_var = tk.StringVar(value="绑定后自动识别信号与执行设置；详情和手动修改位于高级设置。")
-        self.mapping_detail_var = tk.StringVar(value="每行可以直接选择候选或输入实际名称；输入会保留，点击“应用全部并验证”完成校验。")
+        self.binding_status_var = tk.StringVar(value="Select a completed VCO History. ")
+        self.binding_provenance_var = tk.StringVar(value="Simulation copies the fixed netlist from the selected History. It does not switch to the current schematic / config. Source views, timestamps and hashes are available after binding. ")
+        self.mapping_status_var = tk.StringVar(value="Signals and execution settings are detected after binding; Details and manual edits are in Advanced settings. ")
+        self.mapping_detail_var = tk.StringVar(value="Select a candidate or enter an actual name in each row. Input is retained; click “Apply all & validate” to validate it. ")
         self.waveform_exchange_var = tk.StringVar()
         self.portable_edit_var = tk.StringVar()
-        self.portable_detail_var = tk.StringVar(value="绑定后自动生成执行设置；选择一行可手动覆盖。")
+        self.portable_detail_var = tk.StringVar(value="Execution settings are generated after binding; Select a row to override. ")
         self.catalog_filter_var = tk.StringVar()
-        self.catalog_kind_var = tk.StringVar(value="全部类型")
-        self.catalog_status_var = tk.StringVar(value="绑定后可查看两个 TB 的网名、Maestro Outputs 和 Variables；不只包含 VGS / VDS / VBS。")
-        self.catalog_detail_var = tk.StringVar(value="清单保留发现的实际名字；选择一行查看完整表达式和来源。")
-        self.preflight_status_var = tk.StringVar(value="未运行预检")
+        self.catalog_kind_var = tk.StringVar(value="All types")
+        self.catalog_status_var = tk.StringVar(value="After binding, inspect both TB net names, Maestro Outputs and Variables; includes more than VGS / VDS / VBS. ")
+        self.catalog_detail_var = tk.StringVar(value="The inventory preserves discovered names; Select a row for the full expression and source. ")
+        self.preflight_status_var = tk.StringVar(value="Preflight not run")
         self.preflight_detail_var = tk.StringVar()
-        self.job_status_var = tk.StringVar(value="未选择任务")
+        self.job_status_var = tk.StringVar(value="No job selected")
         self.point_var = tk.StringVar()
         self.operating_point_var = tk.StringVar()
         self.result_offset_var = tk.StringVar()
@@ -426,14 +426,14 @@ class IsfApplication:
         self.log_offset_var = tk.BooleanVar(value=True)
         self.harmonic_curve_var = tk.StringVar(value="")
         self.metric_choice_var = tk.StringVar()
-        self.offset_preview_var = tk.StringVar(value="正在展开频偏点表…")
+        self.offset_preview_var = tk.StringVar(value="Expanding offset list…")
         self.show_all_mappings_var = tk.BooleanVar(value=False)
         self._operating_points: list[dict[str, Any]] = []
         self._offset_point_choices: dict[str, str] = {}
-        self.metrics_var = tk.StringVar(value="尚无结果")
-        self.result_quality_var = tk.StringVar(value="指标说明：点击表格单元格/标题，或使用下方指标下拉与 Enter。")
-        self.noise_contribution_note_var = tk.StringVar(value="选择结果工况和频偏后显示本次仿真贡献。")
-        self.noise_pie_note_var = tk.StringVar(value="饼图跟随页面顶部的工况、频偏和噪声类型。")
+        self.metrics_var = tk.StringVar(value="No results yet")
+        self.result_quality_var = tk.StringVar(value="Metric details: click a table cell or heading, or select a metric below and press Enter. ")
+        self.noise_contribution_note_var = tk.StringVar(value="Select a result operating point and offset to show simulation contributions. ")
+        self.noise_pie_note_var = tk.StringVar(value="Pie charts follow the operating point, offset and noise kind. ")
         self._result_terminal_loaded = False
         self._curve_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
 
@@ -449,17 +449,17 @@ class IsfApplication:
             if name.startswith("offset_"):
                 variable.trace_add("write", self._offset_inputs_changed)
         self._submit(
-            "读取配置",
+            "Read configuration",
             self._read_initial_inputs,
             self._initial_inputs_loaded,
         )
-        self._submit("读取错误目录", self.controller.error_catalog, self._render_error_catalog)
+        self._submit("Read error catalog", self.controller.error_catalog, self._render_error_catalog)
         self._refresh_jobs(silent=True)
 
     # ---- general UI -------------------------------------------------
 
     def _configure_fonts(self) -> None:
-        """Keep the kit's sizes but prefer an installed CJK-capable family."""
+        """Keep the kit's sizes and use a Latin sans-serif family."""
         default_font = tkfont.nametofont("TkDefaultFont", root=self.root)
         family = getattr(self, "ui_family", "") or _ui_font_family(
             tkfont.families(self.root), str(default_font.actual("family")))
@@ -488,15 +488,15 @@ class IsfApplication:
         self._set_window_title()
 
         def header_actions(box: tk.Frame) -> None:
-            self.theme_button = ttk.Button(box, text="切换明亮", style="Ghost.TButton", command=self._toggle_theme)
+            self.theme_button = ttk.Button(box, text="Light theme", style="Ghost.TButton", command=self._toggle_theme)
             self.theme_button.pack(side="left")
-            self.save_state_button = ttk.Button(box, text="保存状态…", command=self._save_state_dialog)
+            self.save_state_button = ttk.Button(box, text="Save state…", command=self._save_state_dialog)
             self.save_state_button.pack(side="left", padx=(8, 0))
-            self.load_state_button = ttk.Button(box, text="加载状态…", command=self._load_state_dialog)
+            self.load_state_button = ttk.Button(box, text="Load state…", command=self._load_state_dialog)
             self.load_state_button.pack(side="left", padx=(8, 0))
 
         self.header_bar = fw.header(
-            self.root, "VCO ISF Explorer", "振荡器相噪分析 · ISF 与谐波贡献",
+            self.root, "VCO ISF Explorer", "Oscillator phase-noise analysis · ISF and harmonic contributions",
             product="isf", right=header_actions)
         self.header_bar.pack(fill="x", side="top")
 
@@ -518,10 +518,10 @@ class IsfApplication:
         self.run_tab = ttk.Frame(self.notebook, style="App.TFrame", padding=12)
         self.result_tab = ttk.Frame(self.notebook, style="App.TFrame", padding=8)
         self.error_tab = ttk.Frame(self.notebook, style="App.TFrame", padding=12)
-        self.notebook.add(self.setup_tab, text="设置")
-        self.notebook.add(self.run_tab, text="任务与预检")
-        self.notebook.add(self.result_tab, text="分析结果")
-        self.notebook.add(self.error_tab, text="排障")
+        self.notebook.add(self.setup_tab, text="Setup")
+        self.notebook.add(self.run_tab, text="Jobs & preflight")
+        self.notebook.add(self.result_tab, text="Results")
+        self.notebook.add(self.error_tab, text="Troubleshooting")
         self.notebook.enable_traversal()
         self._build_setup_tab()
         self._build_run_tab()
@@ -538,9 +538,9 @@ class IsfApplication:
         text = str(self.status_var.get())
         if text.endswith("…"):
             state = "running"
-        elif text.endswith("失败") or "失败：" in text:
+        elif text.endswith("failed") or "failed: " in text:
             state = "error"
-        elif text.endswith("完成"):
+        elif text.endswith("done"):
             state = "done"
         else:
             state = "idle"
@@ -784,7 +784,7 @@ class IsfApplication:
             if chart is not None:
                 chart.set_palette(chart_palette)
         self.theme_button.configure(
-            text="切换明亮" if self.theme_var.get() == "dark" else "切换暗色"
+            text="Light theme" if self.theme_var.get() == "dark" else "Dark theme"
         )
 
     def _submit(
@@ -808,9 +808,9 @@ class IsfApplication:
                 if on_success is not None:
                     on_success(value)
                 if not quiet:
-                    self.status_var.set(f"{label}完成")
+                    self.status_var.set(f"{label} done")
             except Exception as exc:
-                self._show_error(exc, f"{label}结果处理失败")
+                self._show_error(exc, f"{label}: result processing failed")
 
         def failure(exc: Exception) -> None:
             if not quiet:
@@ -819,14 +819,14 @@ class IsfApplication:
                 try:
                     on_failure(exc)
                 except Exception as callback_error:
-                    self._show_error(callback_error, f"{label}失败处理异常")
+                    self._show_error(callback_error, f"{label}: failure handler error")
             if not quiet:
-                self.status_var.set(f"{label}失败")
-            self._show_error(exc, f"{label}失败")
+                self.status_var.set(f"{label} failed")
+            self._show_error(exc, f"{label} failed")
 
         self.queue.submit(function, success, failure)
 
-    def _show_error(self, exc: Exception, title: str = "操作失败") -> None:
+    def _show_error(self, exc: Exception, title: str = "Operation failed") -> None:
         messagebox.showerror(title, _error_message(exc), parent=self.root)
 
     @staticmethod
@@ -913,20 +913,20 @@ class IsfApplication:
 
         example = ttk.Frame(content, padding=(12, 0))
         example.pack(fill="x", pady=(0, 4))
-        self.load_example_button = ttk.Button(example, text="载入示例", command=self._load_example)
+        self.load_example_button = ttk.Button(example, text="Load example", command=self._load_example)
         self.load_example_button.pack(side="right")
         example_text = ttk.Label(
-            example, text="没有 Cadence 环境？载入合成 ideal-LC 示例，离线查看全部结果视图。",
+            example, text="No Cadence Environment？Load synthetic ideal-LC Example, inspect all result views offline. ",
             style="Help.TLabel", justify="left", wraplength=360,
         )
         example_text.pack(side="left", fill="x", expand=True)
         example_text.bind("<Configure>", lambda event: example_text.configure(wraplength=max(200, event.width - 8)))
 
         location = ttk.LabelFrame(
-            content, text="可选：自动发现项目中的 Testbench", style="Card.TLabelframe", padding=(14, 12)
+            content, text="optional: Discover project Testbench", style="Card.TLabelframe", padding=(14, 12)
         )
         location.columnconfigure(1, weight=1)
-        ttk.Label(location, text="项目根目录").grid(
+        ttk.Label(location, text="Project root").grid(
             row=0, column=0, sticky="w", padx=(0, 10), pady=(0, 6)
         )
         ttk.Entry(location, textvariable=self.vars["project_root"]).grid(
@@ -934,27 +934,27 @@ class IsfApplication:
         )
         ttk.Button(
             location,
-            text="选择目录",
+            text="Choose directory",
             style="Secondary.TButton",
             command=lambda: self._choose_directory("project_root"),
         ).grid(row=0, column=2, padx=(8, 0), pady=(0, 6))
         ttk.Button(
             location,
-            text="自动发现 Testbench",
+            text="Discover Testbench",
             command=self._discover,
         ).grid(row=0, column=3, padx=(8, 0), pady=(0, 6))
         ttk.Label(
             location,
-            text="仅扫描该目录并识别 Maestro，不会修改原工程。",
+            text="scan this directory only to identify Maestro, the original project is unchanged. ",
             style="Help.TLabel",
         ).grid(row=1, column=1, columnspan=3, sticky="w")
         ttk.Label(
             location,
-            text=f"应用数据：{self.controller.workspace}",
+            text=f"Application data: {self.controller.workspace}",
             style="Help.TLabel",
         ).grid(row=2, column=1, columnspan=3, sticky="w", pady=(3, 0))
 
-        pair = ttk.LabelFrame(content, text="01  VCO 来源", style="Card.TLabelframe", padding=(14, 9))
+        pair = ttk.LabelFrame(content, text="01  VCO Source", style="Card.TLabelframe", padding=(14, 9))
         pair.pack(fill="x", pady=(0, 8))
         pair.columnconfigure(1, weight=1)
         if self.maestro_context:
@@ -963,10 +963,10 @@ class IsfApplication:
             )
             source_actions = ttk.Frame(pair)
             source_actions.grid(row=0, column=2, columnspan=2, sticky="e", pady=(0, 6))
-            ttk.Button(source_actions, text="刷新 History", command=self._refresh_context_histories).pack(side="left")
-            ttk.Button(source_actions, text="更换 VCO…", command=self._toggle_vco_source).pack(side="left", padx=(6, 0))
+            ttk.Button(source_actions, text="Refresh History", command=self._refresh_context_histories).pack(side="left")
+            ttk.Button(source_actions, text="Change VCO…", command=self._toggle_vco_source).pack(side="left", padx=(6, 0))
             self._update_maestro_banner()
-        ttk.Label(pair, text="完整 History").grid(row=1, column=0, sticky="w", padx=(0, 10))
+        ttk.Label(pair, text="Complete History").grid(row=1, column=0, sticky="w", padx=(0, 10))
         self._maestro_box(pair, "vco", "history").grid(row=1, column=1, sticky="ew")
         ttk.Label(pair, text="Test").grid(row=1, column=2, sticky="w", padx=10)
         self._maestro_box(pair, "vco", "test", width=18).grid(row=1, column=3, sticky="ew")
@@ -974,27 +974,27 @@ class IsfApplication:
         self.vco_source_controls.grid(row=2, column=0, columnspan=4, sticky="ew", pady=(6, 0))
         self._build_maestro_path(self.vco_source_controls, "vco")
         if self.maestro_context:
-            ttk.Button(self.vco_source_controls, text="恢复启动来源", command=self._restore_maestro_context).pack(
+            ttk.Button(self.vco_source_controls, text="Restore launch source", command=self._restore_maestro_context).pack(
                 side="right", padx=(6, 0)
             )
             self.vco_source_controls.grid_remove()
-        reference = ttk.LabelFrame(content, text="02  器件噪声参考", style="Card.TLabelframe", padding=(14, 9))
+        reference = ttk.LabelFrame(content, text="02  Device noise reference", style="Card.TLabelframe", padding=(14, 9))
         reference.pack(fill="x", pady=(0, 8))
         reference_mode = ttk.Frame(reference)
         reference_mode.pack(fill="x", pady=(0, 6))
-        for label, mode in (("自动生成", "generated"), ("手动绑定 Noise TB", "maestro")):
+        for label, mode in (("Generated", "generated"), ("Manual binding Noise TB", "maestro")):
             ttk.Radiobutton(reference_mode, text=label, value=mode, variable=self.vars["replica_source"],
                             command=self._replica_source_changed).pack(side="left", padx=(0, 14))
 
         self.generated_reference_frame = ttk.Frame(reference)
         self.generated_reference_frame.columnconfigure(1, weight=1)
-        ttk.Label(self.generated_reference_frame, text="目标 MOS").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        ttk.Label(self.generated_reference_frame, text="Target MOS").grid(row=0, column=0, sticky="w", padx=(0, 10))
         self.target_mos_var = tk.StringVar(value=AUTOMATIC_TARGET)
         self.target_mos_box = ttk.Combobox(self.generated_reference_frame, textvariable=self.target_mos_var,
                                           width=23, state="disabled")
         self.target_mos_box.grid(row=0, column=1, sticky="w")
         self.target_mos_box.bind("<<ComboboxSelected>>", self._target_mos_chosen)
-        ttk.Label(self.generated_reference_frame, text="单管建模 · 默认对称双管 +3 dB",
+        ttk.Label(self.generated_reference_frame, text="Single-device model · default symmetric pair +3 dB",
                   style="Help.TLabel").grid(row=1, column=1, sticky="w", pady=(3, 0))
 
         self.manual_reference_frame = ttk.Frame(reference)
@@ -1004,22 +1004,22 @@ class IsfApplication:
         replica_inputs = ttk.Frame(self.manual_reference_frame)
         replica_inputs.pack(fill="x")
         replica_inputs.columnconfigure(1, weight=1)
-        ttk.Label(replica_inputs, text="完整 History").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        ttk.Label(replica_inputs, text="Complete History").grid(row=0, column=0, sticky="w", padx=(0, 10))
         self._maestro_box(replica_inputs, "replica", "history").grid(row=0, column=1, sticky="ew")
         ttk.Label(replica_inputs, text="Test").grid(row=0, column=2, sticky="w", padx=10)
         self._maestro_box(replica_inputs, "replica", "test", width=15).grid(row=0, column=3, sticky="ew")
         self._render_reference_controls()
 
         analysis = ttk.LabelFrame(
-            content, text="03  分析目标", style="Card.TLabelframe", padding=(14, 9)
+            content, text="03  Analysis target", style="Card.TLabelframe", padding=(14, 9)
         )
         analysis.pack(fill="x", pady=(0, 10))
         analysis.columnconfigure(1, weight=1)
         analysis.columnconfigure(3, weight=1)
         modes = ttk.Frame(analysis)
         modes.grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 8))
-        ttk.Label(modes, text="频偏方式").pack(side="left", padx=(0, 12))
-        for text, mode in (("单频偏", "single"), ("多个单点", "list"), ("线性", "linear"), ("对数", "log")):
+        ttk.Label(modes, text="Offset mode").pack(side="left", padx=(0, 12))
+        for text, mode in (("Single offset", "single"), ("Offset list", "list"), ("Linear", "linear"), ("Logarithmic", "log")):
             ttk.Radiobutton(modes, text=text, variable=self.vars["offset_mode"], value=mode).pack(side="left", padx=(0, 14))
         self.offset_input_frames = {}
         for mode in ("single", "list", "linear", "log"):
@@ -1027,7 +1027,7 @@ class IsfApplication:
             frame.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(0, 8))
             self.offset_input_frames[mode] = frame
         offset = self.offset_input_frames["single"]
-        ttk.Label(offset, text="目标频偏").pack(side="left", padx=(0, 12))
+        ttk.Label(offset, text="Target offset").pack(side="left", padx=(0, 12))
         self.offset_value_entry = ttk.Entry(offset, textvariable=self.vars["offset_value"], width=14)
         self.offset_value_entry.pack(side="left")
         ttk.Combobox(
@@ -1038,26 +1038,26 @@ class IsfApplication:
             width=7,
         ).pack(side="left", padx=(6, 0))
         multiple = self.offset_input_frames["list"]
-        ttk.Label(multiple, text="点列表").pack(side="left", padx=(0, 12))
+        ttk.Label(multiple, text="Point list").pack(side="left", padx=(0, 12))
         ttk.Entry(multiple, textvariable=self.vars["offset_values"]).pack(side="left", fill="x", expand=True)
         for mode in ("linear", "log"):
             frame = self.offset_input_frames[mode]
-            for name, label in (("start", "起始"), ("stop", "终止")):
+            for name, label in (("start", "Start"), ("stop", "Stop")):
                 ttk.Label(frame, text=label).pack(side="left", padx=(0, 6))
                 ttk.Entry(frame, textvariable=self.vars["offset_" + name], width=12).pack(side="left", padx=(0, 16))
         linear = self.offset_input_frames["linear"]
-        for label, value in (("步长", "step"), ("间隔数", "intervals")):
+        for label, value in (("Step", "step"), ("Intervals", "intervals")):
             ttk.Radiobutton(linear, text=label, variable=self.vars["offset_spacing"], value=value).pack(side="left")
         self.offset_step_entry = ttk.Entry(linear, textvariable=self.vars["offset_step"], width=12)
         self.offset_step_entry.pack(side="left", padx=6)
         self.offset_intervals_entry = ttk.Entry(linear, textvariable=self.vars["offset_intervals"], width=8)
         self.offset_intervals_entry.pack(side="left", padx=6)
         logarithmic = self.offset_input_frames["log"]
-        ttk.Label(logarithmic, text="每 decade 点数").pack(side="left", padx=(0, 6))
+        ttk.Label(logarithmic, text="per decade Point count").pack(side="left", padx=(0, 6))
         ttk.Entry(logarithmic, textvariable=self.vars["offset_points_per_decade"], width=8).pack(side="left")
         ttk.Label(
             analysis,
-            text=f"最大谐波（≤{MAX_PHASE_CANDIDATE_HARMONICS}）",
+            text=f"Maximum harmonic (≤{MAX_PHASE_CANDIDATE_HARMONICS})",
         ).grid(
             row=2, column=0, sticky="w", padx=(0, 10)
         )
@@ -1069,7 +1069,7 @@ class IsfApplication:
             width=8,
         )
         self.max_harmonic_entry.grid(row=2, column=1, sticky="w")
-        ttk.Button(analysis, text="查看实际频偏点表", command=self._show_offset_points).grid(row=2, column=2, columnspan=2, sticky="w", padx=16)
+        ttk.Button(analysis, text="View actual offsets", command=self._show_offset_points).grid(row=2, column=2, columnspan=2, sticky="w", padx=16)
         self._help(analysis, textvariable=self.offset_preview_var).grid(row=3, column=0, columnspan=4, sticky="ew")
         self._refresh_offset_preview()
 
@@ -1078,21 +1078,21 @@ class IsfApplication:
         status.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(5, 0))
         actions = ttk.Frame(self.setup_tab, style="App.TFrame")
         actions.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0))
-        self.setup_start_button = ttk.Button(actions, text="开始分析", style="Primary.TButton", command=self._start_from_setup)
+        self.setup_start_button = ttk.Button(actions, text="Start analysis", style="Primary.TButton", command=self._start_from_setup)
         self.setup_start_button.pack(side="left")
-        self.setup_inspect_button = ttk.Button(actions, text="检查绑定", command=self._inspect_pair)
+        self.setup_inspect_button = ttk.Button(actions, text="Check binding", command=self._inspect_pair)
         self.setup_inspect_button.pack(side="left", padx=8)
-        self.environment_button = ttk.Button(actions, text="环境检测…", command=self._show_environment)
+        self.environment_button = ttk.Button(actions, text="Environment check…", command=self._show_environment)
         self.environment_button.pack(side="left")
         self.advanced_button = ttk.Button(
             actions,
-            text="高级设置",
+            text="Advanced settings",
             style="Secondary.TButton",
             command=self._toggle_advanced,
         )
         self.advanced_button.pack(side="right")
         self.advanced_frame = ttk.LabelFrame(
-            content, text="高级设置", style="Card.TLabelframe", padding=(14, 12)
+            content, text="Advanced settings", style="Card.TLabelframe", padding=(14, 12)
         )
         self.advanced_tabs = ttk.Notebook(self.advanced_frame)
         self.advanced_tabs.pack(fill="both", expand=True)
@@ -1101,17 +1101,17 @@ class IsfApplication:
         inventory_tab = self.inventory_tab = ttk.Frame(self.advanced_tabs, padding=10)
         options_tab = ttk.Frame(self.advanced_tabs, padding=10)
         expert_tab = ttk.Frame(self.advanced_tabs, padding=10)
-        for frame, label in ((mapping_tab, "本次使用的对应"), (physical_tab, "执行细节"), (options_tab, "发现与运行选项"), (expert_tab, "专家兼容入口")):
+        for frame, label in ((mapping_tab, "Effective mappings"), (physical_tab, "Execution details"), (options_tab, "Discovery & execution options"), (expert_tab, "Expert compatibility")):
             self.advanced_tabs.add(frame, text=label)
         self._build_mapping_tabs(mapping_tab, physical_tab, inventory_tab)
         diagnostics = ttk.Frame(options_tab)
         diagnostics.pack(fill="x", pady=(0, 8))
-        ttk.Button(diagnostics, text="查看信号清单", command=self._open_catalog).pack(side="left")
-        ttk.Button(diagnostics, text="查看 History 网表来源",
+        ttk.Button(diagnostics, text="View signal inventory", command=self._open_catalog).pack(side="left")
+        ttk.Button(diagnostics, text="View History Netlist provenance",
                    command=lambda: self._open_advanced_tab(self.physical_tab)).pack(side="left", padx=8)
         self._help(options_tab, textvariable=self.mapping_status_var).pack(fill="x")
         self._help(options_tab, textvariable=self.binding_provenance_var).pack(fill="x")
-        self._help(options_tab, text="频偏以 Hz 为默认单位，k=千、M=百万。每次最多 256 点。").pack(fill="x")
+        self._help(options_tab, text="Offset uses Hz is the default unit, k=thousand, M=million. maximum per request 256 points. ").pack(fill="x")
         if self._preferences_path:
             self._help(options_tab, textvariable=self.preference_status_var).pack(fill="x")
         location.pack(in_=options_tab, fill="x", pady=(0, 10))
@@ -1121,14 +1121,14 @@ class IsfApplication:
         settings.columnconfigure(3, weight=1)
 
         advanced_fields = (
-            (0, 0, "项目名", "project_name"),
-            (1, 0, "相位采样点数", "phase_samples"),
-            (1, 2, "分析周期数", "period_count"),
-            (2, 0, "PDK 名称覆盖", "pdk_name"),
-            (2, 2, "PDK 根目录覆盖", "pdk_root"),
-            (3, 0, "运行目录（可选）", "run_root"),
-            (3, 2, "结果 Bundle 目录（可选）", "bundle_path"),
-            (4, 0, "分析 Python（留空自动识别）", "analysis_python"),
+            (0, 0, "Project name", "project_name"),
+            (1, 0, "Phase samples", "phase_samples"),
+            (1, 2, "Analysis periods", "period_count"),
+            (2, 0, "PDK Name override", "pdk_name"),
+            (2, 2, "PDK Root override", "pdk_root"),
+            (3, 0, "Run directory (optional)", "run_root"),
+            (3, 2, "Result Bundle Directory (optional)", "bundle_path"),
+            (4, 0, "Analysis Python (leave blank for automatic detection)", "analysis_python"),
         )
         for row, column, label, key in advanced_fields:
             ttk.Label(settings, text=label).grid(
@@ -1140,22 +1140,22 @@ class IsfApplication:
         self._help(
             expert_tab,
             text=(
-                "通常无需填写文件路径：执行设置根据已选 TB 自动生成。只有复用已有专用配置时才使用此入口；"
-                "手工文件优先于自动生成，切换 TB 后请重新确认适用性。"
+                "File paths are normally unnecessary: Execution settings are generated from selected TB Generated. use this entry only to reuse an existing custom configuration; "
+                "manual files take precedence over generated settings, Switch TB then confirm applicability again. "
             ),
         ).pack(fill="x", pady=(4, 8))
         engine_row = ttk.Frame(expert_tab)
         engine_row.pack(fill="x", pady=(0, 10))
-        ttk.Label(engine_row, text="专用执行配置文件（engine JSON，可留空）").pack(side="left")
+        ttk.Label(engine_row, text="Execution configuration file (engine JSON, may be blank)").pack(side="left")
         ttk.Entry(engine_row, textvariable=self.vars["engine_config"]).pack(side="left", fill="x", expand=True, padx=8)
-        ttk.Button(engine_row, text="选择文件", command=self._choose_engine).pack(side="left")
-        ttk.Button(engine_row, text="恢复自动", command=lambda: self.vars["engine_config"].set("")).pack(side="left", padx=(6, 0))
+        ttk.Button(engine_row, text="Choose file", command=self._choose_engine).pack(side="left")
+        ttk.Button(engine_row, text="Restore automatic", command=lambda: self.vars["engine_config"].set("")).pack(side="left", padx=(6, 0))
 
         mode_row = ttk.Frame(options_tab)
         mode_row.pack(fill="x", pady=(12, 8))
         self.formal_signoff_check = ttk.Checkbutton(
             mode_row,
-            text="正式 Signoff（至少 6 个真实设计点并执行完整质量门）",
+            text="Formal Signoff (at least 6 real design points and the full quality gate)",
             variable=self.formal_signoff_var,
             command=self._mode_changed,
         )
@@ -1163,7 +1163,7 @@ class IsfApplication:
 
         fingerprint = ttk.LabelFrame(
             expert_tab,
-            text="绑定完整性指纹（自动生成）",
+            text="Binding integrity fingerprint (Generated)",
             style="Card.TLabelframe",
             padding=10,
         )
@@ -1174,7 +1174,7 @@ class IsfApplication:
         ttk.Label(fingerprint, text="VCO").grid(row=0, column=1, sticky="w")
         ttk.Label(fingerprint, text="Flicker / Noise").grid(row=0, column=2, sticky="w")
         for row, (label, suffix) in enumerate(
-            (("绑定指纹", "binding_fingerprint"), ("History 指纹", "history_fingerprint")),
+            (("Binding fingerprint", "binding_fingerprint"), ("History Fingerprint", "history_fingerprint")),
             start=1,
         ):
             ttk.Label(fingerprint, text=label).grid(row=row, column=0, sticky="w", padx=(0, 8), pady=3)
@@ -1186,19 +1186,19 @@ class IsfApplication:
                 ).grid(row=row, column=column, sticky="ew", padx=(0, 8), pady=3)
         ttk.Label(
             fingerprint,
-            text="用于确认运行时仍是同一 Maestro、Test 和 History，无需手动填写。",
+            text="Confirms the same identity at runtime for Maestro, Test and History, no manual input needed. ",
             style="Help.TLabel",
         ).grid(row=3, column=1, columnspan=2, sticky="w", pady=(4, 0))
 
         config_actions = ttk.Frame(expert_tab)
         config_actions.pack(fill="x", pady=(0, 6))
-        ttk.Button(config_actions, text="加载配置 JSON", command=self._load_config_dialog).pack(side="left")
-        ttk.Button(config_actions, text="保存配置 JSON", command=self._save_config_dialog).pack(side="left", padx=6)
-        ttk.Button(config_actions, text="从表单刷新 JSON", command=self._render_merged_config).pack(side="left", padx=6)
-        ttk.Button(config_actions, text="应用下方 JSON", command=self._apply_raw_editor).pack(side="left")
+        ttk.Button(config_actions, text="Load configuration JSON", command=self._load_config_dialog).pack(side="left")
+        ttk.Button(config_actions, text="Save configuration JSON", command=self._save_config_dialog).pack(side="left", padx=6)
+        ttk.Button(config_actions, text="Refresh from form JSON", command=self._render_merged_config).pack(side="left", padx=6)
+        ttk.Button(config_actions, text="Apply the following JSON", command=self._apply_raw_editor).pack(side="left")
         ttk.Label(
             config_actions,
-            text="未在表单展示的兼容字段会保留。",
+            text="Compatibility fields not shown in the form are retained. ",
             style="Help.TLabel",
         ).pack(side="right")
         raw_body = ttk.Frame(expert_tab)
@@ -1225,8 +1225,8 @@ class IsfApplication:
         return box
 
     def _build_maestro_path(self, parent: ttk.Frame, role: str) -> None:
-        ttk.Label(parent, text="Maestro 目录").pack(side="left", padx=(0, 10))
-        ttk.Button(parent, text="选择目录…", command=lambda: self._choose_directory(f"{role}_path")).pack(
+        ttk.Label(parent, text="Maestro Directory").pack(side="left", padx=(0, 10))
+        ttk.Button(parent, text="Choose directory…", command=lambda: self._choose_directory(f"{role}_path")).pack(
             side="right", padx=(6, 0)
         )
         self._maestro_box(parent, role, "path").pack(side="left", fill="x", expand=True)
@@ -1256,8 +1256,8 @@ class IsfApplication:
         self._render_mapping_report({})
         generated = self._generated_reference()
         self.binding_status_var.set(
-            "自动生成参考，选择完整 VCO History 后识别目标 MOS。"
-            if generated else "请选择独立 Noise TB 与其完整 History。"
+            "Generated reference, Select complete VCO History then detect the target MOS. "
+            if generated else "Select an independent Noise TB and its complete History. "
         )
         roles = ("vco",) if generated else ("vco", "replica")
         if all(self.vars[f"{role}_{field}"].get() for role in roles for field in ("path", "history")):
@@ -1288,10 +1288,10 @@ class IsfApplication:
         if self._generated_reference() and not self.vars["vco_history"].get():
             self.setup_canvas.yview_moveto(0)
             if self.vars["vco_path"].get():
-                self.binding_status_var.set("请选择一个已完成的 VCO History，再开始分析。")
+                self.binding_status_var.set("Select a completed VCO History, then start analysis. ")
                 self.vco_history_box.focus_set()
             else:
-                self.binding_status_var.set("请先选择 VCO 的 Maestro 目录。")
+                self.binding_status_var.set("First select VCO of Maestro Directory. ")
                 if self.maestro_context and not self.vco_source_controls.winfo_manager():
                     self._toggle_vco_source()
                 self.vco_path_box.focus_set()
@@ -1306,7 +1306,7 @@ class IsfApplication:
             config_error = ""
         except (TypeError, ValueError) as exc:
             config = deep_merge({}, self.raw_config)
-            config_error = f"设置暂时无法读取，以下使用上次加载的配置。{exc}\n\n"
+            config_error = f"Settings cannot be read now, the last loaded configuration is used below. {exc}\n\n"
         context = deep_merge({}, self.maestro_context) if self._context_mode else None
         self.environment_button.state(("disabled",))
 
@@ -1316,13 +1316,13 @@ class IsfApplication:
         def show(report: Any) -> None:
             enable(report)
             window = tk.Toplevel(self.root)
-            window.title("ISF 环境检测")
+            window.title("ISF environment check")
             window.geometry("780x530")
             window.minsize(530, 340)
             window.transient(self.root)
             frame = ttk.Frame(window, padding=14)
             frame.pack(fill="both", expand=True)
-            title = "已找到运行工具" if report.get("status") == "ready" else "有运行条件需要检查"
+            title = "Runtime tools found" if report.get("status") == "ready" else "Runtime requirements need attention"
             ttk.Label(frame, text=title, style="Setup.TLabel").pack(anchor="w", pady=(0, 6))
             body = ttk.Frame(frame)
             body.pack(fill="both", expand=True)
@@ -1343,11 +1343,11 @@ class IsfApplication:
 
             actions = ttk.Frame(frame)
             actions.pack(fill="x", pady=(8, 0))
-            ttk.Button(actions, text="复制报告", command=copy_report).pack(side="left")
-            ttk.Button(actions, text="关闭", command=window.destroy).pack(side="right")
+            ttk.Button(actions, text="Copy report", command=copy_report).pack(side="left")
+            ttk.Button(actions, text="Close", command=window.destroy).pack(side="right")
             window.bind("<Escape>", lambda _event: window.destroy())
 
-        self._submit("检测运行环境", lambda: inspect_environment(config, self.controller.workspace, context),
+        self._submit("Inspect runtime environment", lambda: inspect_environment(config, self.controller.workspace, context),
                      show, on_failure=enable)
 
     def _toggle_advanced(self) -> None:
@@ -1355,11 +1355,11 @@ class IsfApplication:
         self.advanced_visible_var.set(visible)
         if visible:
             self.advanced_frame.pack(fill="both", expand=True, pady=(0, 8))
-            self.advanced_button.configure(text="收起高级设置")
+            self.advanced_button.configure(text="Hide advanced settings")
             self.root.after_idle(self._scroll_to_advanced)
         else:
             self.advanced_frame.pack_forget()
-            self.advanced_button.configure(text="高级设置")
+            self.advanced_button.configure(text="Advanced settings")
             self.setup_canvas.yview_moveto(0)
 
     def _scroll_to_advanced(self) -> None:
@@ -1370,7 +1370,7 @@ class IsfApplication:
 
     def _open_catalog(self) -> None:
         if str(self.inventory_tab) not in self.advanced_tabs.tabs():
-            self.advanced_tabs.add(self.inventory_tab, text="诊断：全部名称")
+            self.advanced_tabs.add(self.inventory_tab, text="Diagnostic: All names")
         self._open_advanced_tab(self.inventory_tab)
 
     def _offset_inputs_changed(self, *_args: Any) -> None:
@@ -1378,7 +1378,7 @@ class IsfApplication:
             return
         self._selection_revision += 1
         self.last_preflight = None
-        self.preflight_status_var.set("频偏已改变，需重新预检")
+        self.preflight_status_var.set("Offset changed, Preflight required again")
         self._refresh_offset_preview()
 
     def _offset_preview(self) -> dict[str, Any]:
@@ -1398,23 +1398,23 @@ class IsfApplication:
             preview = self._offset_preview()
             values = preview["values_hz"]
             shown = ", ".join(f"{value:.7g}" for value in values[:8]) + (", …" if len(values) > 8 else "")
-            workload = (f"{preview['operating_point_count']} 工况 × {len(values)} 频偏 = {preview['total_samples']} 个工况/频偏结果" if preview["total_samples"] else f"{len(values)} 个频偏；绑定 TB 后显示工况数和总任务量")
-            endpoint = "；步长不能整除，已追加终点" if preview["endpoint_appended"] else ""
-            self.offset_preview_var.set(f"{workload}{endpoint}\n实际频偏（Hz）：{shown}。曲线只显示实际完成的点，不补算或插值结果。")
+            workload = (f"{preview['operating_point_count']} Operating point × {len(values)} Offset = {preview['total_samples']} operating points/offset results" if preview["total_samples"] else f"{len(values)} offsets; Binding TB then operating-point count and total workload are shown")
+            endpoint = "; step does not divide the range exactly, endpoint appended" if preview["endpoint_appended"] else ""
+            self.offset_preview_var.set(f"{workload}{endpoint}\nActual offsets (Hz): {shown}. curves show only completed points, no inferred or interpolated results. ")
         except Exception as exc:
-            self.offset_preview_var.set("频偏输入待修正：" + str(exc))
+            self.offset_preview_var.set("Offset input needs correction: " + str(exc))
 
     def _show_offset_points(self) -> None:
         try:
             preview = self._offset_preview()
         except Exception as exc:
-            self._show_error(exc, "频偏输入无效")
+            self._show_error(exc, "Invalid offset input")
             return
         window = tk.Toplevel(self.root)
-        window.title("实际频偏点表")
+        window.title("Actual offset list")
         window.geometry("470x470")
         self._help(window, text=self.offset_preview_var.get()).pack(fill="x", padx=12, pady=10)
-        tree = self._tree(window, (("index", "序号", 80), ("hz", "实际频偏（Hz）", 260)))
+        tree = self._tree(window, (("index", "Index", 80), ("hz", "Actual offsets (Hz)", 260)))
         self._with_scroll(window, tree).pack(fill="both", expand=True, padx=12, pady=(0, 12))
         for index, value in enumerate(preview["values_hz"], 1):
             tree.insert("", "end", values=(index, format(value, ".12g")))
@@ -1453,23 +1453,23 @@ class IsfApplication:
             canvas.yview_scroll(direction * 3, "units")
 
     def _build_mapping_tabs(self, mapping_tab: ttk.Frame, physical_tab: ttk.Frame, inventory_tab: ttk.Frame) -> None:
-        self._help(mapping_tab, text="计算范围：gm 的 flicker / thermal 与 LC 的 thermal。Thermal 静态源谱：脚本在所选 VCO History 的私有网表副本追加 noise 分析，只读取已启用的纯被动 LC 网络噪声源，不读取电容阵列内部噪声；gm MOS 周期工况源谱由噪声 TB 获取。不会写回原 TB，也不要求另建名为 noise 的 Maestro Output。静态源谱经过周期传递与频带折叠才是计算相噪；VCO HBNoise 仍为全电路仿真参考，未建模的源显示 N/A。").pack(fill="x", pady=(0, 8))
+        self._help(mapping_tab, text="Calculation scope: gm of flicker / thermal and LC of thermal. Thermal Static source spectra: the script uses the selected VCO History append to a private netlist copy noise Analysis, reads only enabled purely passive LC network noise sources, capacitor-bank internal noise is excluded; gm MOS periodic operating-point source spectra come from noise TB obtained. no changes are written to the original TB, no separate output needs to be named noise of Maestro Output. Static source spectra require periodic transfer and band folding to become calculated phase noise; VCO HBNoise remains the full-circuit simulation reference, unmodeled sources show N/A. ").pack(fill="x", pady=(0, 8))
         self._help(
             mapping_tab,
-            text="左侧列出计算用途，右侧直接选择或输入两个 TB 的实际名称。下拉候选来自该 TB 的同类全部名称；任意别名也可手工输入。输入即时保留，批量应用后验证。每行“自动”可恢复自动识别。",
+            text="calculation roles are listed on the left, select or enter actual names for both TB actual names. candidates come from this TB all names of the same kind; arbitrary aliases can also be entered manually. input is retained immediately, apply all to validate. each row“Automatic”restores automatic detection. ",
         ).pack(fill="x", pady=(0, 8))
         mapping_actions = ttk.Frame(mapping_tab)
         mapping_actions.pack(fill="x", pady=(0, 8))
-        ttk.Button(mapping_actions, text="应用全部并验证", command=self._inspect_pair).pack(side="left")
-        ttk.Button(mapping_actions, text="清除全部信号覆盖并重新识别", command=self._reset_signal_overrides).pack(side="left", padx=8)
-        ttk.Button(mapping_actions, text="查看所有实际名称", command=self._open_catalog).pack(side="left")
-        ttk.Checkbutton(mapping_tab, text="显示未使用映射、系列成员和执行细节（诊断）", variable=self.show_all_mappings_var, command=lambda: self._render_mapping_report(self._signal_report)).pack(anchor="w", pady=(0, 8))
-        ttk.Label(mapping_tab, text="跨 TB 偏置对应（仅这一部分是 VGS / VDS / VBS）", font=self.heading_font).pack(anchor="w", pady=(4, 8))
-        self.cross_tb_tree = self._tree(mapping_tab, (("meaning", "物理含义", 100), ("vco", "VCO 周期波形 / 节点差", 240), ("replica", "Flicker 偏置变量", 170), ("source", "波形来源", 140), ("status", "对应状态", 135)))
+        ttk.Button(mapping_actions, text="Apply all & validate", command=self._inspect_pair).pack(side="left")
+        ttk.Button(mapping_actions, text="Clear overrides & detect again", command=self._reset_signal_overrides).pack(side="left", padx=8)
+        ttk.Button(mapping_actions, text="View all actual names", command=self._open_catalog).pack(side="left")
+        ttk.Checkbutton(mapping_tab, text="Show unused mappings, Family members and execution details (Diagnostic)", variable=self.show_all_mappings_var, command=lambda: self._render_mapping_report(self._signal_report)).pack(anchor="w", pady=(0, 8))
+        ttk.Label(mapping_tab, text="cross- TB Bias mapping (only this section covers VGS / VDS / VBS)", font=self.heading_font).pack(anchor="w", pady=(4, 8))
+        self.cross_tb_tree = self._tree(mapping_tab, (("meaning", "Physical meaning", 100), ("vco", "VCO Periodic waveform / Node difference", 240), ("replica", "Flicker Bias variable", 170), ("source", "Waveform source", 140), ("status", "Mapping status", 135)))
         self.cross_tb_tree.configure(height=3)
         self.cross_tb_tree.pack(fill="x", pady=(0, 10))
         self.cross_tb_tree.bind("<<TreeviewSelect>>", self._cross_tb_selected)
-        ttk.Label(mapping_tab, text="本次实际使用的对应；过期、错误与歧义项始终可见", font=self.heading_font).pack(anchor="w", pady=(4, 8))
+        ttk.Label(mapping_tab, text="Effective mappings; stale, errors and ambiguous items are always visible", font=self.heading_font).pack(anchor="w", pady=(4, 8))
         table = ttk.Frame(mapping_tab)
         table.pack(fill="both", expand=True)
         self.mapping_canvas = tk.Canvas(table, height=400, highlightthickness=0, borderwidth=0)
@@ -1482,51 +1482,51 @@ class IsfApplication:
         self.mapping_rows_frame.bind("<Configure>", lambda _event: self.mapping_canvas.configure(scrollregion=self.mapping_canvas.bbox("all")))
         self.mapping_canvas.bind("<Configure>", lambda event: self.mapping_canvas.itemconfigure(self._mapping_window, width=event.width))
         self._help(mapping_tab, textvariable=self.mapping_detail_var).pack(fill="x", pady=(0, 6))
-        ttk.Label(mapping_tab, text="VCO → 噪声 TB 波形传递检查", font=self.heading_font).pack(anchor="w", pady=(12, 6))
+        ttk.Label(mapping_tab, text="VCO → Noise TB Waveform transfer check", font=self.heading_font).pack(anchor="w", pady=(12, 6))
         self._help(mapping_tab, textvariable=self.waveform_exchange_var).pack(fill="x")
-        self.waveform_exchange_tree = self._tree(mapping_tab, (("semantic", "物理量", 65), ("source", "VCO 来源", 245), ("destination", "噪声 TB 接收端", 220), ("path", "路径策略", 160), ("status", "检查结果", 100)))
+        self.waveform_exchange_tree = self._tree(mapping_tab, (("semantic", "Quantity", 65), ("source", "VCO Source", 245), ("destination", "Noise TB Destination", 220), ("path", "Path policy", 160), ("status", "Check results", 100)))
         self.waveform_exchange_tree.configure(height=3)
         self._with_scroll(mapping_tab, self.waveform_exchange_tree).pack(fill="x", pady=(4, 12))
 
-        self._help(physical_tab, text="这些值由绑定的网表、输出和变量推导。歧义或缺项会在预检中提示；手动修改后重新验证。旧专用配置文件可在“专家兼容入口”选择。").pack(fill="x", pady=(0, 8))
-        ttk.Label(physical_tab, text="所选 History 网表来源（只读）", font=self.heading_font).pack(anchor="w")
-        self.history_provenance_tree = self._tree(physical_tab, (("role", "TB", 80), ("current", "Maestro 当前设计", 245),
-            ("history", "History 网表设计", 245), ("point", "point / corner", 150), ("mtime", "源网表修改时间", 215),
-            ("sha256", "源网表 SHA-256", 520), ("status", "说明", 260)))
+        self._help(physical_tab, text="These values come from the bound netlist, derived from outputs and variables. preflight reports ambiguous or missing items; Revalidate after manual edits. legacy custom configuration files can be selected in“Expert compatibility”Select. ").pack(fill="x", pady=(0, 8))
+        ttk.Label(physical_tab, text="Selected History Netlist provenance (Read-only)", font=self.heading_font).pack(anchor="w")
+        self.history_provenance_tree = self._tree(physical_tab, (("role", "TB", 80), ("current", "Maestro Current design", 245),
+            ("history", "History Netlisted design", 245), ("point", "point / corner", 150), ("mtime", "Source netlist modification time", 215),
+            ("sha256", "Source netlist SHA-256", 520), ("status", "Description", 260)))
         self.history_provenance_tree.configure(height=4)
         provenance_frame = self._with_scroll(physical_tab, self.history_provenance_tree)
         provenance_frame.configure(width=900, height=220)
         provenance_frame.pack_propagate(False)
         provenance_frame.pack(fill="x", pady=(6, 12))
-        self.portable_tree = self._tree(physical_tab, (("label", "用途", 215), ("value", "当前值", 310), ("source", "来源", 155), ("status", "状态", 100)))
+        self.portable_tree = self._tree(physical_tab, (("label", "Purpose", 215), ("value", "Current value", 310), ("source", "Source", 155), ("status", "State", 100)))
         self.portable_tree.configure(height=12)
         self._with_scroll(physical_tab, self.portable_tree).pack(fill="both", expand=True)
         self.portable_tree.bind("<<TreeviewSelect>>", self._portable_selected)
         edit = ttk.Frame(physical_tab)
         edit.pack(fill="x", pady=8)
-        ttk.Label(edit, text="手动覆盖（留空＝自动）").pack(side="left")
+        ttk.Label(edit, text="Manual override (leave blank＝Automatic)").pack(side="left")
         self.portable_edit_box = ttk.Combobox(edit, textvariable=self.portable_edit_var)
         self.portable_edit_box.pack(side="left", fill="x", expand=True, padx=8)
-        self.portable_apply_button = ttk.Button(edit, text="应用并验证", command=self._apply_portable_override)
+        self.portable_apply_button = ttk.Button(edit, text="Apply & validate", command=self._apply_portable_override)
         self.portable_apply_button.pack(side="left")
-        self.portable_reset_button = ttk.Button(edit, text="恢复自动", command=lambda: self._apply_portable_override(reset=True))
+        self.portable_reset_button = ttk.Button(edit, text="Restore automatic", command=lambda: self._apply_portable_override(reset=True))
         self.portable_reset_button.pack(side="left", padx=(6, 0))
         self._help(physical_tab, textvariable=self.portable_detail_var).pack(fill="x", pady=(0, 6))
 
-        self._help(inventory_tab, text="这里列出所选 TB 中发现的网名（Net）、Maestro 输出（Output）、设计变量（Variable），以及器件、分析和保存信号。网名来自生成网表及 Maestro 引用，不直接读取 schematic 二进制；请先在 Maestro 生成网表并选择对应 History。清单不会改名，也不表示每个表达式都会执行。").pack(fill="x", pady=(0, 8))
-        ttk.Button(inventory_tab, text="收起完整名称诊断", command=lambda: self.advanced_tabs.forget(inventory_tab)).pack(anchor="w", pady=(0, 8))
+        self._help(inventory_tab, text="This lists the selected TB discovered net names (Net), Maestro Output (Output), Design variable (Variable), and device, Analyses and saved signals. Net names come from the generated netlist and Maestro Reference, not read directly schematic Binary; first use Maestro generate a netlist and select the corresponding History. the inventory does not rename items, not every expression is executed. ").pack(fill="x", pady=(0, 8))
+        ttk.Button(inventory_tab, text="Hide full name diagnostics", command=lambda: self.advanced_tabs.forget(inventory_tab)).pack(anchor="w", pady=(0, 8))
         ttk.Label(inventory_tab, textvariable=self.catalog_status_var, font=self.heading_font).pack(anchor="w", pady=(0, 8))
         filters = ttk.Frame(inventory_tab)
         filters.pack(fill="x", pady=(0, 8))
         self.catalog_kind_box = ttk.Combobox(filters, textvariable=self.catalog_kind_var, state="readonly", width=20,
-                                           values=("全部类型", *CATALOG_KIND_LABELS.values()))
+                                           values=("All types", *CATALOG_KIND_LABELS.values()))
         self.catalog_kind_box.pack(side="left")
         self.catalog_kind_var.trace_add("write", lambda *_args: self._render_signal_catalog())
-        ttk.Label(filters, text="搜索名称 / 表达式 / TB").pack(side="left", padx=(8, 0))
+        ttk.Label(filters, text="Search names / Expression / TB").pack(side="left", padx=(8, 0))
         ttk.Entry(filters, textvariable=self.catalog_filter_var).pack(side="left", fill="x", expand=True, padx=8)
         self.catalog_filter_var.trace_add("write", lambda *_args: self._render_signal_catalog())
-        ttk.Button(filters, text="修改工具对应关系", command=lambda: self._open_advanced_tab(self.mapping_tab)).pack(side="left")
-        self.catalog_tree = self._tree(inventory_tab, (("role", "TB", 75), ("kind", "类型", 145), ("name", "实际名称", 220), ("expression", "表达式 / 节点 / 数值", 365)))
+        ttk.Button(filters, text="Edit tool mappings", command=lambda: self._open_advanced_tab(self.mapping_tab)).pack(side="left")
+        self.catalog_tree = self._tree(inventory_tab, (("role", "TB", 75), ("kind", "Type", 145), ("name", "Actual name", 220), ("expression", "Expression / Node / Value", 365)))
         self.catalog_tree.configure(height=15)
         self._with_scroll(inventory_tab, self.catalog_tree).pack(fill="both", expand=True)
         self.catalog_tree.bind("<<TreeviewSelect>>", self._catalog_selected)
@@ -1535,7 +1535,7 @@ class IsfApplication:
     @staticmethod
     def _field_status(row: Mapping[str, Any]) -> str:
         status = str(row.get("status") or "")
-        return {"auto": "自动", "detected": "自动", "derived": "脚本推导", "resolved": "已识别", "manual": "手动", "override": "手动", "overridden": "手动", "ambiguous": "多个候选", "missing": "未识别", "invalid": "需修正", "pending": "待验证", "optional": "可选", "error": "需修正"}.get(status, status)
+        return {"auto": "Automatic", "detected": "Automatic", "derived": "Script derived", "resolved": "Detected", "manual": "Manual", "override": "Manual", "overridden": "Manual", "ambiguous": "multiple candidates", "missing": "Unresolved", "invalid": "Needs correction", "pending": "Awaiting validation", "optional": "optional", "error": "Needs correction"}.get(status, status)
 
     def _focus_mapping_input(self, iid: str) -> None:
         widget = self._mapping_inputs.get(iid)
@@ -1560,8 +1560,8 @@ class IsfApplication:
         else:
             target.pop(str(row["key"]), None)
         self._mapping_changed()
-        self._mapping_status_labels[iid].configure(text="手动 · 待验证" if value else "自动 · 待验证")
-        self.mapping_status_var.set("输入已保留，尚未验证；点击“应用全部并验证”。")
+        self._mapping_status_labels[iid].configure(text="Manual · Awaiting validation" if value else "Automatic · Awaiting validation")
+        self.mapping_status_var.set("Input retained, Not validated yet; Click“Apply all & validate”. ")
         self.mapping_detail_var.set(self._field_detail(row, value))
 
     def _reset_mapping_input(self, iid: str) -> None:
@@ -1575,29 +1575,29 @@ class IsfApplication:
         finally:
             self._rendering_mapping_inputs = False
         self._mapping_changed()
-        self._mapping_status_labels[iid].configure(text="自动 · 待验证")
-        self.mapping_status_var.set("已恢复自动；点击“应用全部并验证”确认当前对应。")
+        self._mapping_status_labels[iid].configure(text="Automatic · Awaiting validation")
+        self.mapping_status_var.set("Automatic settings restored; Click“Apply all & validate”Confirm current mapping. ")
         self.mapping_detail_var.set(self._field_detail(row, self._mapping_input_vars[iid].get()))
 
     def _cross_tb_selected(self, _event: Any = None) -> None:
         selected = self.cross_tb_tree.selection()
         row = self._cross_tb_rows.get(selected[0], {}) if selected else {}
         if row:
-            self.mapping_detail_var.set(f"{row['label']}：{row.get('help') or ''}\n{row.get('vco') or '未识别'} → {row.get('replica') or '未识别'}；来源：{row.get('source')}；状态：{row.get('status')}\n表达式：{row.get('expression') or '无'}")
+            self.mapping_detail_var.set(f"{row['label']}: {row.get('help') or ''}\n{row.get('vco') or 'Unresolved'} → {row.get('replica') or 'Unresolved'}; Source: {row.get('source')}; State: {row.get('status')}\nExpression: {row.get('expression') or 'None'}")
 
     @staticmethod
     def _field_detail(row: Mapping[str, Any], selected: Any = None) -> str:
-        candidates = "、".join(mapping_candidate_names(row, selected)) or "无"
-        issues = "；".join(str(item) for item in _sequence(row.get("issues")) if item)
-        detail = f"{row.get('label') or row.get('key')}：{row.get('help') or '用于当前仿真对应关系。'}\n自动识别：{_display(row.get('detected'))}；来源：{mapping_source_text(row)}；候选：{candidates}"
+        candidates = ", ".join(mapping_candidate_names(row, selected)) or "None"
+        issues = "; ".join(str(item) for item in _sequence(row.get("issues")) if item)
+        detail = f"{row.get('label') or row.get('key')}: {row.get('help') or 'used for the current simulation mapping. '}\nAutomatic detection: {_display(row.get('detected'))}; Source: {mapping_source_text(row)}; Candidates: {candidates}"
         if row.get("used_by") or row.get("consumption_mode"):
-            consumers = {"private Spectre preparation": "准备私有仿真副本", "flicker-noise extraction": "闪烁噪声提取", "signed HBXF transfer H[k]": "带方向和相位的 HBXF 传递", "ISF calculation": "ISF 计算", "VCO periodic bias → current TB noise sampling": "VCO 周期偏置对应电流 TB 的噪声采样", "target flicker extraction": "目标器件闪烁噪声提取"}
-            used_by = "、".join(consumers.get(str(value), str(value)) for value in row["used_by"]) if isinstance(row.get("used_by"), list) else str(row.get("used_by") or "不用于计算")
-            modes = {"source_binding_remeasured": "按用户选择的输出定位电流源，按本次输出端重测完整复数响应", "private_netlist": "私有网表设置", "raw_signal": "提取真实信号", "raw_voltage_pair": "使用原始节点电压差", "netlist_bias_parameter": "作为噪声 TB 偏置变量", "raw_noise_contributor": "提取指定器件噪声贡献", "reference_only": "仅对照，不作为计算输入", "private_drain_source": "在私有副本使用漏源注入", "invalid": "无效，需要修正"}
-            mode = str(row.get("consumption_mode") or "见用途说明")
-            detail += f"\n实际用途：{used_by or '不用于计算'}；使用方式：{modes.get(mode, mode)}"
+            consumers = {"private Spectre preparation": "Prepare private simulation copy", "flicker-noise extraction": "Flicker-noise extraction", "signed HBXF transfer H[k]": "with direction and phase HBXF Transfer", "ISF calculation": "ISF calculated", "VCO periodic bias → current TB noise sampling": "VCO current under periodic bias TB noise samples", "target flicker extraction": "Target device flicker-noise extraction"}
+            used_by = ", ".join(consumers.get(str(value), str(value)) for value in row["used_by"]) if isinstance(row.get("used_by"), list) else str(row.get("used_by") or "not used in the calculation")
+            modes = {"source_binding_remeasured": "locate the current source from the selected output, remeasure the full complex response at this output", "private_netlist": "Private netlist settings", "raw_signal": "extract actual signals", "raw_voltage_pair": "uses the original node-voltage difference", "netlist_bias_parameter": "as noise TB Bias variable", "raw_noise_contributor": "extract the selected device noise contribution", "reference_only": "reference only, not used as calculation input", "private_drain_source": "use drain-to-source injection in the private copy", "invalid": "Invalid, Needs correction"}
+            mode = str(row.get("consumption_mode") or "See role description")
+            detail += f"\nEffective role: {used_by or 'not used in the calculation'}; Usage: {modes.get(mode, mode)}"
         evidence = mapping_selection_details(row, selected)
-        return detail + ("\n" + "\n".join(evidence) if evidence else "") + ("\n校验提示：" + issues if issues else "")
+        return detail + ("\n" + "\n".join(evidence) if evidence else "") + ("\nValidation notes: " + issues if issues else "")
 
     def _reset_signal_overrides(self) -> None:
         self._mapping_overrides = {"vco": {}, "replica": {}}
@@ -1620,20 +1620,20 @@ class IsfApplication:
         self.portable_reset_button.configure(state="normal" if editable else "disabled")
         detail = self._field_detail(row)
         if expert_file:
-            detail = "当前使用专家指定文件；此表为自动生成建议。先在专家入口恢复自动，才可应用这里的覆盖。\n" + detail
+            detail = "Currently using the expert file; This table contains generated suggestions. restore automatic settings in Expert compatibility first, before applying these overrides. \n" + detail
         self.portable_detail_var.set(detail)
 
     def _apply_portable_override(self, reset: bool = False) -> None:
         selected = self.portable_tree.selection()
         row = self._portable_rows.get(selected[0], {}) if selected else {}
         if not row:
-            self.portable_detail_var.set("请先选择要修改的执行设置。")
+            self.portable_detail_var.set("Select an execution setting to edit first. ")
             return
         if row.get("editable") is False:
-            self.portable_detail_var.set("此项为执行器约束，只能查看；请根据用途提示在原始连接或信号对应处处理。")
+            self.portable_detail_var.set("This item is constrained by the executor, can only inspect; Follow the role guidance to correct the original connection or signal mapping. ")
             return
         if str(self.vars["engine_config"].get() or "").strip():
-            self.portable_detail_var.set("当前执行配置来自专家指定文件。请先在专家入口恢复自动，再编辑自动生成设置。")
+            self.portable_detail_var.set("Current execution settings come from the expert file. restore automatic settings in Expert compatibility first, then edit the generated settings. ")
             return
         key = str(row["key"])
         text = "" if reset else self.portable_edit_var.get().strip()
@@ -1644,7 +1644,7 @@ class IsfApplication:
                 try:
                     value = json.loads(text)
                 except ValueError:
-                    self.portable_detail_var.set("此项需要数值或结构化值，请参照自动识别值填写。")
+                    self.portable_detail_var.set("This item requires a numeric or structured value, use the detected value as a guide. ")
                     return
             self._portable_overrides[key] = value
         else:
@@ -1655,8 +1655,8 @@ class IsfApplication:
     def _mapping_changed(self) -> None:
         self._selection_revision += 1
         self.last_preflight = None
-        self.preflight_status_var.set("对应关系已修改，需重新预检")
-        self.mapping_status_var.set("手动修改已应用，正在重新验证；完整 history 绑定保持不变。")
+        self.preflight_status_var.set("Mapping changed, Preflight required again")
+        self.mapping_status_var.set("Manual edits applied, Revalidating; Complete history Binding unchanged. ")
         if self._auto_engine_path and str(self.vars["engine_config"].get()) == self._auto_engine_path:
             self.vars["engine_config"].set("")
         self._auto_engine_path = ""
@@ -1667,13 +1667,13 @@ class IsfApplication:
         for row in provenance:
             self.history_provenance_tree.insert("", "end", values=tuple(row[key] for key in ("role", "current", "history", "point", "mtime", "sha256", "status")))
         summaries = []
-        for role in ("VCO", "噪声 TB"):
+        for role in ("VCO", "Noise TB"):
             selected = [row for row in provenance if row["role"] == role]
             if selected:
                 designs = sorted({row["history"] for row in selected})
-                history = designs[0] if len(designs) == 1 else "多种来源，见逐点列表"
-                summaries.append(f"{role} 当前设计：{selected[0]['current']}；History 来源：{history}")
-        summaries.append("实际仿真复制所选 History 的固定网表，不会自动跟随当前 schematic / config 或器件禁用状态；若需使用新拓扑，请先在 Maestro 重跑并选择新 History。来源不同只提示，不阻止历史回放。")
+                history = designs[0] if len(designs) == 1 else "multiple sources, See per-point list"
+                summaries.append(f"{role} Current design: {selected[0]['current']}; History Source: {history}")
+        summaries.append("simulation copies the selected History fixed netlist, does not follow the current schematic / config or device-disabled state; to use the new topology, first use Maestro rerun and select a new History. source differences are informational, does not block historical replay. ")
         self.binding_provenance_var.set("\n".join(summaries))
         self._signal_report = dict(report)
         if hasattr(self, "target_mos_box"):
@@ -1684,14 +1684,14 @@ class IsfApplication:
         for role, overrides in self._mapping_overrides.items():
             for key, value in overrides.items():
                 if (role, key) not in present:
-                    rows.append({"role": role, "key": key, "label": key, "value": value, "status": "pending", "source": "已保留的手动输入，等待当前 TB 验证"})
+                    rows.append({"role": role, "key": key, "label": key, "value": value, "status": "pending", "source": "Retained manual input, Waiting for current TB Validate"})
         self._rendering_mapping_inputs = True
         for child in self.mapping_rows_frame.winfo_children():
             child.destroy()
         self._mapping_input_vars = {}
         self._mapping_inputs = {}
         self._mapping_status_labels = {}
-        for column, (text, weight) in enumerate((("TB", 0), ("计算用途", 2), ("TB 中实际名称（可选 / 可输入）", 4), ("来源 / 缺失 / 推导", 3), ("状态", 1))):
+        for column, (text, weight) in enumerate((("TB", 0), ("Calculation role", 2), ("TB actual names (optional / can enter)", 4), ("Source / Missing / Derived", 3), ("State", 1))):
             self.mapping_rows_frame.columnconfigure(column, weight=weight)
             ttk.Label(self.mapping_rows_frame, text=text, font=self.heading_font).grid(row=0, column=column, sticky="w", padx=6, pady=10)
         for row in rows:
@@ -1702,7 +1702,7 @@ class IsfApplication:
             current = manual.get(str(row["key"]), row.get("value") or row.get("effective_value") or row.get("detected") or "")
             variable = tk.StringVar(master=self.root, value=str(current))
             self._mapping_input_vars[iid] = variable
-            ttk.Label(self.mapping_rows_frame, text="VCO" if row["role"] == "vco" else "噪声 TB").grid(row=index, column=0, sticky="nw", padx=6, pady=14)
+            ttk.Label(self.mapping_rows_frame, text="VCO" if row["role"] == "vco" else "Noise TB").grid(row=index, column=0, sticky="nw", padx=6, pady=14)
             label = ttk.Label(self.mapping_rows_frame, text=row.get("label") or row["key"], wraplength=150, justify="left")
             label.grid(row=index, column=1, sticky="new", padx=6, pady=14)
             cell = ttk.Frame(self.mapping_rows_frame)
@@ -1712,18 +1712,18 @@ class IsfApplication:
             box.pack(fill="x")
             self._mapping_inputs[iid] = box
             box.bind("<FocusIn>", lambda _event, field=row, key=iid: self.mapping_detail_var.set(self._field_detail(field, self._mapping_input_vars[key].get())))
-            ttk.Button(cell, text="自动", command=lambda key=iid: self._reset_mapping_input(key)).pack(anchor="w", pady=(5, 0))
-            source = ttk.Label(self.mapping_rows_frame, text=mapping_source_text(row) or "待检测", wraplength=190, justify="left")
+            ttk.Button(cell, text="Automatic", command=lambda key=iid: self._reset_mapping_input(key)).pack(anchor="w", pady=(5, 0))
+            source = ttk.Label(self.mapping_rows_frame, text=mapping_source_text(row) or "Awaiting detection", wraplength=190, justify="left")
             source.grid(row=index, column=3, sticky="new", padx=6, pady=14)
             pending = str(row["key"]) in manual and str(manual[str(row["key"])]) != str(row.get("value") or "")
             generated = bool(row.get("effective_value") and not row.get("value"))
-            status = ttk.Label(self.mapping_rows_frame, text="手动 · 待验证" if pending else "本次脚本生成" if generated else self._field_status(row), wraplength=100, justify="left")
+            status = ttk.Label(self.mapping_rows_frame, text="Manual · Awaiting validation" if pending else "Generated by this script" if generated else self._field_status(row), wraplength=100, justify="left")
             status.grid(row=index, column=4, sticky="nw", padx=6, pady=14)
             self._mapping_status_labels[iid] = status
             variable.trace_add("write", lambda *_args, key=iid: self._mapping_input_changed(key))
         self._rendering_mapping_inputs = False
         exchange = waveform_exchange_view(report)
-        exchange_lines = [exchange["summary"], exchange.get("path_policy", ""), *exchange.get("checks", []), "绑定阶段仅验证文件生成与仿真准备；已有 history 或旧绑定不证明本次波形闭环已运行。"]
+        exchange_lines = [exchange["summary"], exchange.get("path_policy", ""), *exchange.get("checks", []), "Binding validates file generation and simulation preparation only; existing history or old bindings do not prove this waveform loop has run. "]
         self.waveform_exchange_var.set("\n".join(line for line in exchange_lines if line))
         self._clear_tree(self.waveform_exchange_tree)
         for item in exchange["rows"]:
@@ -1734,20 +1734,20 @@ class IsfApplication:
             if row["key"] == "vbs" and not self.show_all_mappings_var.get() and not any(field.get("key") in {"vbs_output", "vbs_variable"} and field.get("active", True) for field in rows):
                 continue
             self._cross_tb_rows[row["key"]] = row
-            self.cross_tb_tree.insert("", "end", iid=row["key"], values=(row["label"], row["vco"] or "未识别", row["replica"] or "未识别", row["source"], row["status"]))
+            self.cross_tb_tree.insert("", "end", iid=row["key"], values=(row["label"], row["vco"] or "Unresolved", row["replica"] or "Unresolved", row["source"], row["status"]))
         self._render_portable_report(_mapping(report.get("portable_setup")))
         self._render_signal_catalog()
         unresolved = [row for row in rows if row.get("required") and (not row.get("value") or str(row.get("status")) in {"ambiguous", "invalid", "error", "missing"})]
         manual = sum(len(values) for values in self._mapping_overrides.values()) + len(self._portable_overrides)
         setup = _mapping(report.get("portable_setup"))
-        suffix = f"；{manual} 项手动覆盖" if manual else ""
+        suffix = f"; {manual} manual overrides" if manual else ""
         if str(self.vars["engine_config"].get() or "").strip():
-            suffix += "；使用专家指定的执行文件"
+            suffix += "; Using the expert execution file"
         elif setup and not setup.get("ok"):
-            suffix += "；执行设置待补充（高级设置）"
+            suffix += "; Execution settings need input (Advanced settings)"
         elif setup.get("ok"):
-            suffix += "；执行设置已自动生成"
-        self.mapping_status_var.set((f"当前显示 {len(rows)} 项对应关系；{len(unresolved)} 项必需信息待确认" if unresolved else f"当前显示 {len(rows)} 项对应关系，运行前请预检") + suffix)
+            suffix += "; Execution settings generated"
+        self.mapping_status_var.set((f"Currently showing {len(rows)} mappings; {len(unresolved)} required items await confirmation" if unresolved else f"Currently showing {len(rows)} mappings, Run preflight before execution") + suffix)
         self._refresh_offset_preview()
 
     def _render_portable_report(self, setup: Mapping[str, Any]) -> None:
@@ -1765,7 +1765,7 @@ class IsfApplication:
             self.portable_tree.selection_set(selected[0])
         errors = [str(_mapping(item).get("message") or item) for item in _sequence(setup.get("errors"))]
         if errors:
-            self.portable_detail_var.set("待补充：" + "；".join(errors))
+            self.portable_detail_var.set("Missing input: " + "; ".join(errors))
 
     def _render_signal_catalog(self) -> None:
         if not hasattr(self, "catalog_tree"):
@@ -1778,31 +1778,31 @@ class IsfApplication:
             iid = row["iid"]
             self._catalog_rows[iid] = row
             self.catalog_tree.insert("", "end", iid=iid, values=(row["role_label"], row["kind_label"], row.get("name") or "", row.get("expression") if row.get("expression") is not None else ""))
-        self.catalog_status_var.set(catalog_summary(self._signal_report) + f" · 当前显示 {len(self._catalog_rows)} 项")
+        self.catalog_status_var.set(catalog_summary(self._signal_report) + f" · Currently showing {len(self._catalog_rows)} items")
 
     def _catalog_selected(self, _event: Any = None) -> None:
         selected = self.catalog_tree.selection()
         row = self._catalog_rows.get(selected[0], {}) if selected else {}
         if row:
-            self.catalog_detail_var.set(f"{row.get('name')}\n表达式 / 内容：{_display(row.get('expression'))}\n来源：{_display(row.get('source'))}\n详情：{_display(row.get('details'))}")
+            self.catalog_detail_var.set(f"{row.get('name')}\nExpression / Content: {_display(row.get('expression'))}\nSource: {_display(row.get('source'))}\nDetails: {_display(row.get('details'))}")
 
     def _choose_engine(self) -> None:
-        path = self._choose_file("选择已有专用执行配置", str(self.vars["engine_config"].get()))
+        path = self._choose_file("Select existing execution configuration", str(self.vars["engine_config"].get()))
         if path:
             self.vars["engine_config"].set(path)
             self.last_preflight = None
-            self.mapping_status_var.set("已指定专家执行文件；该文件优先于自动生成设置，需重新预检。")
+            self.mapping_status_var.set("Expert execution file selected; This file takes precedence over generated settings, Preflight required again. ")
 
     def _engine_changed(self, *_args: Any) -> None:
         if self._updating_form:
             return
         self._selection_revision += 1
         self.last_preflight = None
-        self.preflight_status_var.set("执行配置来源已改变，需重新预检")
+        self.preflight_status_var.set("Execution configuration source changed, Preflight required again")
         if str(self.vars["engine_config"].get() or "").strip():
-            self.mapping_status_var.set("使用专家指定的执行文件，优先于自动生成设置；请在高级设置核对后预检。")
+            self.mapping_status_var.set("Using the expert execution file, takes precedence over generated settings; Check Advanced settings, then run preflight. ")
         else:
-            self.mapping_status_var.set("执行设置已恢复自动生成；请重新识别或预检查看当前结果。")
+            self.mapping_status_var.set("Automatic execution settings restored; Detect again or run preflight to inspect current results. ")
         self._portable_selected()
 
     def _formal_signoff_enabled(self) -> bool:
@@ -1815,19 +1815,19 @@ class IsfApplication:
         if hasattr(self, "formal_signoff_check"):
             self.formal_signoff_check.configure(state="normal")
         if hasattr(self, "start_button"):
-            self.start_button.configure(text="2  开始实际运行")
+            self.start_button.configure(text="2  Start live run")
         if hasattr(self, "setup_start_button"):
-            self.setup_start_button.configure(text="开始正式分析" if self._formal_signoff_enabled() else "开始分析")
+            self.setup_start_button.configure(text="Start signoff analysis" if self._formal_signoff_enabled() else "Start analysis")
         if hasattr(self, "execution_summary_var"):
-            suffix = "正式 Signoff" if self._formal_signoff_enabled() else "非正式签核"
-            self.execution_summary_var.set(f"实际运行 · {suffix}")
+            suffix = "Formal Signoff" if self._formal_signoff_enabled() else "not signoff"
+            self.execution_summary_var.set(f"Live execution · {suffix}")
 
     def _update_maestro_banner(self) -> None:
         context = getattr(self, "maestro_context", {})
         if not context:
             return
         identity = "/".join(str(context.get(k) or "?") for k in ("library", "cell", "view"))
-        label = "当前 Maestro" if self._context_mode else "启动来源（已切换 VCO）"
+        label = "Current Maestro" if self._context_mode else "Launch source (Switched VCO)"
         self.maestro_source_var.set(f"{label}  ·  {identity}")
 
     def _set_history_choices(self, role: str, histories: Sequence[Mapping[str, Any]]) -> None:
@@ -1879,8 +1879,8 @@ class IsfApplication:
         self._set_history_choices("vco", self.maestro_context.get("histories") or [])
         self._update_maestro_banner()
         self.binding_status_var.set(
-            "已带入启动窗口的 VCO；请选择完整 History。"
-            if self._generated_reference() else "已带入启动窗口的 VCO；请选择 History 与器件噪声 TB。"
+            "Imported from launch window VCO; Select a complete History. "
+            if self._generated_reference() else "Imported from launch window VCO; Select History and device noise TB. "
         )
         self._schedule_role_inspection("vco")
 
@@ -1906,7 +1906,7 @@ class IsfApplication:
             self._set_raw_text(config)
             self._set_history_choices("vco", self.maestro_context.get("histories") or [])
             self._schedule_role_inspection("vco", refresh=True)
-        self._submit("刷新当前 Maestro 的 History", lambda: self.controller.refresh_maestro_context(context), refreshed)
+        self._submit("Refresh current Maestro of History", lambda: self.controller.refresh_maestro_context(context), refreshed)
 
     def _schedule_role_inspection(self, role: str, *, refresh: bool = False) -> None:
         if getattr(self, "_updating_form", False):
@@ -1960,19 +1960,19 @@ class IsfApplication:
             if all(str(self.vars[f"{r}_{field}"].get() or "") for r in roles for field in ("path", "history")):
                 self._inspect_pair()
             elif not choice.get("complete_histories"):
-                label = "VCO" if role == "vco" else "噪声 TB"
-                self.binding_status_var.set(f"{label} 没有可绑定的完整 History；请在 Maestro 完成仿真后刷新。")
+                label = "VCO" if role == "vco" else "Noise TB"
+                self.binding_status_var.set(f"{label} No complete candidate to bind for History; Use Maestro refresh after simulation completes. ")
             else:
                 self.binding_status_var.set(
-                    "已读取候选；请选择完整 VCO History。"
-                    if self._generated_reference() else "已读取候选；请选择完整 History 与器件噪声 TB。"
+                    "Candidates read; Select a complete VCO History. "
+                    if self._generated_reference() else "Candidates read; Select a complete History and device noise TB. "
                 )
-        self._submit("读取 VCO History" if role == "vco" else "读取噪声 TB History",
+        self._submit("Read VCO History" if role == "vco" else "Read noise TB History",
                      lambda: self.controller.inspect_maestro(payload), inspected)
 
     def _choose_directory(self, key: str) -> None:
         initial = str(self.vars[key].get() or self.vars["project_root"].get() or Path.cwd())
-        value = filedialog.askdirectory(parent=self.root, initialdir=initial, title="选择目录")
+        value = filedialog.askdirectory(parent=self.root, initialdir=initial, title="Choose directory")
         if value:
             self.vars[key].set(value)
             if key in ("vco_path", "replica_path"):
@@ -1983,7 +1983,7 @@ class IsfApplication:
             parent=self.root,
             title=title,
             initialdir=str(Path(initial).expanduser().parent) if initial else str(Path.cwd()),
-            filetypes=(("JSON", "*.json"), ("所有文件", "*")),
+            filetypes=(("JSON", "*.json"), ("All files", "*")),
         )
 
     def _mark_binding_dirty(self, role: str) -> None:
@@ -2028,11 +2028,11 @@ class IsfApplication:
             self._update_maestro_banner()
         self._sync_history_label(role)
         self._render_mapping_report({})
-        suffix = " 专家执行文件仍已指定，请在高级设置核对或恢复自动。" if str(self.vars["engine_config"].get() or "").strip() else ""
-        self.mapping_status_var.set("TB / 测试 / 仿真记录已改变，旧对应已清除；请重新识别。" + suffix)
-        self.binding_status_var.set("路径、测试或仿真记录已改变；需重新识别并绑定")
+        suffix = " an expert execution file is still selected, Check Advanced settings or restore automatic settings. " if str(self.vars["engine_config"].get() or "").strip() else ""
+        self.mapping_status_var.set("TB / Test / History has changed, Legacy mappings cleared; Detect again. " + suffix)
+        self.binding_status_var.set("Path, Test or History changed; Detection and binding required")
         self.last_preflight = None
-        self.preflight_status_var.set("配置已改变，需重跑预检")
+        self.preflight_status_var.set("Configuration changed, Rerun preflight")
 
     def _raw_from_editor(self) -> dict[str, Any]:
         text = self.raw_text.get("1.0", "end").strip()
@@ -2040,7 +2040,7 @@ class IsfApplication:
             return dict(self.raw_config)
         value = json.loads(text)
         if not isinstance(value, Mapping):
-            raise ValueError("高级 JSON 顶层必须是 object")
+            raise ValueError("Advanced JSON top level must be object")
         return dict(value)
 
     def _collect_fields(self) -> dict[str, Any]:
@@ -2156,15 +2156,15 @@ class IsfApplication:
         ready = all(str(self.vars[f"{role}_{field}"].get() or "") for role in roles
                     for field in ("binding_fingerprint", "history_fingerprint"))
         self.binding_status_var.set(
-            "已加载历史绑定；运行前仍会预检。" if ready
-            else "选择一个已完成的 VCO History。" if generated
-            else "请选择 VCO 和 Noise TB 的完整 History。"
+            "Historical binding loaded; Preflight still runs before execution. " if ready
+            else "Select a completed VCO History. " if generated
+            else "Select VCO and Noise TB complete History. "
         )
         if hasattr(self, "offset_input_frames"):
             self._refresh_offset_preview()
         if hasattr(self, "mapping_rows_frame"):
             self._render_mapping_report({})
-            self.mapping_status_var.set("已加载配置中的手动对应；点击“检查绑定”核对实际名称与来源。")
+            self.mapping_status_var.set("Manual mappings loaded from configuration; Click“Check binding”Check actual names and sources. ")
 
     def _config_loaded(self, value: Any, initial: bool = False) -> None:
         config = strip_retired_noise_objects(_mapping(value))
@@ -2206,9 +2206,9 @@ class IsfApplication:
             else:
                 self.theme_var.set(preferences["theme"])
                 self._apply_theme()
-                self.preference_status_var.set("已加载本来源偏好；请明确选择本次 History。")
+                self.preference_status_var.set("Preferences loaded for this source; Explicitly select the current History. ")
         if error:
-            self.preference_status_var.set("项目偏好未加载：" + error)
+            self.preference_status_var.set("Project preferences not loaded: " + error)
         self._config_loaded(config, initial=True)
 
     def _restore_project_mapping(self, role: Mapping[str, Any]) -> bool:
@@ -2223,7 +2223,7 @@ class IsfApplication:
         self._restored_mapping_keys.add(key)
         self._mapping_overrides["vco"] = clean_mapping_overrides(overrides)
         self._mapping_changed()
-        self.binding_status_var.set("正在重新验证该 History 的项目映射。")
+        self.binding_status_var.set("Revalidating this History project mappings. ")
         self._inspect_pair()
         return True
 
@@ -2264,39 +2264,39 @@ class IsfApplication:
             self._preferences_saving = False
             stored, error = value
             if error:
-                self.preference_status_var.set("项目偏好未保存：" + error)
+                self.preference_status_var.set("Project preferences not saved: " + error)
             else:
                 self._preferences = stored
-                self.preference_status_var.set("已保存本 Maestro 来源的项目偏好。")
+                self.preference_status_var.set("Saved this Maestro source project preferences. ")
 
-        self._submit("保存项目偏好", save, saved, quiet=True)
+        self._submit("Save project preferences", save, saved, quiet=True)
 
     def _render_merged_config(self) -> None:
         try:
             config = self._config_from_ui()
         except Exception as exc:
-            self._show_error(exc, "配置无效")
+            self._show_error(exc, "Invalid configuration")
             return
         self.raw_config = config
         self._set_raw_text(config)
-        self.status_var.set("表单已合并到高级 JSON")
+        self.status_var.set("Form merged into advanced JSON")
 
     def _apply_raw_editor(self) -> None:
         try:
             config = self._raw_from_editor()
         except Exception as exc:
-            self._show_error(exc, "高级 JSON 无效")
+            self._show_error(exc, "Advanced JSON Invalid")
             return
         self.raw_config = config
         self._populate_form(config)
         self._set_raw_text(config)
         self.last_preflight = None
-        self.preflight_status_var.set("配置已改变，需重跑预检")
+        self.preflight_status_var.set("Configuration changed, Rerun preflight")
 
     def _load_config_dialog(self) -> None:
-        path = self._choose_file("加载配置 JSON")
+        path = self._choose_file("Load configuration JSON")
         if path:
-            self._submit("加载配置", lambda: self.controller.load_config(path), self._config_loaded)
+            self._submit("Load configuration", lambda: self.controller.load_config(path), self._config_loaded)
 
     def _state_view(self) -> dict[str, Any]:
         tabs = (self.setup_tab, self.run_tab, self.result_tab, self.error_tab)
@@ -2313,34 +2313,34 @@ class IsfApplication:
 
     def _save_state_dialog(self) -> None:
         if self._state_load_pending:
-            messagebox.showwarning("正在加载状态", "请等状态加载完成后再保存。", parent=self.root)
+            messagebox.showwarning("Loading state", "Wait for state loading before saving. ", parent=self.root)
             return
-        name = simpledialog.askstring("保存状态", "状态名称（保存设置、手动对应和结果显示选择，不保存执行授权）", parent=self.root)
+        name = simpledialog.askstring("Save state", "State name (Save settings, manual mappings and result display selection, execution consent is not saved)", parent=self.root)
         if not name or not name.strip():
             return
         try:
             payload = {"name": name.strip(), "config": self._config_from_ui(), "view": self._state_view()}
         except Exception as exc:
-            self._show_error(exc, "状态无法保存")
+            self._show_error(exc, "Cannot save state")
             return
-        self._submit("保存状态", lambda: self.controller.save_state(payload),
-                     lambda report: messagebox.showinfo("状态已保存", str(report.get("path") or ""), parent=self.root))
+        self._submit("Save state", lambda: self.controller.save_state(payload),
+                     lambda report: messagebox.showinfo("State saved", str(report.get("path") or ""), parent=self.root))
 
     def _load_state_dialog(self) -> None:
         if self._state_load_pending or self._job_command_pending or self._foreground_operations:
-            messagebox.showwarning("当前操作尚未完成", "请等待绑定、预检或任务提交完成后加载状态。", parent=self.root)
+            messagebox.showwarning("Current operation is incomplete", "Wait for binding, Load state after preflight or job submission finishes. ", parent=self.root)
             return
 
         def listed(report: Any) -> None:
             rows = [row for row in _sequence(_mapping(report).get("states")) if isinstance(row, Mapping)]
             if not rows:
-                messagebox.showinfo("尚无已保存状态", "可先点击“保存状态”。\n" + str(_mapping(report).get("directory") or ""), parent=self.root)
+                messagebox.showinfo("No saved states", "first click“Save state”. \n" + str(_mapping(report).get("directory") or ""), parent=self.root)
                 return
             dialog = tk.Toplevel(self.root)
-            dialog.title("加载状态")
+            dialog.title("Load state")
             dialog.transient(self.root)
             dialog.grab_set()
-            ttk.Label(dialog, text="只恢复设置和已有结果选择；不会自动绑定、预检或仿真。", padding=12).pack(anchor="w")
+            ttk.Label(dialog, text="restores only settings and existing result selection; does not bind automatically, preflight or simulation. ", padding=12).pack(anchor="w")
             choices = {f"{row.get('name')} · {row.get('saved_at')} · {row.get('id')}": str(row["id"]) for row in rows}
             variable = tk.StringVar(value=next(iter(choices)))
             box = ttk.Combobox(dialog, state="readonly", textvariable=variable, values=tuple(choices), width=80)
@@ -2352,9 +2352,9 @@ class IsfApplication:
                 if identifier:
                     self._load_saved_state(identifier)
 
-            ttk.Button(dialog, text="加载所选状态", command=chosen).pack(pady=12)
+            ttk.Button(dialog, text="Load selected state", command=chosen).pack(pady=12)
 
-        self._submit("列出状态", self.controller.list_states, listed)
+        self._submit("List states", self.controller.list_states, listed)
 
     def _state_edit_snapshot(self) -> dict[str, Any]:
         """Capture unfinished edits without requiring a currently valid config."""
@@ -2366,7 +2366,7 @@ class IsfApplication:
 
     def _load_saved_state(self, identifier: str) -> None:
         if self._state_load_pending or self._job_command_pending or self._foreground_operations:
-            messagebox.showwarning("当前操作尚未完成", "请等待当前操作完成后加载状态。", parent=self.root)
+            messagebox.showwarning("Current operation is incomplete", "Wait for the current operation before loading state. ", parent=self.root)
             return
         before = self._state_edit_snapshot()
         self._state_load_pending = True
@@ -2374,25 +2374,25 @@ class IsfApplication:
 
         def read() -> dict[str, Any]:
             if active_jobs(self.controller.jobs()):
-                raise ValueError("有 queued/running 任务；请在任务结束后加载状态。当前设置未改变。")
+                raise ValueError("has queued/running Job; Load state after the job finishes. Current settings are unchanged. ")
             report = dict(self.controller.load_state(identifier))
             job_id = str(_mapping(_mapping(report.get("state")).get("view")).get("job_id") or "")
             if job_id:
                 try:
                     job = self.controller.job(job_id)
                     if job.get("status") not in TERMINAL_STATES:
-                        raise ValueError("保存的任务尚未结束")
+                        raise ValueError("The saved job is still active")
                     report["job"] = job
                     report["result"] = self.controller.result(job_id)
                 except Exception as exc:
-                    report["result_warning"] = f"保存的结果 {job_id} 不可读取：{exc}；没有替换成其他任务。"
+                    report["result_warning"] = f"Saved result {job_id} unreadable: {exc}; not replaced with another job. "
             return report
 
         def finished(report: Any) -> None:
             self._state_load_pending = False
             self._job_command_pending = False
             if self._state_edit_snapshot() != before:
-                messagebox.showwarning("设置已更新", "加载期间表单已变化，未覆盖新的设置，请重新加载。", parent=self.root)
+                messagebox.showwarning("Settings updated", "The form changed while loading, New settings were not overwritten, Reload. ", parent=self.root)
                 return
             self._apply_saved_state(_mapping(report))
 
@@ -2400,15 +2400,15 @@ class IsfApplication:
             self._state_load_pending = False
             self._job_command_pending = False
 
-        self._submit("加载状态", read, finished, on_failure=failed)
+        self._submit("Load state", read, finished, on_failure=failed)
 
     def _apply_saved_state(self, report: Mapping[str, Any]) -> None:
         state = _mapping(report.get("state"))
         view = _mapping(state.get("view"))
         self._config_loaded(_mapping(state.get("config")))
         self.last_preflight = None
-        self.preflight_status_var.set("已加载状态；请重新识别绑定并预检，未自动执行")
-        self.binding_status_var.set("状态仅恢复设置；需要重新识别并绑定两个 TB")
+        self.preflight_status_var.set("State loaded; Detect, bind and run preflight again, Not executed automatically")
+        self.binding_status_var.set("State restores settings only; Detect and bind both again TB")
         self.allow_execute_var.set(False)
         self.noise_kind_var.set(view.get("noise_kind") if view.get("noise_kind") in {"both", "thermal", "flicker"} else "both")
         self.log_offset_var.set(view.get("x_scale") != "linear")
@@ -2432,7 +2432,7 @@ class IsfApplication:
             requested = str(view.get("point") or "")
             if not requested:
                 result = None
-                warning += " 保存时没有选定结果采样点，未自动选择其他采样点。"
+                warning += " No result sample was selected when saved, No other sample selected automatically. "
             else:
                 self._result_loaded(result, job_id)
             choice = next((label for label, point in self._offset_point_choices.items() if point == requested), None)
@@ -2441,7 +2441,7 @@ class IsfApplication:
                 self._clear_loaded_result()
                 self.current_job_id = ""
                 self.current_job = {}
-                warning += " 保存的工况 / 频偏不存在，未展示其他采样点。"
+                warning += " Saved operating point / Offset not found, Other samples are not shown. "
             elif choice:
                 self.result_offset_var.set(choice)
                 self._result_offset_changed()
@@ -2450,22 +2450,22 @@ class IsfApplication:
         for canvas in self._page_canvases.values():
             canvas.yview_moveto(0)
         if warning:
-            messagebox.showwarning("状态已加载，结果待核对", warning, parent=self.root)
+            messagebox.showwarning("State loaded, Results need review", warning, parent=self.root)
 
     def _save_config_dialog(self) -> None:
         try:
             config = self._config_from_ui()
         except Exception as exc:
-            self._show_error(exc, "配置无效")
+            self._show_error(exc, "Invalid configuration")
             return
         initial = str(self.controller.workspace / "config.json")
         path = filedialog.asksaveasfilename(
             parent=self.root,
-            title="保存配置 JSON",
+            title="Save configuration JSON",
             initialdir=str(Path(initial).parent),
             initialfile=Path(initial).name,
             defaultextension=".json",
-            filetypes=(("JSON", "*.json"), ("所有文件", "*")),
+            filetypes=(("JSON", "*.json"), ("All files", "*")),
         )
         if not path:
             return
@@ -2475,10 +2475,10 @@ class IsfApplication:
             self.raw_config = _mapping(value.get("config")) or config
             self._set_raw_text(self.raw_config)
             backup = value.get("backup")
-            suffix = f"；备份：{backup}" if backup else ""
-            messagebox.showinfo("配置已保存", f"{value.get('path', path)}{suffix}", parent=self.root)
+            suffix = f"; Backup: {backup}" if backup else ""
+            messagebox.showinfo("Configuration saved", f"{value.get('path', path)}{suffix}", parent=self.root)
 
-        self._submit("保存配置", lambda: self.controller.save_config(config, path), saved)
+        self._submit("Save configuration", lambda: self.controller.save_config(config, path), saved)
 
     @staticmethod
     def _unique_candidate(findings: Sequence[Any], score_key: str) -> dict[str, Any] | None:
@@ -2495,7 +2495,7 @@ class IsfApplication:
     def _discover(self) -> None:
         root = str(self.vars["project_root"].get() or "").strip()
         if not root:
-            messagebox.showwarning("需要项目根目录", "请先选择只读扫描的项目根目录。", parent=self.root)
+            messagebox.showwarning("Project root required", "Select the project root for a read-only scan first. ", parent=self.root)
             return
         payload = {"roots": [root], "max_depth": 6, "max_results": 100}
 
@@ -2517,32 +2517,32 @@ class IsfApplication:
                         self.vars["replica_path"].set(replica["path"])
                 finally:
                     self._updating_form = False
-                self.binding_status_var.set("找到唯一 VCO 候选，正在只读检测…" if generated
-                                            else "找到两个唯一角色候选，正在只读检测…")
+                self.binding_status_var.set("Found a unique VCO Candidates, Read-only detection in progress…" if generated
+                                            else "Found one candidate for each role, Read-only detection in progress…")
                 if generated:
                     self._schedule_role_inspection("vco")
                 else:
                     self._inspect_pair()
             else:
-                detail = "请手动选择 VCO 路径" if generated else "请手动选择两个不同路径"
-                self.binding_status_var.set(f"发现 {len(paths)} 个 Maestro；角色不唯一，{detail}。")
+                detail = "Select manually VCO Path" if generated else "Select two different paths manually"
+                self.binding_status_var.set(f"Discover {len(paths)} items Maestro; Ambiguous role, {detail}. ")
 
-        self._submit("发现 Maestro", lambda: self.controller.discover_maestro(payload), discovered)
+        self._submit("Discover Maestro", lambda: self.controller.discover_maestro(payload), discovered)
 
     def _inspect_pair(self) -> None:
         try:
             config = self._config_from_ui()
         except Exception as exc:
-            self._show_error(exc, "配置无效")
+            self._show_error(exc, "Invalid configuration")
             return
         flat = flatten_config(config)
         generated = flat.get("replica_source") == "generated"
         if not flat.get("vco_path") or (not generated and not flat.get("replica_path")):
-            detail = "请选择 VCO 的 Maestro 路径。" if generated else "请选择两个独立 Maestro 路径。"
-            messagebox.showwarning("Maestro 未选择", detail, parent=self.root)
+            detail = "Select VCO of Maestro Path. " if generated else "Select two independent Maestro Path. "
+            messagebox.showwarning("Maestro Not selected", detail, parent=self.root)
             return
         if generated and not flat.get("vco_history"):
-            self.binding_status_var.set("请选择完整 VCO History；正在读取可用记录。")
+            self.binding_status_var.set("Select a complete VCO History; Reading available records. ")
             self._schedule_role_inspection("vco", refresh=True)
             return
         payload = maestro_pair_payload(config, include_fingerprints=False)
@@ -2551,11 +2551,11 @@ class IsfApplication:
 
         def inspected(value: Any) -> None:
             if self._pair_selection() != submitted_selection or getattr(self, "_selection_revision", 0) != submitted_revision:
-                self.binding_status_var.set("选择已改变；已丢弃过期检测结果，请重新检测")
+                self.binding_status_var.set("Selection changed; Stale detection results discarded, Detect again")
                 return
             self._pair_inspected(value)
 
-        self._submit("检查 VCO 与器件噪声参考", lambda: self.controller.inspect_pair(payload), inspected)
+        self._submit("Check VCO and device noise reference", lambda: self.controller.inspect_pair(payload), inspected)
 
     def _pair_inspected(self, value: Any) -> None:
         report = _mapping(value)
@@ -2617,34 +2617,34 @@ class IsfApplication:
 
         issues = [dict(item) for item in _sequence(report.get("issues")) if isinstance(item, Mapping)]
         manual = [role for role, choice in choices.items() if choice.get("requires_manual")]
-        ambiguous_tests = ["VCO" if role == "vco" else "噪声 TB" for role in ("vco", "flicker")
+        ambiguous_tests = ["VCO" if role == "vco" else "Noise TB" for role in ("vco", "flicker")
                            if len(_sequence(_mapping(roles.get(role)).get("test_names"))) > 1
                            and not _mapping(_mapping(roles.get(role)).get("selected_test"))]
         unresolved_fields = [row for row in mapping_review_rows(report) if row.get("status") in {"ambiguous", "invalid", "missing", "stale"} and row.get("required", True)]
         if accepted:
-            self.binding_status_var.set("VCO History 与目标 MOS 已确认；开始后生成器件参考。" if generated
-                                        else "两个 TB 与完整仿真记录已绑定。")
+            self.binding_status_var.set("VCO History and target MOS Confirmed; Device reference is generated after starting. " if generated
+                                        else "two TB and complete history are bound. ")
             self.raw_config = self._config_from_ui()
             self._set_raw_text(self.raw_config)
         elif ambiguous_tests:
-            self.binding_status_var.set("、".join(ambiguous_tests) + " 有多个 Maestro Test；请在 Test 下拉中选择。器件或电流检测源请在高级对应表单独选择。")
+            self.binding_status_var.set(", ".join(ambiguous_tests) + " has multiple Maestro Test; Use Test select from the list. select devices or current-sensing sources separately in advanced mappings. ")
         elif unresolved_fields:
-            names = "、".join(("VCO " if row["role"] == "vco" else "噪声 TB ") + str(row.get("label") or row["key"]) for row in unresolved_fields[:4])
+            names = ", ".join(("VCO " if row["role"] == "vco" else "Noise TB ") + str(row.get("label") or row["key"]) for row in unresolved_fields[:4])
             if generated and any(row["key"] == "target_instance" for row in unresolved_fields):
-                self.binding_status_var.set("请在器件噪声参考中选择目标 MOS。")
+                self.binding_status_var.set("Select the target in Device noise reference MOS. ")
             else:
-                self.binding_status_var.set("需手动对应：" + names + "；在高级设置逐行选择或输入后应用验证。")
+                self.binding_status_var.set("Needs manual mapping: " + names + "; select or enter each advanced mapping, then apply and validate. ")
         elif manual:
-            labels = "、".join("VCO" if role == "vco" else "Flicker" for role in manual)
-            self.binding_status_var.set(f"{labels} 存在多个完整 history；不会猜测，请手动选择后再次检测")
+            labels = ", ".join("VCO" if role == "vco" else "Flicker" for role in manual)
+            self.binding_status_var.set(f"{labels} Multiple complete candidates exist for history; no guessing, Select manually, then detect again")
         elif issues:
-            summary = "；".join(f"{item.get('code', 'INFO')} {item.get('message') or item.get('title') or item.get('detail') or ''}" for item in issues[:3])
+            summary = "; ".join(f"{item.get('code', 'INFO')} {item.get('message') or item.get('title') or item.get('detail') or ''}" for item in issues[:3])
             self.binding_status_var.set(summary)
         else:
-            self.binding_status_var.set("未获得可验证的 VCO History，请检查选择后重试。" if generated
-                                        else "未获得两个可验证的完整 History，请检查选择后重试。")
+            self.binding_status_var.set("Could not obtain verifiable VCO History, Check the selection and retry. " if generated
+                                        else "Could not obtain two verifiable complete History, Check the selection and retry. ")
         self.last_preflight = None
-        self.preflight_status_var.set("绑定已检测，需运行预检")
+        self.preflight_status_var.set("Binding detected, Preflight required")
         self._render_mapping_report(report)
 
     # ---- preflight and jobs ----------------------------------------
@@ -2652,7 +2652,7 @@ class IsfApplication:
     def _build_run_tab(self) -> None:
         content = self._scrollable_page(self.run_tab)
         readiness = ttk.LabelFrame(
-            content, text="运行就绪", style="Card.TLabelframe", padding=(14, 12)
+            content, text="Ready to run", style="Card.TLabelframe", padding=(14, 12)
         )
         readiness.pack(fill="x", pady=(0, 10))
         readiness.columnconfigure(1, weight=1)
@@ -2669,27 +2669,27 @@ class IsfApplication:
         actions = ttk.Frame(readiness)
         actions.grid(row=2, column=0, columnspan=2, sticky="ew")
         ttk.Button(
-            actions, text="1  运行静态预检", command=self._preflight
+            actions, text="1  Run static preflight", command=self._preflight
         ).pack(side="left")
         self.start_button = ttk.Button(
-            actions, text="2  开始实际运行", style="Primary.TButton", command=self._start_run
+            actions, text="2  Start live run", style="Primary.TButton", command=self._start_run
         )
         self.start_button.pack(side="left", padx=8)
-        ttk.Button(actions, text="刷新任务", command=self._refresh_jobs).pack(side="left", padx=(10, 4))
-        ttk.Button(actions, text="恢复失败/中断任务", command=self._resume_job).pack(side="left", padx=4)
-        ttk.Button(actions, text="导入 Replay Bundle", command=self._import_bundle).pack(side="left", padx=4)
+        ttk.Button(actions, text="Refresh jobs", command=self._refresh_jobs).pack(side="left", padx=(10, 4))
+        ttk.Button(actions, text="Resume failed/Interrupt job", command=self._resume_job).pack(side="left", padx=4)
+        ttk.Button(actions, text="Import Replay Bundle", command=self._import_bundle).pack(side="left", padx=4)
         stop_actions = ttk.Frame(readiness)
         stop_actions.grid(row=7, column=0, columnspan=2, sticky="w", pady=(6, 0))
-        self.stop_offset_button = ttk.Button(stop_actions, text="当前频偏完成后停止", command=self._stop_after_current_offset, state="disabled")
-        self.partial_result_button = ttk.Button(stop_actions, text="查看已完成的结果", command=self._load_available_result, state="disabled")
+        self.stop_offset_button = ttk.Button(stop_actions, text="Stop after current offset", command=self._stop_after_current_offset, state="disabled")
+        self.partial_result_button = ttk.Button(stop_actions, text="View completed results", command=self._load_available_result, state="disabled")
         self.partial_result_button.pack(side="left", padx=8)
         self.preflight_help = self._help(readiness, textvariable=self.preflight_detail_var)
         self.preflight_help.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(7, 0))
         self.preflight_issue_actions = ttk.Frame(readiness)
         self.preflight_issue_actions.grid(row=6, column=0, columnspan=2, sticky="w", pady=(3, 0))
-        self.preflight_locate_button = ttk.Button(self.preflight_issue_actions, text="定位待补充项", command=self._locate_preflight_issue)
+        self.preflight_locate_button = ttk.Button(self.preflight_issue_actions, text="Locate missing items", command=self._locate_preflight_issue)
         self.preflight_locate_button.pack(side="left")
-        ttk.Button(self.preflight_issue_actions, text="查看全部具体问题", command=self._show_preflight_issues).pack(side="left", padx=8)
+        ttk.Button(self.preflight_issue_actions, text="View all issues", command=self._show_preflight_issues).pack(side="left", padx=8)
         self.preflight_help.grid_remove()
         self.preflight_issue_actions.grid_remove()
 
@@ -2697,28 +2697,28 @@ class IsfApplication:
         pane.pack(fill="both", expand=True)
         upper = ttk.Panedwindow(pane, orient="horizontal")
         lower = ttk.LabelFrame(
-            pane, text="当前任务事件", style="Card.TLabelframe", padding=8
+            pane, text="Current job events", style="Card.TLabelframe", padding=8
         )
         pane.add(upper, weight=3)
         pane.add(lower, weight=2)
 
         jobs_frame = ttk.LabelFrame(
-            upper, text="任务", style="Card.TLabelframe", padding=8
+            upper, text="Job", style="Card.TLabelframe", padding=8
         )
         checks_frame = ttk.LabelFrame(
-            upper, text="预检矩阵", style="Card.TLabelframe", padding=8
+            upper, text="Preflight matrix", style="Card.TLabelframe", padding=8
         )
         upper.add(jobs_frame, weight=2)
         upper.add(checks_frame, weight=3)
         self.jobs_tree = self._tree(
             jobs_frame,
-            (("id", "Job ID", 190), ("status", "状态", 80), ("message", "说明", 220)),
+            (("id", "Job ID", 190), ("status", "State", 80), ("message", "Description", 220)),
         )
         self._with_scroll(jobs_frame, self.jobs_tree).pack(fill="both", expand=True)
         self.jobs_tree.bind("<<TreeviewSelect>>", self._job_selected)
         self.preflight_tree = self._tree(
             checks_frame,
-            (("status", "状态", 65), ("id", "检查", 140), ("detail", "详情", 360), ("code", "代码", 90)),
+            (("status", "State", 65), ("id", "Check", 140), ("detail", "Details", 360), ("code", "Code", 90)),
         )
         self._with_scroll(checks_frame, self.preflight_tree).pack(fill="both", expand=True)
 
@@ -2739,17 +2739,17 @@ class IsfApplication:
         try:
             config = self._execution_config_from_ui()
         except Exception as exc:
-            self._show_error(exc, "配置无效")
+            self._show_error(exc, "Invalid configuration")
             return
         def rendered(value: Any) -> None:
             if not self._config_still_current(config):
                 self.last_preflight = None
-                self.preflight_status_var.set("配置已改变；已丢弃过期预检结果")
+                self.preflight_status_var.set("Configuration changed; Stale preflight results discarded")
                 return
             self._render_preflight(value)
             self._remember_project_preferences(config, _mapping(value))
 
-        self._submit("运行预检", lambda: self.controller.preflight(config), rendered)
+        self._submit("Run preflight", lambda: self.controller.preflight(config), rendered)
 
     def _render_preflight(self, value: Any) -> None:
         report = _mapping(value)
@@ -2784,10 +2784,10 @@ class IsfApplication:
                 tags=(status,),
             )
         field_labels = {
-            "config_path": "高级设置 → 仿真执行设置（先识别并绑定两个 TB）",
-            "physical_profile": "高级设置 → 仿真执行设置中提示的器件 / 节点对应",
-            "portable_setup": "高级设置 → 仿真执行设置",
-            "execution.allow_execute": "当前执行请求未获得权限，请重新点击预检或开始",
+            "config_path": "Advanced settings → Simulation execution settings (first detect and bind both TB)",
+            "physical_profile": "Advanced settings → device indicated in the execution settings / Node mapping",
+            "portable_setup": "Advanced settings → Simulation execution settings",
+            "execution.allow_execute": "Current execution request was not authorized, Click Preflight or Start again",
         }
         required = [
             field_labels.get(str(item), str(item))
@@ -2797,46 +2797,46 @@ class IsfApplication:
         warnings = int(summary.get("warn") or 0)
         failures = int(summary.get("fail") or 0)
         if report.get("ok"):
-            suffix = f" · {warnings} 项警告" if warnings else ""
-            self.preflight_status_var.set(f"静态预检通过{suffix}")
+            suffix = f" · {warnings} warnings" if warnings else ""
+            self.preflight_status_var.set(f"Static preflight passed{suffix}")
             self.preflight_detail_var.set("")
             self._preflight_messages = []
             self.preflight_help.grid_remove()
             self.preflight_issue_actions.grid_remove()
         else:
-            self.preflight_status_var.set(f"静态预检未通过 · {failures} 项失败")
+            self.preflight_status_var.set(f"Static preflight failed · {failures} failed items")
             details = [row["message"] for row in self._preflight_issues]
             for item in _sequence(report.get("checks")):
                 if not isinstance(item, Mapping) or item.get("status") != "fail":
                     continue
                 if self._preflight_issues and item.get("field") in {"portable_setup", "physical_profile", "config_path"}:
                     continue
-                details.append(str(item.get("label") or item.get("id") or "检查") + "：" + str(item.get("detail") or item.get("message") or "请检查该项"))
+                details.append(str(item.get("label") or item.get("id") or "Check") + ": " + str(item.get("detail") or item.get("message") or "Check this item"))
             if not details and required:
-                details = ["需补充：" + "、".join(required)]
+                details = ["Needs input: " + ", ".join(required)]
             self._preflight_messages = details
             text = "\n".join(f"{index + 1}. {detail}" for index, detail in enumerate(details[:3]))
             if len(details) > 3:
-                text += f"\n另有 {len(details) - 3} 项，点击“查看全部具体问题”。"
+                text += f"\nalso {len(details) - 3} items, Click“View all issues”. "
             self.preflight_detail_var.set(text)
             self.preflight_help.grid()
             self.preflight_issue_actions.grid()
             self.preflight_locate_button.configure(state="normal" if self._preflight_issues else "disabled",
-                                                   text="去选择：" + self._preflight_issues[0]["target_label"] if self._preflight_issues else "定位待补充项")
+                                                   text="to select: " + self._preflight_issues[0]["target_label"] if self._preflight_issues else "Locate missing items")
 
     def _show_preflight_issues(self) -> None:
         if not self.last_preflight:
-            self.preflight_status_var.set("配置已改变，请先重新预检")
+            self.preflight_status_var.set("Configuration changed, Run preflight again first")
             return
-        lines = [row["message"] + "\n位置：高级设置 → " + ("信号用途与跨 TB 对应 → " + row["target_label"] if row["tab"] == "mapping" else "仿真执行设置 → " + row["target_label"])
+        lines = [row["message"] + "\nLocation: Advanced settings → " + ("Signal roles and cross- TB Mapping → " + row["target_label"] if row["tab"] == "mapping" else "Simulation execution settings → " + row["target_label"])
                  for row in self._preflight_issues]
         portable_messages = {row["message"] for row in self._preflight_issues}
         lines.extend(line for line in self._preflight_messages if line not in portable_messages)
-        messagebox.showinfo("预检具体问题", "\n\n".join(f"{index + 1}. {line}" for index, line in enumerate(lines)) or self.preflight_detail_var.get(), parent=self.root)
+        messagebox.showinfo("Preflight issues", "\n\n".join(f"{index + 1}. {line}" for index, line in enumerate(lines)) or self.preflight_detail_var.get(), parent=self.root)
 
     def _locate_preflight_issue(self) -> None:
         if not self.last_preflight or not self._preflight_issues:
-            self.preflight_status_var.set("配置已改变，请先重新预检")
+            self.preflight_status_var.set("Configuration changed, Run preflight again first")
             return
         row = self._preflight_issues[0]
         if row["tab"] == "mapping" and row["mapping_iid"] in self._mapping_rows:
@@ -2852,15 +2852,15 @@ class IsfApplication:
 
     def _start_run(self) -> None:
         if self._close_check_pending:
-            messagebox.showwarning("正在确认关闭", "请等待关闭检查完成后再提交任务。", parent=self.root)
+            messagebox.showwarning("Checking close request", "Wait for the close check before submitting. ", parent=self.root)
             return
         if self._job_command_pending:
-            messagebox.showwarning("任务提交中", "已有运行或恢复命令正在提交，请勿重复操作。", parent=self.root)
+            messagebox.showwarning("Submitting job", "A run or resume command is already being submitted, Do not submit again. ", parent=self.root)
             return
         try:
             config = self._execution_config_from_ui()
         except Exception as exc:
-            self._show_error(exc, "配置无效")
+            self._show_error(exc, "Invalid configuration")
             return
         self._job_command_pending = True
 
@@ -2871,10 +2871,10 @@ class IsfApplication:
             if not self._config_still_current(config):
                 self._job_command_pending = False
                 self.last_preflight = None
-                self.preflight_status_var.set("配置已改变；运行已阻止，请重新预检")
+                self.preflight_status_var.set("Configuration changed; Execution blocked, Run preflight again")
                 messagebox.showwarning(
-                    "配置已改变",
-                    "运行前预检对应的是旧配置，未创建任务。请重新预检后再运行。",
+                    "Configuration changed",
+                    "Preflight used an old configuration, No job created. Run preflight again before execution. ",
                     parent=self.root,
                 )
                 return
@@ -2885,7 +2885,7 @@ class IsfApplication:
                 raise
             if not _mapping(report).get("ok"):
                 self._job_command_pending = False
-                messagebox.showerror("运行被阻止", "预检未通过，未创建任务。\n\n" + self.preflight_detail_var.get(), parent=self.root)
+                messagebox.showerror("Execution blocked", "Preflight failed, No job created. \n\n" + self.preflight_detail_var.get(), parent=self.root)
                 return
             submitted = flatten_config(config)
             run_root = str(submitted.get("run_root") or "").strip() or None
@@ -2896,7 +2896,7 @@ class IsfApplication:
                 self._remember_project_preferences(config, _mapping(report))
 
             self._submit(
-                "提交后台任务",
+                "Submit background job",
                 lambda: self.controller.start_run(config, run_root=run_root, bundle_path=bundle_path),
                 started,
                 on_failure=command_failed,
@@ -2904,7 +2904,7 @@ class IsfApplication:
 
         def begin_preflight() -> None:
             self._submit(
-                "运行前预检",
+                "Preflight before execution",
                 lambda: self.controller.preflight(config),
                 after_preflight,
                 on_failure=command_failed,
@@ -2914,17 +2914,17 @@ class IsfApplication:
             running = active_jobs(_mapping(value))
             if running:
                 self._job_command_pending = False
-                identifiers = "、".join(str(item.get("id") or "?") for item in running)
+                identifiers = ", ".join(str(item.get("id") or "?") for item in running)
                 messagebox.showwarning(
-                    "已有活动任务",
-                    "已有 queued/running 任务，未提交新任务：" + identifiers,
+                    "An active job already exists",
+                    "existing queued/running Job, No new job submitted: " + identifiers,
                     parent=self.root,
                 )
                 return
             begin_preflight()
 
         self._submit(
-            "检查活动任务",
+            "Check active job",
             self.controller.jobs,
             after_active_jobs,
             on_failure=command_failed,
@@ -2934,13 +2934,13 @@ class IsfApplication:
         self._job_command_pending = False
         self._clear_loaded_result()
         self.current_job_id = str(value)
-        self.job_status_var.set(f"任务 {self.current_job_id} 已提交")
+        self.job_status_var.set(f"Job {self.current_job_id} Submitted")
         self.notebook.select(self.run_tab)
         self._refresh_jobs(silent=True)
         self._schedule_poll(100)
 
     def _refresh_jobs(self, silent: bool = False) -> None:
-        self._submit("刷新任务", self.controller.jobs, self._render_jobs, quiet=silent)
+        self._submit("Refresh jobs", self.controller.jobs, self._render_jobs, quiet=silent)
 
     def _render_jobs(self, value: Any) -> None:
         payload = _mapping(value)
@@ -3005,7 +3005,7 @@ class IsfApplication:
                 if self.current_job_id:
                     self._schedule_poll(0)
                 return
-            self._show_error(exc, "读取任务失败")
+            self._show_error(exc, "Failed to read job")
 
         self.queue.submit(lambda: self.controller.job(job_id), success, failed)
 
@@ -3028,7 +3028,7 @@ class IsfApplication:
         self.job_status_var.set(f"{job.get('id', self.current_job_id)} · {status} · {job.get('message') or ''}")
         sweep = _mapping(job.get("offset_sweep"))
         if sweep:
-            self.job_status_var.set(self.job_status_var.get() + f" · 已完成 {len(_sequence(sweep.get('completed_offsets_hz')))}/{len(_sequence(sweep.get('offsets_hz')))} 个频偏")
+            self.job_status_var.set(self.job_status_var.get() + f" · Completed {len(_sequence(sweep.get('completed_offsets_hz')))}/{len(_sequence(sweep.get('offsets_hz')))} offsets")
         lines = []
         for event in _sequence(job.get("events")):
             if not isinstance(event, Mapping):
@@ -3045,7 +3045,7 @@ class IsfApplication:
             lines.append("ERROR " + json.dumps(job["error"], ensure_ascii=False, indent=2))
         self.job_log.configure(state="normal")
         self.job_log.delete("1.0", "end")
-        self.job_log.insert("1.0", "\n".join(lines) or "暂无事件")
+        self.job_log.insert("1.0", "\n".join(lines) or "No events yet")
         self.job_log.configure(state="disabled")
         self._refresh_jobs(silent=True)
         if status in ACTIVE_JOB_STATES:
@@ -3069,7 +3069,7 @@ class IsfApplication:
                     self._result_load_pending_job_id = ""
 
             self._submit(
-                "读取结果",
+                "Read results",
                 lambda: self.controller.result(job_id),
                 loaded,
                 quiet=True,
@@ -3082,26 +3082,26 @@ class IsfApplication:
         job_id = self.current_job_id
         def stopped(_value: Any) -> None:
             if self.current_job_id == job_id:
-                self.job_status_var.set("已请求停止：当前频偏会完整结束，已完成结果保留；之后可恢复剩余频偏。")
+                self.job_status_var.set("Stop requested: The current offset will finish completely, completed results are retained; remaining offsets can be resumed later. ")
                 self.stop_offset_button.configure(state="disabled")
                 self._schedule_poll(0)
-        self._submit("请求频偏完成后停止", lambda: self.controller.stop_after_current_offset(job_id), stopped)
+        self._submit("Request stop after current offset", lambda: self.controller.stop_after_current_offset(job_id), stopped)
 
     def _load_available_result(self) -> None:
         if not self.current_job_id:
             return
         job_id = self.current_job_id
-        self._submit("读取已完成结果", lambda: self.controller.result(job_id), lambda value: self._result_loaded(value, job_id))
+        self._submit("Read completed results", lambda: self.controller.result(job_id), lambda value: self._result_loaded(value, job_id))
 
     def _resume_job(self) -> None:
         if self._close_check_pending:
-            messagebox.showwarning("正在确认关闭", "请等待关闭检查完成后再恢复任务。", parent=self.root)
+            messagebox.showwarning("Checking close request", "Wait for the close check before resuming. ", parent=self.root)
             return
         if self._job_command_pending:
-            messagebox.showwarning("任务提交中", "已有运行或恢复命令正在提交，请勿重复操作。", parent=self.root)
+            messagebox.showwarning("Submitting job", "A run or resume command is already being submitted, Do not submit again. ", parent=self.root)
             return
         if not self.current_job_id:
-            messagebox.showwarning("未选择任务", "请选择 failed 或 interrupted 任务。", parent=self.root)
+            messagebox.showwarning("No job selected", "Select failed or interrupted Job. ", parent=self.root)
             return
         job_id = self.current_job_id
         self._job_command_pending = True
@@ -3112,7 +3112,7 @@ class IsfApplication:
                 # A previously viewed interrupted result is a partial snapshot,
                 # not the terminal result of this new execution attempt.
                 self._result_terminal_loaded = False
-                self.job_status_var.set(f"任务 {job_id} 已提交恢复")
+                self.job_status_var.set(f"Job {job_id} Resume submitted")
             self._schedule_poll(100)
 
         def command_failed(_exc: Exception) -> None:
@@ -3122,29 +3122,29 @@ class IsfApplication:
             running = active_jobs(_mapping(value))
             if running:
                 self._job_command_pending = False
-                identifiers = "、".join(str(item.get("id") or "?") for item in running)
+                identifiers = ", ".join(str(item.get("id") or "?") for item in running)
                 messagebox.showwarning(
-                    "已有活动任务",
-                    "已有 queued/running 任务，未恢复另一任务：" + identifiers,
+                    "An active job already exists",
+                    "existing queued/running Job, No other job was resumed: " + identifiers,
                     parent=self.root,
                 )
                 return
             self._submit(
-                "恢复任务",
+                "Resume job",
                 lambda: self.controller.resume(job_id),
                 resumed,
                 on_failure=command_failed,
             )
 
         self._submit(
-            "检查活动任务",
+            "Check active job",
             self.controller.jobs,
             after_active_jobs,
             on_failure=command_failed,
         )
 
     def _import_bundle(self) -> None:
-        path = filedialog.askdirectory(parent=self.root, title="选择 canonical replay bundle 目录")
+        path = filedialog.askdirectory(parent=self.root, title="Select canonical replay bundle Directory")
         if path:
             self._import_bundle_path(path)
 
@@ -3157,19 +3157,19 @@ class IsfApplication:
             from ..example_data import build
             path = Path(build(str(Path(self.controller.workspace) / "examples" / "ideal_lc")))
         self.noise_kind_var.set("both")
-        self._import_bundle_path(str(path), label="示例 ideal-LC")
+        self._import_bundle_path(str(path), label="Example ideal-LC")
 
     def _import_bundle_path(self, path: str, label: str = "") -> None:
         def imported(value: Any) -> None:
             report = _mapping(value)
             self._clear_loaded_result()
             self.current_job_id = str(report.get("job_id") or "")
-            self.job_status_var.set(f"Replay 已导入：{self.current_job_id}")
+            self.job_status_var.set(f"Replay Imported: {self.current_job_id}")
             self._set_window_title(label or Path(path).name)
             self._refresh_jobs(silent=True)
             self._schedule_poll(0)
 
-        self._submit("导入 canonical replay", lambda: self.controller.import_bundle(path, "canonical"), imported)
+        self._submit("Import canonical replay", lambda: self.controller.import_bundle(path, "canonical"), imported)
 
     # ---- results ----------------------------------------------------
 
@@ -3187,12 +3187,12 @@ class IsfApplication:
         self._clear_tree(self.noise_contribution_tree)
         self.simulated_noise_pie.clear()
         self.calculated_noise_pie.clear()
-        self.noise_pie_note_var.set("尚无当前任务结果")
-        self.noise_contribution_note_var.set("尚无当前任务结果")
+        self.noise_pie_note_var.set("No current job results")
+        self.noise_contribution_note_var.set("No current job results")
         self.result_quality_var.set("")
         self.isf_chart.clear("N/A")
         self.qk_chart.clear("N/A")
-        self.metrics_var.set("尚无当前任务结果")
+        self.metrics_var.set("No current job results")
         self._result_terminal_loaded = False
         self._curve_cache = {}
         if hasattr(self, "operating_point_var"):
@@ -3202,8 +3202,8 @@ class IsfApplication:
             self.result_offset_box.configure(values=())
             self.phase_noise_chart.clear("N/A")
             if hasattr(self, "phase_error_chart"):
-                self.phase_error_chart.clear("无同口径 HBnoise 参考")
-                self._phase_note.set("等待结果")
+                self.phase_error_chart.clear("No matched-scope HBnoise Reference")
+                self._phase_note.set("Waiting for results")
                 self._phase_menu.delete(0, "end")
                 self._phase_visibility.clear()
                 self._phase_data_key = None
@@ -3234,7 +3234,7 @@ class IsfApplication:
         try:
             self._operating_points = operating_points(self.current_result)
         except Exception as exc:
-            self._show_error(exc, "结果工况 / 频偏身份无效")
+            self._show_error(exc, "Result operating point / invalid offset identity")
             return
         if not self._operating_points:
             self._operating_points = [{"id": point, "label": point, "points": [point], "offsets_hz": []} for point in points]
@@ -3248,13 +3248,13 @@ class IsfApplication:
         else:
             run_kind = str(self.current_result.get("run_kind") or "").lower()
             if run_kind == "plan":
-                self.metrics_var.set("规划完成 · 未启动仿真，因此没有数值结果")
-                self.isf_chart.clear("仅生成执行计划")
-                self.qk_chart.clear("真实运行完成后显示")
-                self.phase_noise_chart.clear("仅生成计划，没有数值结果")
-                self.harmonic_noise_chart.clear("仅生成计划，没有数值结果")
+                self.metrics_var.set("Planning complete · No simulation started, so no numerical results are available")
+                self.isf_chart.clear("Execution plan only")
+                self.qk_chart.clear("Shown after live execution")
+                self.phase_noise_chart.clear("Plan only, no numerical results")
+                self.harmonic_noise_chart.clear("Plan only, no numerical results")
                 self.job_status_var.set(
-                    f"任务 {job_id} 已完成规划；如需结果，请使用真实运行"
+                    f"Job {job_id} Planning complete; for numerical results, use a live run"
                 )
 
     def _operating_point_changed(self, _event: Any = None) -> None:
@@ -3264,11 +3264,11 @@ class IsfApplication:
         try:
             choices = result_sample_choices(self.current_result, identity)
         except Exception as exc:
-            self._show_error(exc, "结果频偏无法选择")
+            self._show_error(exc, "Cannot select result offset")
             return
         if not choices:
             selected = next((item for item in self._operating_points if item["id"] == identity), {})
-            choices = [{"point": point, "label": "频偏未记录"} for point in selected.get("points", [])]
+            choices = [{"point": point, "label": "Offset not recorded"} for point in selected.get("points", [])]
         self._offset_point_choices = {item["label"]: item["point"] for item in choices}
         self.result_offset_box.configure(values=tuple(self._offset_point_choices))
         if self.result_offset_var.get() not in self._offset_point_choices:
@@ -3300,10 +3300,10 @@ class IsfApplication:
     def _show_metric(self, field: str) -> None:
         definition = metric_definition(field)
         if not definition:
-            messagebox.showinfo("指标说明", "请先选择指标。未定义的原始扩展字段会保留其原值，不推断物理含义。", parent=self.root)
+            messagebox.showinfo("Metric details", "Select a metric first. Undefined extension fields retain their original values, no physical meaning is inferred. ", parent=self.root)
             return
-        text = "\n\n".join((f"{definition['label']}（{definition['unit']}）", "含义：" + definition["meaning"], "用途：" + definition["purpose"], "口径：" + definition["scope"], "公式：" + definition["formula"], "N/A 表示缺失、不适用或无法定义；不代表零，也不代表质量通过。"))
-        messagebox.showinfo("指标说明 · " + definition["label"], text, parent=self.root)
+        text = "\n\n".join((f"{definition['label']} ({definition['unit']})", "Meaning: " + definition["meaning"], "Purpose: " + definition["purpose"], "Scope: " + definition["scope"], "Formula: " + definition["formula"], "N/A means missing, not applicable or undefined; does not mean zero, nor a quality pass. "))
+        messagebox.showinfo("Metric details · " + definition["label"], text, parent=self.root)
 
     def _show_selected_raw_metric(self, _event: Any = None) -> None:
         selected = self.metric_values_tree.selection()
@@ -3314,7 +3314,7 @@ class IsfApplication:
         if self.current_result_view is None:
             return
         summary = _mapping(self.current_result_view.get("selected_summary"))
-        rows = [("工况", key, value) for key, value in summary.items()
+        rows = [("Operating point", key, value) for key, value in summary.items()
                 if key not in LEGACY_DEVICE_COMPARISON_FIELDS]
         point = _mapping(_mapping(self.current_result.get("points")).get(self.point_var.get()))
         harmonics = [item for item in _sequence(point.get("harmonics")) if isinstance(item, Mapping)]
@@ -3347,16 +3347,16 @@ class IsfApplication:
 
     def _export_chart(self, chart: LineChart) -> None:
         if not chart.find_withtag("plot-frame"):
-            messagebox.showwarning("没有可导出的曲线", "请选择有数据的工况或噪声类型。", parent=self.root)
+            messagebox.showwarning("No curves to export", "Select an operating point or noise kind with data. ", parent=self.root)
             return
-        path = filedialog.asksaveasfilename(parent=self.root, title="导出当前图形", defaultextension=".eps",
-                                           filetypes=(("EPS 矢量图", "*.eps"),))
+        path = filedialog.asksaveasfilename(parent=self.root, title="Export current chart", defaultextension=".eps",
+                                           filetypes=(("EPS vector chart", "*.eps"),))
         if path:
             try:
                 chart._clear_hover()
                 chart.postscript(file=path, colormode="color", width=chart.winfo_width(), height=chart.winfo_height())
             except (OSError, tk.TclError) as exc:
-                self._show_error(exc, "图形导出失败")
+                self._show_error(exc, "Chart export failed")
 
     def _set_phase_view(self, limits: tuple[float, float] | None) -> None:
         self._phase_view_x = limits
@@ -3386,19 +3386,19 @@ class IsfApplication:
         curves = [dict(item) for item in overview]
         for item in curves:
             if item["id"] == "spectre":
-                item.update(name="HBnoise · VCO 全部源", dash=True)
+                item.update(name="HBnoise · VCO all sources", dash=True)
         for item in comparison:
             if item["id"] != "matched_error" and any(point[1] is not None for point in item["points"]):
                 curves.append(dict(item, dash=item["id"] == "matched_reference"))
         if any(item["id"] == "matched_prediction" for item in curves):
             for item in curves:
                 if item["id"] == "calculated":
-                    item["name"] = "ISF · 对称估算 +3.01 dB"
+                    item["name"] = "ISF · symmetric estimate +3.01 dB"
         self.phase_noise_chart.set_series(curves)
         self.phase_error_chart.set_series([error] if error else [])
         log_x = self.log_offset_var.get()
-        self.phase_noise_chart.set_axes(x_label="频偏 (Hz)", y_label="相噪 (dBc/Hz)", log_x=log_x)
-        self.phase_error_chart.set_axes(x_label="频偏 (Hz)", y_label="Δ (dB)", log_x=log_x, include_zero=True)
+        self.phase_noise_chart.set_axes(x_label="Offset (Hz)", y_label="Phase noise (dBc/Hz)", log_x=log_x)
+        self.phase_error_chart.set_axes(x_label="Offset (Hz)", y_label="Δ (dB)", log_x=log_x, include_zero=True)
         data_key = (self.current_result_job_id, self.operating_point_var.get(), self.noise_kind_var.get())
         changed = data_key != self._phase_data_key
         curve_names = tuple(item["id"] for item in curves)
@@ -3425,8 +3425,8 @@ class IsfApplication:
         if changed or self._phase_log_x != log_x or self._phase_full_x != full_x:
             self._phase_data_key, self._phase_log_x, self._phase_full_x = data_key, log_x, full_x
             self._reset_phase_view()
-        scope = error["scope"] if error and any(point[1] is not None for point in error["points"]) else "同口径参考缺失"
-        self._phase_note.set(f"误差范围 · {scope}     Ctrl + 滚轮缩放 · 中键拖动 · 双击采样点查看明细")
+        scope = error["scope"] if error and any(point[1] is not None for point in error["points"]) else "matched-scope reference missing"
+        self._phase_note.set(f"Error scope · {scope}     Ctrl + wheel to zoom · Middle-drag · double-click a sample for details")
 
     def _render_noise_curves(self) -> None:
         if self.current_result is None or self.current_result_job_id != self.current_job_id:
@@ -3444,9 +3444,9 @@ class IsfApplication:
                 ]
             self._render_phase_comparison(self._curve_cache[cache_key], self._curve_cache[comparison_key])
         except Exception as exc:
-            self.phase_noise_chart.clear("结果缺少明确的频偏 / 工况坐标")
-            self.phase_error_chart.clear("无法构造同口径误差")
-            self.result_quality_var.set("结果曲线待核对：" + str(exc))
+            self.phase_noise_chart.clear("Result lacks explicit offset / operating-point coordinates")
+            self.phase_error_chart.clear("Cannot construct a matched-scope error")
+            self.result_quality_var.set("Result curves need review: " + str(exc))
 
     def _point_changed(self, _event: tk.Event[Any] | None = None) -> None:
         if self.current_result_job_id == self.current_job_id:
@@ -3471,14 +3471,14 @@ class IsfApplication:
                 noise_kind=self.noise_kind_var.get(),
             )
         except Exception as exc:
-            self._show_error(exc, "结果无法呈现")
+            self._show_error(exc, "Cannot present results")
             return
         self.current_result_view = view
-        kind_label = {"flicker": "双器件 flicker", "thermal": "thermal", "both": "flicker + thermal"}.get(self.noise_kind_var.get(), "flicker + thermal")
+        kind_label = {"flicker": "two-device flicker", "thermal": "thermal", "both": "flicker + thermal"}.get(self.noise_kind_var.get(), "flicker + thermal")
         if generated:
-            kind_label = "对称双管估算"
+            kind_label = "symmetric pair estimate"
         self.summary_tree.heading("calculated", text=f"ISF {kind_label} (dBc/Hz)")
-        self.summary_tree.heading("pair", text="单管同口径误差 (dB)" if generated else "gm pair flicker 同口径误差 (dB)")
+        self.summary_tree.heading("pair", text="Single-device matched-scope error (dB)" if generated else "gm pair flicker matched-scope error (dB)")
         self._bind_metric_columns(self.summary_tree, ("point", "offset_Hz", "f0_Hz", "predicted_pair_dBc_Hz" if self.noise_kind_var.get() == "flicker" else "thermal_noise", "spectre_total_dBc_Hz", "calculated_vs_total_db", "dynamic_error_dB" if generated else "pair_error_dB"))
         self._clear_tree(self.summary_tree)
         for index, row in enumerate(view.get("summary_rows", [])):
@@ -3529,7 +3529,7 @@ class IsfApplication:
         self.calculated_noise_pie.set_slices(bars["calculated"], bars["order"], bars["axis_max"])
         self.noise_pie_note_var.set(bars["note"])
         self.noise_contribution_note_var.set(" ".join(str(view.get(key) or "") for key in ("reference_note", "contribution_note")).strip() or
-            "本表使用所选工况、频偏的 VCO 仿真 PM-SSB 数据。各器件噪声机制明细按 PSD 从高到低排列。")
+            "This table uses the selected operating point, offset VCO Simulation PM-SSB Data. device/mechanism details sorted by PSD sorted in descending order. ")
         self._render_metric_values()
         metrics = _mapping(view.get("metrics"))
         trust_warning = _mapping(self.current_result.get("trust_warning"))
@@ -3539,7 +3539,7 @@ class IsfApplication:
         if trust_warning.get("code"):
             trust_label += f" {trust_warning['code']}"
         self.metrics_var.set(
-            "{kind} · f0={f0} Hz · offset={offset} Hz · ISF {noise}={calculated} / VCO 总仿真={reference} dBc/Hz".format(
+            "{kind} · f0={f0} Hz · offset={offset} Hz · ISF {noise}={calculated} / VCO simulated total={reference} dBc/Hz".format(
                 kind=trust_label,
                 noise=kind_label,
                 f0=_display(metrics.get("frequency_hz")),
@@ -3552,20 +3552,20 @@ class IsfApplication:
         quality = str(view.get("quality_text") or "")
         operating = next((item for item in self._operating_points if item.get("id") == self.operating_point_var.get()), {})
         if operating.get("parameters"):
-            quality = "工况参数：" + _display(operating["parameters"]) + "\n" + quality
-        quality += " 双器件 flicker 模型：" + _display(sample.get("pair_model"))
+            quality = "Operating parameters: " + _display(operating["parameters"]) + "\n" + quality
+        quality += " two-device flicker Model: " + _display(sample.get("pair_model"))
         if generated:
             single = _display(sample.get("dynamic_dBc_Hz"))
             reference = _display(sample.get("spectre_fn_dBc_Hz"))
-            self.metrics_var.set(self.metrics_var.get() + f"\n单管 fn · ISF {single} / HBnoise {reference} dBc/Hz；双器件值按独立对称假设加 3.01 dB。")
+            self.metrics_var.set(self.metrics_var.get() + f"\nsingle device fn · ISF {single} / HBnoise {reference} dBc/Hz; two-device values assume independent symmetric devices and add 3.01 dB. ")
         if self.noise_kind_var.get() != "flicker" and _mapping(sample.get("thermal_noise")).get("status") != "available":
-            quality += " 当前结果未包含可用的独立 thermal 计算，thermal 与两者合计均显示 N/A；可选择 flicker 查看已有计算。"
+            quality += " Current results do not contain available independent thermal Calculated, thermal and combined totals both show N/A; select flicker view existing calculations. "
         elif self.noise_kind_var.get() != "flicker":
             limit = _mapping(sample.get("thermal_noise")).get("input_max_harmonic")
-            quality += (f" Thermal 独立输入频带：|m| ≤ {limit}（有限带预算，更高频带不计）。"
-                        if type(limit) is int and limit >= 0 else " Thermal 旧预算：实际频带范围未记录，不按当前表单阶数推测。")
+            quality += (f" Thermal independent input bands: |m| ≤ {limit} (finite-band budget, higher bands are excluded). "
+                        if type(limit) is int and limit >= 0 else " Thermal legacy budget: actual band limits were not recorded, not inferred from the current harmonic setting. ")
         if self.current_result.get("offset_sweep") and not self.current_result.get("offset_sweep", {}).get("complete", True):
-            quality += " 当前仅展示已完成部分。"
+            quality += " Only the completed portion is shown. "
         self.result_quality_var.set(quality)
         self._render_noise_curves()
         self.results_view.refresh()
@@ -3590,37 +3590,37 @@ class IsfApplication:
 
     def _export_result_json(self) -> None:
         if self.current_result is None or self.current_result_job_id != self.current_job_id:
-            messagebox.showwarning("没有结果", "请先完成任务或导入 canonical replay。", parent=self.root)
+            messagebox.showwarning("No results", "Complete a job or import canonical replay. ", parent=self.root)
             return
         result = deep_merge({}, self.current_result)
         owner = self.current_result_job_id
-        path = filedialog.asksaveasfilename(parent=self.root, title="导出结果 JSON", defaultextension=".json", filetypes=(("JSON", "*.json"),))
+        path = filedialog.asksaveasfilename(parent=self.root, title="Export results JSON", defaultextension=".json", filetypes=(("JSON", "*.json"),))
         if path:
             self._submit(
-                "导出结果 JSON",
+                "Export results JSON",
                 lambda: _write_json(path, result),
-                lambda _value: messagebox.showinfo("导出完成", f"{path}\n任务：{owner}", parent=self.root),
+                lambda _value: messagebox.showinfo("Export complete", f"{path}\nJob: {owner}", parent=self.root),
             )
 
     def _export_summary_csv(self) -> None:
         if self.current_result is None or self.current_result_job_id != self.current_job_id:
-            messagebox.showwarning("没有结果", "请先完成任务或导入 canonical replay。", parent=self.root)
+            messagebox.showwarning("No results", "Complete a job or import canonical replay. ", parent=self.root)
             return
         rows = [deep_merge({}, item) for item in _sequence(self.current_result.get("summary")) if isinstance(item, Mapping)]
-        path = filedialog.asksaveasfilename(parent=self.root, title="导出 Summary CSV", defaultextension=".csv", filetypes=(("CSV", "*.csv"),))
+        path = filedialog.asksaveasfilename(parent=self.root, title="Export Summary CSV", defaultextension=".csv", filetypes=(("CSV", "*.csv"),))
         if path:
-            self._submit("导出 Summary CSV", lambda: _write_csv(path, rows), lambda _value: messagebox.showinfo("导出完成", path, parent=self.root))
+            self._submit("Export Summary CSV", lambda: _write_csv(path, rows), lambda _value: messagebox.showinfo("Export complete", path, parent=self.root))
 
     def _export_harmonics_csv(self) -> None:
         if self.current_result is None or self.current_result_job_id != self.current_job_id:
-            messagebox.showwarning("没有结果", "请先完成任务或导入 canonical replay。", parent=self.root)
+            messagebox.showwarning("No results", "Complete a job or import canonical replay. ", parent=self.root)
             return
         point = str(self.point_var.get() or "")
         point_data = _mapping(_mapping(self.current_result.get("points")).get(point))
         rows = [deep_merge({}, item) for item in _sequence(point_data.get("harmonics")) if isinstance(item, Mapping)]
-        path = filedialog.asksaveasfilename(parent=self.root, title="导出 Harmonics CSV", defaultextension=".csv", filetypes=(("CSV", "*.csv"),))
+        path = filedialog.asksaveasfilename(parent=self.root, title="Export Harmonics CSV", defaultextension=".csv", filetypes=(("CSV", "*.csv"),))
         if path:
-            self._submit("导出 Harmonics CSV", lambda: _write_csv(path, rows), lambda _value: messagebox.showinfo("导出完成", path, parent=self.root))
+            self._submit("Export Harmonics CSV", lambda: _write_csv(path, rows), lambda _value: messagebox.showinfo("Export complete", path, parent=self.root))
 
     # ---- error catalog and close guard ------------------------------
 
@@ -3629,12 +3629,12 @@ class IsfApplication:
         pane = ttk.Panedwindow(content, orient="horizontal")
         pane.pack(fill="both", expand=True)
         list_frame = ttk.Frame(pane)
-        detail_frame = ttk.LabelFrame(pane, text="排障说明", padding=7)
+        detail_frame = ttk.LabelFrame(pane, text="Troubleshooting details", padding=7)
         pane.add(list_frame, weight=2)
         pane.add(detail_frame, weight=3)
         self.error_tree = self._tree(
             list_frame,
-            (("code", "代码", 95), ("severity", "级别", 65), ("title", "标题", 240)),
+            (("code", "Code", 95), ("severity", "Severity", 65), ("title", "Title", 240)),
         )
         self._with_scroll(list_frame, self.error_tree).pack(fill="both", expand=True)
         self.error_tree.bind("<<TreeviewSelect>>", self._error_selected)
@@ -3665,7 +3665,7 @@ class IsfApplication:
             "",
             str(entry.get("summary") or ""),
         ]
-        for label, key in (("可能原因", "causes"), ("建议操作", "actions")):
+        for label, key in (("Possible causes", "causes"), ("Suggested actions", "actions")):
             values = _sequence(entry.get(key))
             if values:
                 lines.extend(("", label))
@@ -3678,8 +3678,8 @@ class IsfApplication:
     def _request_close(self) -> None:
         if self._job_command_pending:
             messagebox.showwarning(
-                "任务命令正在提交",
-                "窗口不会关闭。运行/恢复命令尚未完成提交，请等待任务状态可见后再关闭。",
+                "Submitting job command",
+                "The window will remain open. Run/resume command submission is incomplete, Wait until job status is visible before closing. ",
                 parent=self.root,
             )
             return
@@ -3691,8 +3691,8 @@ class IsfApplication:
             self._close_check_pending = False
             if self._job_command_pending:
                 messagebox.showwarning(
-                    "任务命令正在提交",
-                    "窗口不会关闭。关闭检查期间出现了新的运行/恢复命令，请等待任务状态可见。",
+                    "Submitting job command",
+                    "The window will remain open. a new run request appeared during the close check/resume command, Wait until job status is visible. ",
                     parent=self.root,
                 )
                 return
@@ -3700,10 +3700,10 @@ class IsfApplication:
             if running:
                 description = "\n".join(f"• {item.get('id')} ({item.get('status')})" for item in running[:8])
                 messagebox.showwarning(
-                    "仍有后台任务",
-                    "窗口不会关闭。当前没有安全停止 API，本 UI 不会假称这些任务已停止。\n\n"
+                    "Background jobs remain",
+                    "The window will remain open. No safe stop API is available; these jobs have not been reported as stopped. \n\n"
                     + description
-                    + "\n\n请等待任务进入 succeeded / failed / interrupted 后再关闭。",
+                    + "\n\nWait until the job enters succeeded / failed / interrupted before closing. ",
                     parent=self.root,
                 )
                 return
@@ -3713,8 +3713,8 @@ class IsfApplication:
         def failed(exc: Exception) -> None:
             self._close_check_pending = False
             messagebox.showerror(
-                "无法确认后台任务状态",
-                _error_message(exc) + "\n\n为避免误判，窗口保持打开。",
+                "Cannot confirm background job status",
+                _error_message(exc) + "\n\nto avoid an incorrect status, The window remains open. ",
                 parent=self.root,
             )
 
@@ -3740,9 +3740,9 @@ def main(argv: list[str] | None = None) -> int:
         root = tk.Tk()
     except tk.TclError as exc:
         print(
-            "无法启动 Tk 窗口（未检测到可用图形 DISPLAY）：%s\n"
-            "可显式使用兼容 Web UI：vco-isf-web"
-            "（源码树也可用 python run.py --web）" % exc,
+            "Cannot start Tk Window (No usable graphical environment detected for DISPLAY): %s\n"
+            "use the compatibility Web UI: vco-isf-web"
+            " (from the source tree use python run.py --web)" % exc,
             file=sys.stderr,
         )
         return 2
@@ -3772,7 +3772,7 @@ def main(argv: list[str] | None = None) -> int:
             root.destroy()
         except Exception:
             pass
-        print("Tk UI 初始化失败：%s" % exc, file=sys.stderr)
+        print("Tk UI Initialization failed: %s" % exc, file=sys.stderr)
         return 2
     root.mainloop()
     return 0

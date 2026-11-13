@@ -99,7 +99,7 @@ test("backend owns point expansion; preview renders actual Hz and physical task 
   assert.equal(request[0], "/api/offsets");
   assert.equal(request[1].analysis.offsets.points_per_decade, 1);
   assert.equal(ui.previewFirstOffset(config), 1000);
-  assert.match(elements["offset-preview"].innerHTML, /2 个实际工况 × 6 个频偏 = 12/);
+  assert.match(elements["offset-preview"].innerHTML, /2 actual operating points × 6 offsets = 12/);
   assert.match(elements["offset-preview"].innerHTML, /100000000 Hz/);
   assert.equal(config.allowExecute, true);
   assert.equal(ui.state.currentPreflight, oldPreflight);
@@ -176,10 +176,10 @@ test("frequency SVG displays actual markers and breaks paths across missing data
   assert.doesNotMatch(html, /class="chart-line" d="[^"]+ L|<img/);
   assert.match(html, /&lt;img/);
   assert.match(html, /tabindex="0"/);
-  assert.match(html, /对数轴/);
+  assert.match(html, /Log axis/);
   const missing = ui.frequencyChartMarkup([{ name: "missing", values: [{ x: 1, y: null }] }], true);
   assert.doesNotMatch(missing, /<svg|<circle/);
-  assert.match(missing, /缺失值不会补零/);
+  assert.match(missing, /missing values are not zero-filled/);
 });
 
 test("DOM render updates dBc scope, partial status, quality and all field tables; stale values clear", () => {
@@ -189,15 +189,15 @@ test("DOM render updates dBc scope, partial status, quality and all field tables
   ui.renderFlickerResults(result);
   assert.equal(elements["metric-calculated-dbc"].textContent, "-120.000 dBc/Hz");
   assert.equal(elements["metric-spectre-dbc"].textContent, "-110.000 dBc/Hz");
-  assert.match(elements["sweep-result-note"].textContent, /部分结果.*2\/3/);
-  assert.match(elements["sample-quality-note"].textContent, /PM 近似：未通过.*数值质量：通过.*HBAC 辅助检查：未提供/);
+  assert.match(elements["sweep-result-note"].textContent, /Partial results.*2\/3/);
+  assert.match(elements["sample-quality-note"].textContent, /PM approximation: Failed.*Numerical quality: Passed.*HBAC Secondary check: Not provided/);
   assert.match(elements["result-metric-tables"].innerHTML, /data-metric-key="Q_real_V_rtHz"/);
   assert.match(elements["result-metric-tables"].innerHTML, />N\/A</);
   elements["noise-kind"].value = "both"; ui.renderFlickerResults(result);
   assert.equal(elements["metric-calculated-dbc"].textContent, "N/A");
   assert.equal(elements["spectre-dbc-help"].dataset.metricKey, "spectre_total_dBc_Hz");
   assert.equal(elements["metric-spectre-dbc"].textContent, "-110.000 dBc/Hz");
-  assert.match(elements["noise-scope-note"].textContent, /独立双器件.*对称预测/);
+  assert.match(elements["noise-scope-note"].textContent, /symmetric prediction for independent devices/);
   assert.match(elements["noise-scope-note"].textContent, /thermal.*N\/A/);
   ui.renderFlickerResults({ error: "missing" });
   assert.equal(elements["metric-calculated-dbc"].textContent, "N/A");
@@ -213,8 +213,8 @@ test("shared metric help opens on native button activation and safely describes 
   ui.initMetricHelp();
   await events.click({ target: { closest() { return { dataset: { metricKey: "Qk_real_V_rtHz" } }; } } });
   assert.equal(elements["metric-help-dialog"].open, true);
-  assert.match(elements["metric-help-content"].innerHTML, /Qk 实部|Q 实部/);
-  assert.match(elements["metric-help-content"].innerHTML, /相干/);
+  assert.match(elements["metric-help-content"].innerHTML, /Qk real part|Q real part/);
+  assert.match(elements["metric-help-content"].innerHTML, /coherent/);
   elements["close-metric-help"].listeners.click();
   assert.equal(elements["metric-help-dialog"].open, false);
   ui.state.metricCatalog.metrics.bad = { label: '<img onerror="x">', meaning: "<script>" };
@@ -246,7 +246,7 @@ test("legacy reference never masquerades as total noise; contribution rows escap
   raw.summary.forEach(row => delete row.spectre_total_dBc_Hz);
   ui.renderFlickerResults(ui.normalizeResults(raw, "job", "SW0"));
   assert.equal(elements["metric-spectre-dbc"].textContent, "N/A");
-  assert.match(elements["noise-contribution-table"].innerHTML, /未采集 VCO 总相噪/);
+  assert.match(elements["noise-contribution-table"].innerHTML, /did not collect VCO total phase noise/);
   assert.match(elements["noise-contribution-table"].innerHTML, /-121.0000/);
   raw.summary[0].spectre_total_dBc_Hz = -99;
   delete raw.summary[0].spectre_noise_reference;
@@ -264,7 +264,7 @@ test("legacy reference never masquerades as total noise; contribution rows escap
   assert.match(elements["noise-contribution-table"].innerHTML, /&lt;img/);
   assert.doesNotMatch(elements["noise-contribution-table"].innerHTML, /<img/);
   ui.renderFlickerResults({error:"missing"});
-  assert.equal(elements["noise-contribution-table"].textContent, "等待真实 VCO 仿真结果");
+  assert.equal(elements["noise-contribution-table"].textContent, "Waiting for actual VCO simulation results");
 });
 
 test("contribution table follows top selectors without a duplicate offset selector", () => {
@@ -279,7 +279,7 @@ test("contribution table follows top selectors without a duplicate offset select
   assert.equal(elements["result-point-select"].value, "SW1");
   assert.equal(elements["result-offset-select"].value, "100000");
   assert.match(elements["noise-contribution-table"].innerHTML, /SW1.*100 kHz/);
-  assert.match(elements["noise-contribution-pies"].innerHTML, /计算.*仿真/s);
+  assert.match(elements["noise-contribution-pies"].innerHTML, /calculated.*Simulation/s);
   assert.doesNotMatch(fs.readFileSync(path.join(ROOT, "isf_tool/ui/results.html"), "utf8"), /noise-contribution-offset/);
 });
 
@@ -288,11 +288,11 @@ test("advanced groups keep invalid and unknown overrides visible, fold reference
   assert.equal(ui.mappingFieldGroup({ key: "x", active: false, status: "ok" }, {}), "reference");
   assert.equal(ui.mappingFieldGroup({ key: "x", active: false, status: "invalid" }, {}), "main");
   const html = ui.groupedMappingHtml([
-    { key: "transfer_output", active: true, group: "signal", consumption_mode: "remeasure_complex", used_by: ["HBAC"], help: "mag_pxf0 识别 I4；按本次差分方向重测完整复数；不直接使用原单端幅值" },
-    { key: "unused", group: "reference", active: false, help: "仅参考" }
+    { key: "transfer_output", active: true, group: "signal", consumption_mode: "remeasure_complex", used_by: ["HBAC"], help: "mag_pxf0 identifies I4; remeasure the full complex response in the current differential direction; do not use the original single-ended magnitude" },
+    { key: "unused", group: "reference", active: false, help: "reference only" }
   ], "vco", { obsolete: "old" }, false);
-  assert.match(html, /消费方式：remeasure_complex/);
-  assert.match(html, /本次差分方向重测完整复数/);
+  assert.match(html, /Consumption: remeasure_complex/);
+  assert.match(html, /remeasure the full complex response in the current differential direction/);
   assert.ok(html.indexOf('data-mapping-key="obsolete"') < html.indexOf('<details'));
   assert.ok(html.indexOf('data-mapping-key="unused"') > html.indexOf('<details'));
 });
@@ -312,7 +312,7 @@ test("safe stop is sweep-only and partial interrupted jobs retain an enabled com
   ui.renderJob(ui.jobFromResponse({ id: "partial", status: "interrupted", is_offset_sweep: true, result_available: true, resume_available: true }));
   assert.equal(elements["job-status"].textContent, "INTERRUPTED");
   assert.equal(elements["view-results"].attributes["aria-disabled"], "false");
-  assert.equal(elements["view-results"].textContent, "查看已完成频偏");
+  assert.equal(elements["view-results"].textContent, "View completed offsets");
   assert.equal(elements["stop-after-offset"].hidden, true);
 });
 
@@ -322,14 +322,14 @@ test("HTML provides distinct selectors and accessible metric controls without fi
   assert.doesNotMatch(setup, /<\/option\s+value/);
   for (const name of ["offsetMode", "offsetValues", "offsetStart", "offsetStop", "offsetSpacing", "offsetStep", "offsetIntervals", "offsetPerDecade"]) assert.ok(setup.includes('name="' + name + '"'));
   for (const id of ["result-point-select", "result-offset-select", "noise-kind", "cumulative-k-select", "metric-help-dialog"]) assert.ok(result.includes('id="' + id + '"'));
-  assert.doesNotMatch(result, /id="noise-scope"|单器件误差|单管动态/);
+  assert.doesNotMatch(result, /id="noise-scope"|Single-device error|single-device dynamic/);
   for (const file of fs.readdirSync(path.join(ROOT, "isf_tool/ui")).filter(file => file.endsWith(".html"))) {
     const html = fs.readFileSync(path.join(ROOT, "isf_tool/ui", file), "utf8");
     assert.doesNotMatch(html, /<(?:input|select|button)\b[^>]*(?:name|id)=["'](?:executionMode|allowExecute|execution-mode|allow-execute|noise-scope)["']/);
     assert.doesNotMatch(html, /<option\b[^>]*value=["'](?:dry_run|live|plan|pair)["']/);
-    assert.doesNotMatch(html, /<option\b[^>]*>\s*(?:单器件|双器件|Dry|Live|Plan)\s*<\/option>/i);
+    assert.doesNotMatch(html, /<option\b[^>]*>\s*(?:single device|two-device|Dry|Live|Plan)\s*<\/option>/i);
   }
-  assert.doesNotMatch(result, /六个|6 个工况|六点|6-point/);
+  assert.doesNotMatch(result, /six|6 operating points|six-point|6-point/);
   assert.match(result, /<button[^>]*data-metric-key/);
   for (const html of [setup, result]) { const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]); assert.equal(new Set(ids).size, ids.length); }
 });
@@ -382,9 +382,9 @@ test("quality reports thermal failure separately even when flicker passes and th
     elements["noise-kind"].value = kind;
     ui.renderFlickerResults(ui.normalizeResults(raw, "SW0@1000"));
     const text = elements["sample-quality-note"].textContent;
-    assert.match(text, /Flicker 数值质量：通过.*Thermal 数值质量：未通过/);
-    assert.match(text, /Flicker 问题：flicker audit note.*Thermal 问题：.*thermal convergence warning/);
-    assert.doesNotMatch(text, /Thermal 数值质量：通过/);
+    assert.match(text, /Flicker Numerical quality: Passed.*Thermal Numerical quality: Failed/);
+    assert.match(text, /Flicker Issues: flicker audit note.*Thermal Issues: .*thermal convergence warning/);
+    assert.doesNotMatch(text, /Thermal Numerical quality: Passed/);
   }
 });
 
@@ -394,34 +394,34 @@ test("thermal quality is unknown without explicit boolean evidence; available do
   for (const quality of [undefined, null, false, 0, "", {}, { pass: null }, { pass: "true" }, { pass: 1 }]) {
     row.thermal_noise.numerical_quality = quality;
     ui.renderFlickerResults(ui.normalizeResults(raw, "SW0@1000"));
-    assert.match(elements["sample-quality-note"].textContent, /Flicker 数值质量：通过.*Thermal 数值质量：未提供/);
+    assert.match(elements["sample-quality-note"].textContent, /Flicker Numerical quality: Passed.*Thermal Numerical quality: Not provided/);
   }
   row.thermal_noise.numerical_quality = { pass: true, issues: [] };
   row.numerical_quality_pass = false;
   ui.renderFlickerResults(ui.normalizeResults(raw, "SW0@1000"));
-  assert.match(elements["sample-quality-note"].textContent, /Flicker 数值质量：未通过.*Thermal 数值质量：通过/);
-  assert.doesNotMatch(elements["sample-quality-note"].textContent, /Thermal 问题/);
+  assert.match(elements["sample-quality-note"].textContent, /Flicker Numerical quality: Failed.*Thermal Numerical quality: Passed/);
+  assert.doesNotMatch(elements["sample-quality-note"].textContent, /Thermal Issues/);
   row.thermal_noise.status = "unsupported";
   ui.renderFlickerResults(ui.normalizeResults(raw, "SW0@1000"));
-  assert.match(elements["sample-quality-note"].textContent, /Thermal 数值质量：未提供/);
+  assert.match(elements["sample-quality-note"].textContent, /Thermal Numerical quality: Not provided/);
   delete row.thermal_noise;
   delete row.numerical_quality_pass;
   ui.renderFlickerResults(ui.normalizeResults(raw, "SW0@1000"));
-  assert.match(elements["sample-quality-note"].textContent, /Flicker 数值质量：未提供.*Thermal 数值质量：未提供/);
+  assert.match(elements["sample-quality-note"].textContent, /Flicker Numerical quality: Not provided.*Thermal Numerical quality: Not provided/);
 });
 
 test("actual thermal and both views disclose recorded finite input-band budget without guessing legacy range", () => {
   const elements = {"noise-kind":node("both"),"noise-scope-note":node()}, {ui} = harness(elements), raw = thermalFixture();
   raw.summary[0].thermal_noise.input_max_harmonic = 3;
   ui.renderFlickerResults(ui.normalizeResults(raw,"job","SW0@1000"));
-  assert.match(elements["noise-scope-note"].textContent,/独立输入频带 \|m\|≤3；更高频带不计/);
+  assert.match(elements["noise-scope-note"].textContent,/independent input bands \|m\|≤3; higher bands are excluded/);
   delete raw.summary[0].thermal_noise.input_max_harmonic;
   elements["noise-kind"].value = "thermal";
   ui.renderFlickerResults(ui.normalizeResults(raw,"job","SW0@1000"));
-  assert.match(elements["noise-scope-note"].textContent,/实际输入频带范围未记录/);
+  assert.match(elements["noise-scope-note"].textContent,/actual input-band limits not recorded/);
   elements["noise-kind"].value = "flicker";
   ui.renderFlickerResults(ui.normalizeResults(raw,"job","SW0@1000"));
-  assert.doesNotMatch(elements["noise-scope-note"].textContent,/有限带预算|实际输入频带范围未记录/);
+  assert.doesNotMatch(elements["noise-scope-note"].textContent,/finite-band budget|actual input-band limits not recorded/);
 });
 
 test("thermal input bands sum independent source powers and remain distinct from coherent flicker harmonics", () => {
@@ -467,9 +467,9 @@ test("actual both harmonic graph combines only explicit matching k powers and re
   const {ui} = harness(elements), raw = thermalFixture(), row = raw.summary[0];
   ui.renderFlickerResults(ui.normalizeResults(raw, "fixture", row.point));
   let html = elements["harmonic-noise-chart"].innerHTML;
-  assert.match(html, /k=1 · Flicker 等效 \+ thermal \|m\| 功率/);
-  assert.match(html, /ISF flicker \+ thermal · 功率和/);
-  assert.doesNotMatch(html, /Flicker k=1 单阶|Thermal 独立输入频带/);
+  assert.match(html, /k=1 · Flicker equivalent \+ thermal \|m\| power/);
+  assert.match(html, /ISF flicker \+ thermal · power sum/);
+  assert.doesNotMatch(html, /Flicker k=1 single order|Thermal independent input bands/);
   assert.equal(elements["cumulative-k-select"].disabled, true);
   const series = ui.resultNoiseSeries(raw, "SW0", "both");
   assert.equal(series.harmonics[1].values[0].y, ui.predictedNoiseDbc(row, "both"));
@@ -508,7 +508,7 @@ test("actual parallel pies contain unique independent PSD sources, not aggregate
   assert.ok(Math.abs(data.simulated.total - 22e-12) < 1e-25);
   let html = elements["noise-contribution-pies"].innerHTML;
   assert.equal((html.match(/<svg/g) || []).length, 2);
-  assert.doesNotMatch(html, /aggregate/);
+  assert.doesNotMatch(html, /<span>aggregate(?:2)? ·/);
   assert.match(html, /missing.*N\/A|N\/A.*missing/s);
   assert.match(html, /zero.*0\.00%/s);
   assert.match(html, /V²\/Hz/);
@@ -520,12 +520,12 @@ test("actual parallel pies contain unique independent PSD sources, not aggregate
   row.spectre_noise_contributions.push({...row.spectre_noise_contributions[0]});
   const duplicates = ui.noisePieData(row, "thermal");
   assert.ok(!duplicates.simulated.slices.some(item => item.label === "M1.rg · rn"));
-  assert.match(duplicates.simulated.missing.join(" "), /M1\.rg.*来源重复/);
+  assert.match(duplicates.simulated.missing.join(" "), /M1\.rg.*duplicate sources/);
   delete row.thermal_noise.peer_noise_trace;
-  assert.match(ui.noisePieData(row, "both").calculated.missing.join(" "), /配对源/);
+  assert.match(ui.noisePieData(row, "both").calculated.missing.join(" "), /Paired sources/);
   delete row.spectre_noise_reference;
   ui.renderFlickerResults(ui.normalizeResults(raw, "fixture", row.point));
-  assert.match(elements["noise-contribution-pies"].innerHTML, /同一 VCO 结果的独立源参考未提供/);
+  assert.match(elements["noise-contribution-pies"].innerHTML, /same VCO Independent-source reference not provided in result/);
   assert.ok(ui.noisePieData(row, "thermal").calculated.total > 0);
 });
 
@@ -564,13 +564,13 @@ test("actual source table retains computed value with one invalid reference but 
     reference.psd_V2_Hz = invalid;
     ui.renderFlickerResults(ui.normalizeResults(raw,"job",row.point));
     let html = elements["noise-contribution-table"].innerHTML;
-    assert.match(html,/M1\.rg · rn（仿真参考无效）<\/td><td>rn<\/td><td>N\/A<\/td><td>-116\.9897<\/td>/);
-    assert.match(html,/Thermal 同源对比（参考源不完整）/);
+    assert.match(html,/M1\.rg · rn \(invalid simulation reference\)<\/td><td>rn<\/td><td>N\/A<\/td><td>-116\.9897<\/td>/);
+    assert.match(html,/Thermal Matched-source comparison \(reference sources incomplete\)/);
     row.spectre_noise_contributions.push({...reference});
     ui.renderFlickerResults(ui.normalizeResults(raw,"job",row.point));
     html = elements["noise-contribution-table"].innerHTML;
     assert.doesNotMatch(html,/M1\.rg · rn/);
-    assert.match(html,/Thermal 同源对比（参考源不完整）/);
+    assert.match(html,/Thermal Matched-source comparison \(reference sources incomplete\)/);
     assert.equal(row.thermal_noise.sources[0].phase_noise_dBc_Hz,10 * Math.log10(2e-12));
   }
 });
@@ -600,7 +600,7 @@ test("actual save button persists settings and proven result selection without n
   assert.equal(payload.view.job_id, "job-owned");
   assert.equal(payload.name, "portable");
   assert.deepEqual(calls.map(item => item[0]), ["/api/states", "/api/states"]);
-  assert.match(elements["workspace-state-status"].textContent, /已保存.*不包含执行授权/);
+  assert.match(elements["workspace-state-status"].textContent, /Saved.*excludes execution consent/);
   assert.equal(ui.state.rawConfig.execution.allow_execute, true);
   raw.provenance.job_id = "foreign";
   ui.renderResults(ui.normalizeResults(raw, "job-owned", "SW1@100000"));
@@ -632,7 +632,7 @@ test("actual load button unconfirms TBs and restores exact same-job controls wit
   assert.equal(elements["noise-kind"].value, "thermal");
   assert.equal(elements["noise-x-scale"].value, "linear");
   assert.equal(JSON.parse(storage.get("isf-tool:workspace-state")).loaded, true);
-  assert.match(elements["workspace-state-status"].textContent, /已核验.*未启动预检或仿真/);
+  assert.match(elements["workspace-state-status"].textContent, /verified.*No preflight or simulation started/);
   assert.equal(saved.config.execution.allow_execute, true);
 });
 
@@ -645,7 +645,7 @@ test("state result restoration rejects foreign jobs, changed or ambiguous sample
     await ui.loadWorkspaceState("saved.json");
     assert.ok(ui.state.currentResults.error);
     assert.equal(elements["metric-calculated-dbc"].textContent, "N/A");
-    assert.match(elements["workspace-state-status"].textContent, /没有替换成其它任务或频点/);
+    assert.match(elements["workspace-state-status"].textContent, /Not replaced with another job or frequency point/);
     assert.equal(ui.state.rawConfig.testbenches.vco.maestro_dir, "/vco");
   }
 });
@@ -708,7 +708,7 @@ test("a late failed result fetch from an older loaded state cannot clear the new
   await older;
   assert.equal(ui.state.currentResults.id,"new-job");
   assert.equal(ui.state.rawConfig.testbenches.vco.maestro_dir,"/new-vco");
-  assert.match(elements["workspace-state-status"].textContent,/已核验.*new-job/);
+  assert.match(elements["workspace-state-status"].textContent,/verified.*new-job/);
 });
 
 test("state restore refuses local and authoritative active jobs without losing task, polling or configuration", async () => {
@@ -719,7 +719,7 @@ test("state restore refuses local and authoritative active jobs without losing t
     ui.state.currentJob = job; ui.state.executionPending = mode === "pending";
     const calls = [];
     ui.setApi(async url => {calls.push(url); return url === "/api/jobs" ? mode === "unknown" ? {} : {jobs:[{id:"active",status:"queued"}]} : {state:savedStateFixture()};});
-    await assert.rejects(ui.loadWorkspaceState("saved.json"),/活动任务|提交运行/);
+    await assert.rejects(ui.loadWorkspaceState("saved.json"),/job is active|run is being submitted/);
     assert.equal(ui.state.rawConfig,original);
     assert.equal(ui.state.currentJob,job);
     assert.equal(ui.state.pollTimer,123);
@@ -733,7 +733,7 @@ test("actual start marks in-flight authority until completion and prevents a con
   ui.setApi(async url => {assert.equal(url,"/api/jobs"); return new Promise(resolve => finish = resolve);});
   const starting = ui.startRemoteRun(node());
   assert.equal(ui.state.executionPending,true);
-  await assert.rejects(ui.loadWorkspaceState("saved.json"),/正在提交运行/);
+  await assert.rejects(ui.loadWorkspaceState("saved.json"),/run is being submitted/);
   finish({jobs:[{id:"already-running",status:"running"}]});
   await starting;
   assert.equal(ui.state.executionPending,false);
@@ -751,7 +751,7 @@ test("state load rechecks local execution and edit identity after authoritative 
     if (mode === "pending") ui.state.executionPending = true;
     else ui.state.setupRevision += 1;
     finish({jobs:[]});
-    if (mode === "pending") await assert.rejects(loading,/活动任务/);
+    if (mode === "pending") await assert.rejects(loading,/job is active/);
     else assert.equal(await loading,null);
     assert.equal(ui.state.rawConfig,original);
   }
@@ -770,7 +770,7 @@ test("actual result renderer includes combined harmonic total and maps flicker s
   }
   function sourceRow(rows, device) { return rows.find(html => html.includes('<td>' + device + ' · fn</td>')); }
   let rows = render();
-  assert.match(elements["harmonic-noise-chart"].innerHTML, /ISF flicker \+ thermal · 功率和/);
+  assert.match(elements["harmonic-noise-chart"].innerHTML, /ISF flicker \+ thermal · power sum/);
   assert.match(sourceRow(rows, "arbitrary.target"), /<td>-123\.0000<\/td>/);
   assert.match(sourceRow(rows, "arbitrary.peer"), /<td>-123\.0000<\/td>/);
   assert.match(sourceRow(rows, "M1"), /<td>N\/A<\/td>/);
@@ -802,9 +802,9 @@ test("real result renderer exposes combined harmonic total and explicit target/p
     assert.equal(thermal.status, "available");
     assert.equal(thermal.pair_model, "symmetric_independent");
     ui.renderFlickerResults(ui.normalizeResults(raw, "real-result-audit", row.point));
-    assert.match(elements["phase-noise-chart"].innerHTML, /ISF flicker \+ thermal · 功率和/);
-    assert.match(elements["harmonic-noise-chart"].innerHTML, /ISF flicker \+ thermal · 功率和/);
-    assert.match(elements["harmonic-noise-chart"].innerHTML, /Flicker 等效 \+ thermal \|m\| 功率/);
+    assert.match(elements["phase-noise-chart"].innerHTML, /ISF flicker \+ thermal · power sum/);
+    assert.match(elements["harmonic-noise-chart"].innerHTML, /ISF flicker \+ thermal · power sum/);
+    assert.match(elements["harmonic-noise-chart"].innerHTML, /Flicker equivalent \+ thermal \|m\| power/);
     assert.equal((elements["noise-contribution-pies"].innerHTML.match(/<svg/g) || []).length, 2);
     const pies = ui.noisePieData(row,"both");
     assert.equal(pies.calculated.missing.length,0);
@@ -861,7 +861,7 @@ test("full result renderer presents ten harmonic columns with pair noise values 
   assert.match(page, /data-metric-key="pair_harmonic_equivalent_dBc_Hz"/);
   assert.match(page, /data-metric-key="pair_cumulative_dBc_Hz"/);
   assert.doesNotMatch(page, /data-metric-key="(?:harmonic_equivalent_dBc_Hz|cumulative_dBc_Hz|cumulative_error_dB)"/);
-  assert.match(page, /代表侧原始诊断，不冒称双器件振幅/);
+  assert.match(page, /raw representative-side diagnostics, not claimed as a two-device amplitude/);
   assert.doesNotMatch(page, /id="closure-status"|absolute closure|cross-point trend/);
 });
 
@@ -876,8 +876,8 @@ test("actual contribution rendering refuses partial, duplicate, or invalid same-
     if (flaw === "duplicate_prediction") row.thermal_noise.sources.push({...row.thermal_noise.sources[0]});
     ui.renderFlickerResults(ui.normalizeResults(raw, "fixture", row.point));
     const html = elements["noise-contribution-table"].innerHTML;
-    const aggregate = html.match(/<tr class="noise-row-aggregate"><td>Thermal 同源对比.*?<\/tr>/)[0];
-    assert.match(aggregate, /参考源不完整/);
+    const aggregate = html.match(/<tr class="noise-row-aggregate"><td>Thermal Matched-source comparison.*?<\/tr>/)[0];
+    assert.match(aggregate, /reference sources incomplete/);
     assert.ok(aggregate.includes('<td>N/A</td><td>' + row.thermal_noise.phase_noise_dBc_Hz.toFixed(4) + '</td><td>N/A</td>'), flaw);
     assert.equal(elements["metric-thermal-error"].textContent, "N/A");
     if (flaw.startsWith("duplicate")) {
@@ -955,14 +955,14 @@ test("noise-type selection refreshes source details on the first change and pres
   ui.renderFlickerResults(result);
   let html = elements["noise-contribution-table"].innerHTML;
   assert.match(html, /L1 · rn/);
-  assert.doesNotMatch(html, /unmodeled\.diode|flicker_device|独立双器件 flicker 对比/);
-  assert.match(html, /VCO 总仿真/);
+  assert.doesNotMatch(html, /unmodeled\.diode|flicker_device|independent device pair flicker comparison/);
+  assert.match(html, /VCO simulated total/);
   const error = elements["metric-thermal-error"].textContent;
   elements["noise-kind"].value = "flicker";
   ui.renderFlickerResults(result);
   html = elements["noise-contribution-table"].innerHTML;
   assert.match(html, /flicker_device · fn/);
-  assert.doesNotMatch(html, /L1 · rn|unmodeled\.diode|Thermal 同源对比/);
+  assert.doesNotMatch(html, /L1 · rn|unmodeled\.diode|Thermal Matched-source comparison/);
   assert.equal(elements["metric-thermal-error"].textContent, error);
   elements["noise-kind"].value = "both";
   ui.renderFlickerResults(result);
@@ -975,7 +975,7 @@ test("empty thermal filter reports missing classified details rather than claimi
   delete raw.summary[0].thermal_noise;
   raw.summary[0].spectre_noise_contributions = [{ device: "diode", mechanism: "id", noise_family: "shot", psd_V2_Hz: 2e-12 }];
   ui.renderFlickerResults(ui.normalizeResults(raw, "SW0@1000"));
-  assert.match(elements["noise-contribution-table"].innerHTML, /当前筛选下没有可用/);
+  assert.match(elements["noise-contribution-table"].innerHTML, /No device\/mechanism details available for this filter/);
   assert.doesNotMatch(elements["noise-contribution-table"].innerHTML, /diode · id/);
   assert.match(elements["noise-contribution-table"].innerHTML, /N\/A/);
 });

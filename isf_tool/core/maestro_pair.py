@@ -495,7 +495,7 @@ def _unique_test_variables(records, test_name):
         if name in by_name:
             previous = by_name[name]
             if _plain_text(previous.get('expression')) != _plain_text(record.get('expression')):
-                raise ValidationError('Maestro test %s 的变量 %s 存在冲突的重复值：%r / %r；不能静默选择其中一个'
+                raise ValidationError('Maestro test %s variable %s has conflicting duplicate values: %r / %r; cannot silently select one value'
                                       % (test_name, name, previous.get('expression'), record.get('expression')))
             continue
         by_name[name] = record
@@ -534,7 +534,7 @@ def _attach_global_variables(tests, sdb_root):
                     global_record['scope_evidence'] = 'active_global_parametric_group_and_test_dependency'
                     global_record['test_cached_expression'] = record.get('expression')
                     global_record['test_value_role'] = 'maestro_sweep_cache_or_local_default'
-                    global_record['scope_note'] = '全局联合参数组对本 test 生效；另存的 test 标量可能是原生扫描缓存或局部默认，运行按所选 history 的 RDB 逐点值恢复。'
+                    global_record['scope_note'] = 'Global joint parameter group applies to this test effective; separately saved test scalars may be native sweep cache or local defaults, execution uses selected history of RDB restore per-point values. '
                     record.update(scope='test_cache_or_default', global_expression=global_record.get('expression'),
                                   scope_evidence=global_record['scope_evidence'], scope_note=global_record['scope_note'])
                     local_records.append(record)
@@ -542,7 +542,7 @@ def _attach_global_variables(tests, sdb_root):
                 if grouped:
                     record.update(scope='global_or_test', global_expression=global_record.get('expression'),
                                   parametric_groups=global_record.get('parametric_groups'),
-                                  scope_note='同时存在全局参数组和 test 值，缺少可证明组适用于本 test 的完整标记；不能仅凭该标量断言局部覆盖或扫描缓存。')
+                                  scope_note='Both global parameter group and test Value, lacks proof that the group applies to this test complete markers; the scalar alone cannot establish a local override or sweep cache. ')
                     by_name[name] = record
                     local_records.append(copy.deepcopy(record))
                     continue
@@ -853,10 +853,10 @@ def _operating_scalar(value):
     token = str(value).strip()
     match = re.fullmatch(r"([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)([a-zA-Z]*)", token)
     if not match or match.group(2).lower() not in ("", "t", "g", "meg", "k", "m", "u", "n", "p", "f", "a"):
-        raise ValidationError("工况参数必须是已求值的数值，不能静默执行表达式：%r" % value)
+        raise ValidationError("Operating parameter must be an evaluated number, expressions are not executed implicitly: %r" % value)
     factor = dict(_SPICE_SUFFIX, a=1e-18).get(match.group(2).lower(), 1.0)
     if not math.isfinite(float(match.group(1)) * factor):
-        raise ValidationError("工况参数必须为有限数值：%r" % value)
+        raise ValidationError("Operating parameter must be finite: %r" % value)
     return token
 
 
@@ -870,13 +870,13 @@ def _operating_numeric_key(value):
 def _operating_string(value):
     """An already evaluated, double-quoted literal; no ADE expression evaluation."""
     if not isinstance(value, str) or not value.strip().startswith('"'):
-        raise ValidationError('字符串工况参数必须是已求值的双引号字符串')
+        raise ValidationError('String operating parameter must be an evaluated double-quoted string')
     try:
         decoded = json.loads(value.strip())
     except (ValueError, TypeError) as exc:
-        raise ValidationError('字符串工况参数不是完整的双引号字面值，不能执行表达式') from exc
+        raise ValidationError('String operating parameter is not a complete double-quoted literal, expressions cannot be executed') from exc
     if not isinstance(decoded, str) or any(ord(char) < 32 or ord(char) == 127 for char in decoded):
-        raise ValidationError('字符串工况参数不能包含控制字符或换行')
+        raise ValidationError('String operating parameters cannot contain control characters or newlines')
     return decoded
 
 
@@ -915,12 +915,12 @@ def _root_statements(text):
         elif re.match(r"(?i)^ends\b", head):
             depth -= 1
             if depth < 0:
-                raise ValidationError("网表 subckt/ends 作用域不完整")
+                raise ValidationError("netlist subckt/ends scope is incomplete")
         elif depth == 0 and head and not head.startswith(('//', '*')):
             yield positions[start], positions[index] + len(lines[index]), statement
         index += 1
     if depth:
-        raise ValidationError("网表 subckt/ends 作用域不完整")
+        raise ValidationError("netlist subckt/ends scope is incomplete")
 
 
 def _assignment_spans(statement):
@@ -948,7 +948,7 @@ def _assignment_spans(statement):
                 stack.append(char)
             elif char in ')]}':
                 if not stack or '([{'.index(stack.pop()) != ')]}'.index(char):
-                    raise ValidationError('工况参数原始表达式括号不匹配')
+                    raise ValidationError('Unbalanced parentheses in raw operating-parameter expression')
             elif not stack and statement.startswith('//', index):
                 break
             elif not stack and (char.isspace() or char == '\\'):
@@ -963,12 +963,12 @@ def _assignment_spans(statement):
                     break
             index += 1
         if quote or stack:
-            raise ValidationError('工况参数原始表达式未完整闭合')
+            raise ValidationError('Raw operating-parameter expression is not fully closed')
         end = index
         while end > start and statement[end - 1].isspace():
             end -= 1
         if end == start:
-            raise ValidationError('工况参数原始值为空')
+            raise ValidationError('Raw operating-parameter value is empty')
         yield match.group(1), start, end
         cursor = max(index, end)
 
@@ -983,13 +983,13 @@ def restore_operating_point_text(text, operating_point):
     """
     operating_point = operating_point or {}
     if operating_point.get('ambiguous_params'):
-        raise ValidationError("工况参数有歧义：%s" % ', '.join(sorted(operating_point['ambiguous_params'])))
+        raise ValidationError("Ambiguous operating parameter: %s" % ', '.join(sorted(operating_point['ambiguous_params'])))
     params = operating_point.get('params', {})
     records = operating_point.get('parameter_records', [])
     changes = []
     for name, value in sorted(params.items()):
         if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', str(name)):
-            raise ValidationError("不支持的工况参数名称：%s" % name)
+            raise ValidationError("Unsupported operating-parameter name: %s" % name)
         string_value = isinstance(value, str) and value.strip().startswith('"')
         replacement = json.dumps(_operating_string(value), ensure_ascii=False) if string_value else _operating_scalar(value)
         relevant = [r for r in records if str(r.get('name')) == name]
@@ -999,11 +999,11 @@ def restore_operating_point_text(text, operating_point):
         kinds = {str(r.get('type') or 'desVar').lower() for r in effective} or {'desvar'}
         temperature = name.lower() in ('temp', 'temperature', 'tnom') and kinds <= {'temp', 'temperature', 'simulatoroption', 'option'}
         if string_value and temperature:
-            raise ValidationError('温度工况参数不能是字符串：' + name)
+            raise ValidationError('Temperature operating parameter cannot be a string: ' + name)
         if not temperature and not kinds <= {'desvar', 'designvariable', 'variable', ''}:
-            raise ValidationError("尚不能恢复工况参数 %s 的类型 %s；请生成独立工况网表" % (name, sorted(kinds)))
+            raise ValidationError("Cannot restore operating parameter yet %s type %s; generate separate operating-point netlists" % (name, sorted(kinds)))
         if any(r.get('instance') not in (None, '') for r in effective):
-            raise ValidationError("尚不能恢复实例级工况参数 %s；请生成独立工况网表" % name)
+            raise ValidationError("Cannot restore instance-level operating parameter yet %s; generate separate operating-point netlists" % name)
         target_name = 'temp' if temperature and name.lower() == 'temperature' else name
         candidates = []
         option_statements = []
@@ -1021,7 +1021,7 @@ def restore_operating_point_text(text, operating_point):
         if not candidates and temperature and len(option_statements) == 1:
             start, end, statement = option_statements[0]
             if '//' in statement:
-                raise ValidationError('温度设置所在 options 含注释且没有独立温度字段；请明确 temp/tnom 声明')
+                raise ValidationError('temperature settings in options contains comments without a separate temperature field; specify explicitly temp/tnom declaration')
             updated = statement.rstrip() + ' ' + target_name + '=' + replacement + '\n'
             original = None
         elif len(candidates) == 1:
@@ -1032,10 +1032,10 @@ def restore_operating_point_text(text, operating_point):
                 # quoted RDB value cannot change a numeric parameter's type.
                 _operating_string(original)
             elif original.strip().startswith('"'):
-                raise ValidationError('不能把已声明的字符串工况参数改成数值：' + name)
+                raise ValidationError('Cannot change a declared string operating parameter to a number: ' + name)
             updated = statement[:value_start] + replacement + statement[value_end:]
         else:
-            raise ValidationError("工况参数 %s 必须在根网表中有唯一声明，实际找到 %d 项" % (name, len(candidates)))
+            raise ValidationError("Operating parameters %s must have exactly one declaration at the netlist root, found %d items" % (name, len(candidates)))
         text = text[:start] + updated + text[end:]
         changes.append({'name': name, 'netlist_name': target_name, 'original': original,
                         'effective': replacement, 'kind': 'temperature' if temperature else ('design_variable_string' if string_value else 'design_variable'),
@@ -1065,7 +1065,7 @@ def _operating_environment(text, netlist):
             for name, start, end in _assignment_spans(statement):
                 if name.lower() in ('temp', 'tnom', 'scale', 'scalem'):
                     if name.lower() in settings:
-                        raise ValidationError('工况有重复的仿真温度/尺寸选项：' + name)
+                        raise ValidationError('Operating point has duplicate simulation temperature/dimension options: ' + name)
                     settings[name.lower()] = _operating_numeric_key(statement[start:end].strip())
         include = re.match(r'^\s*include\s+"([^"]+)"(?:\s+section\s*=\s*(\S+))?', statement)
         if include:
@@ -1171,7 +1171,7 @@ def _template_content_identity(source, bias_variables):
             if name not in bias_variables:
                 continue
             if name in found:
-                raise ValidationError('可替换偏置变量在根网表中重复声明：' + name)
+                raise ValidationError('Replaceable bias variable is declared twice at the netlist root: ' + name)
             found.add(name)
             token = statement[value_start:value_end]
             string = token.strip().startswith('"')
@@ -1220,7 +1220,7 @@ def match_flicker_operating_source(sources, vco_source, bias_variables=()):
     generic = [item for item in sources if not str(item.get('corner') or '') and compatible(item)]
     candidates = exact if exact else generic
     if len(candidates) != 1:
-        raise ValidationError('flicker Maestro 工况无法按 corner、有效非偏置参数、温度和模型 section 唯一配对；不会按点号或列表顺序猜测')
+        raise ValidationError('flicker Maestro operating points cannot be matched by corner, effective non-bias parameters, temperature and model section uniquely paired; point numbers or list order are not used to guess')
     return candidates[0]
 
 
@@ -1674,10 +1674,10 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-E1201",
                     "error",
-                    "%s Maestro 未选择" % ("VCO" if role == "vco" else "Flicker"),
-                    "请选择现有 Maestro 目录或包含 maestro.sdb 的 cell 目录。",
+                    "%s Maestro Not selected" % ("VCO" if role == "vco" else "Flicker"),
+                    "Select existing Maestro directory or containing maestro.sdb of cell Directory. ",
                     field=field,
-                    action="在首页手动选择对应 Maestro；搜索根目录只作为辅助。",
+                    action="manually select the corresponding item on Setup Maestro; the search root is auxiliary only. ",
                 )
             )
             continue
@@ -1702,10 +1702,10 @@ def inspect_maestro_pair(payload):
                 _issue(
                     code,
                     "error",
-                    "%s Maestro 无法读取" % ("VCO" if role == "vco" else "Flicker"),
+                    "%s Maestro Cannot read" % ("VCO" if role == "vco" else "Flicker"),
                     str(exc),
                     field=field,
-                    action="确认选择的是 maestro 目录且当前用户具有只读权限。",
+                    action="confirm the selection is a maestro directory and ensure the current user has read permission. ",
                 )
             )
             continue
@@ -1714,11 +1714,11 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-E1202" if mapping_issue["severity"] == "error" else "ISF-W1201",
                     mapping_issue["severity"],
-                    "%s 名称映射需要核对" % ("VCO" if role == "vco" else "Flicker"),
+                    "%s name mappings need review" % ("VCO" if role == "vco" else "Flicker"),
                     mapping_issue["message"],
                     field="testbenches.%s.mapping_overrides.%s" % (
                         "vco" if role == "vco" else "replica", mapping_issue["key"]),
-                    action="展开高级设置中的自动识别与手动覆盖；留空恢复自动，名称变化后重新检测。",
+                    action="expand automatic detection and manual overrides in Advanced settings; leave blank to restore automatic settings, detect again after names change. ",
                 )
             )
         if report.get("selected_test") is None:
@@ -1726,10 +1726,10 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-E1202",
                     "error",
-                    "%s test 无法唯一确定" % ("VCO" if role == "vco" else "Flicker"),
-                    "可用 test：%s" % ", ".join(report.get("test_names", [])),
+                    "%s test Cannot uniquely determine" % ("VCO" if role == "vco" else "Flicker"),
+                    "available test: %s" % ", ".join(report.get("test_names", [])),
                     field="testbenches.%s.test" % ("vco" if role == "vco" else "replica"),
-                    action="只需手动选择 test；其余变量和输出继续自动识别。",
+                    action="only select manually test; other variables and outputs remain automatically detected. ",
                 )
             )
             continue
@@ -1740,10 +1740,10 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-E1204",
                     "error",
-                    "%s Maestro 合同已变化" % ("VCO" if role == "vco" else "Flicker"),
-                    "变量、输出、analysis、design 或 model section 与上次绑定不同。",
+                    "%s Maestro contract changed" % ("VCO" if role == "vco" else "Flicker"),
+                    "Variable, Output, analysis, design or model section differs from the previous binding. ",
                     field="testbenches.%s.binding_fingerprint" % ("vco" if role == "vco" else "replica"),
-                    action="检查变化列表后，在首页明确点击“重新绑定当前设置”。",
+                    action="after reviewing the changes, on Setup explicitly click“Rebind current settings”. ",
                 )
             )
         expected_history = spec.get("history_fingerprint")
@@ -1753,12 +1753,12 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-E1204" if actual_history else "ISF-E1205",
                     "error",
-                    "%s Maestro history 已变化或不可用"
+                    "%s Maestro history changed or unavailable"
                     % ("VCO" if role == "vco" else "Flicker"),
-                    "Preflight 绑定的 RDB/generated netlist 与当前磁盘内容不同。",
+                    "Preflight bound RDB/generated netlist differs from current disk contents. ",
                     field="testbenches.%s.history_fingerprint"
                     % ("vco" if role == "vco" else "replica"),
-                    action="重新检测；若是预期的新 history，明确重新绑定并启动新任务。",
+                    action="Detect again; if this is the intended new history, explicitly rebind and start a new job. ",
                 )
             )
 
@@ -1782,10 +1782,10 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-E1202",
                     "error",
-                    "VCO Maestro 缺少主链能力",
-                    "缺少：%s" % ", ".join(missing),
+                    "VCO Maestro Missing primary workflow capability",
+                    "Missing: %s" % ", ".join(missing),
                     field="testbenches.vco",
-                    action="在 VCO Maestro 中补齐周期分析、周期噪声和差分输出节点后再检测。",
+                    action="in VCO Maestro add periodic analysis in, periodic noise and differential output nodes, then detect again. ",
                 )
             )
         elif (
@@ -1796,14 +1796,14 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-E1202",
                     "error",
-                    "当前 bundled runner 仅支持 HB/HBNOISE",
-                    "检测到周期分析 %s、周期噪声 %s；PSS/PNOISE 可被识别，但本版不会假装可执行。"
+                    "Current bundled runner supports only HB/HBNOISE",
+                    "Detected periodic analysis %s, periodic noise %s; PSS/PNOISE can be detected, but execution is unsupported in this version. "
                     % (
                         mapping.get("periodic_analysis") or "none",
                         mapping.get("noise_analysis") or "none",
                     ),
                     field="testbenches.vco.analysis",
-                    action="在现有 VCO Maestro 中启用 HB/HBNOISE，或在高级设置中接入已验证的自定义 PSS 适配器。",
+                    action="in the existing VCO Maestro enable in HB/HBNOISE, or connect a validated custom implementation in Advanced settings PSS adapter. ",
                 )
             )
         if mapping.get("noise_analysis") and not mapping.get("noise_covers_offset"):
@@ -1811,10 +1811,10 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-W1202",
                     "warning",
-                    "VCO noise sweep 未覆盖 10 kHz",
-                    "当前 %s 范围不含 %.6g Hz；私有 runner 会覆盖为精确频点。" % (mapping.get("noise_analysis"), offset_hz),
+                    "VCO noise sweep does not cover 10 kHz",
+                    "Current %s range excludes %.6g Hz; private runner overrides with the exact frequency. " % (mapping.get("noise_analysis"), offset_hz),
                     field="testbenches.vco.analysis",
-                    action="若要直接比较 Maestro history，请把 10 kHz 加入 HBNOISE/PNOISE。",
+                    action="to compare directly Maestro history, add 10 kHz add HBNOISE/PNOISE. ",
                 )
             )
         if not mapping.get("has_transfer_analysis"):
@@ -1822,9 +1822,9 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-W1202",
                     "warning",
-                    "VCO Maestro 未保存 HBXF/PXF",
-                    "signed transimpedance 将在私有复制网表中按同一输出和时间参考补充。",
-                    action="无需修改 OA；需要用 Maestro history 直接读取时再添加 HBXF/PXF。",
+                    "VCO Maestro not saved HBXF/PXF",
+                    "signed transimpedance will be added in the private netlist copy with the same output and time reference. ",
+                    action="No changes required to OA; when needed for Maestro history add only when reading directly HBXF/PXF. ",
                 )
             )
         if not vco.get("selected_history"):
@@ -1833,14 +1833,14 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-W1203" if stale else "ISF-W1201",
                     "warning",
-                    "VCO 可执行 history 不可用",
+                    "VCO executable history unavailable",
                     (
-                        "RDB rawDir 指向旧机器或本机缺少 point/test PSF 与 netlist。"
+                        "RDB rawDir points to an old machine or local files are missing for point/test PSF and netlist. "
                         if stale
-                        else "未找到同时具有完成 PSF 和生成网表的 history。"
+                        else "No history with both completed PSF and generated netlists history. "
                     ),
                     field="testbenches.vco.history",
-                    action="在当前机器用所选 Maestro 重新运行一次，再刷新检测；不要手改 RDB rawDir。",
+                    action="on this machine use the selected Maestro run once again, then refresh detection; do not edit manually RDB rawDir. ",
                 )
             )
 
@@ -1860,10 +1860,10 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-E1202",
                     "error",
-                    "Flicker Maestro 缺少主链能力",
-                    "缺少：%s" % ", ".join(missing),
+                    "Flicker Maestro Missing primary workflow capability",
+                    "Missing: %s" % ", ".join(missing),
                     field="testbenches.replica",
-                    action="保留原 TB 框架，只补齐 VGS/VDS 变量和 drain-current noise 输出。",
+                    action="retain original TB framework, add only VGS/VDS variables and drain-current noise Output. ",
                 )
             )
         elif str(mapping.get("noise_analysis_type", mapping.get("noise_analysis", ""))).lower() != "noise":
@@ -1871,11 +1871,11 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-E1202",
                     "error",
-                    "Flicker 模板必须保留独立 noise analysis",
-                    "检测到 %s；本版从该 noise TB 读取 10 kHz 绝对强度，再在私有副本生成动态 replica。"
+                    "Flicker template must retain an independent noise analysis",
+                    "Detected %s; this version reads from this noise TB Read 10 kHz absolute magnitude, then generate the dynamic replica in a private copy replica. "
                     % (mapping.get("noise_analysis") or "none"),
                     field="testbenches.replica.analysis",
-                    action="在原 flicker Maestro 中保留普通 noise analysis；无需新建第三个 TB。",
+                    action="in the original flicker Maestro retain a standard noise analysis; no third one needed for TB. ",
                 )
             )
         if mapping.get("noise_analysis") and not mapping.get("noise_covers_offset"):
@@ -1883,10 +1883,10 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-E1202",
                     "error",
-                    "Flicker noise sweep 未覆盖 10 kHz",
-                    "当前 noise 范围不含 %.6g Hz。" % offset_hz,
+                    "Flicker noise sweep does not cover 10 kHz",
+                    "Current noise range excludes %.6g Hz. " % offset_hz,
                     field="testbenches.replica.analysis",
-                    action="把 10 kHz 加入已有 noise sweep；无需新建应用或额外 TB。",
+                    action="set 10 kHz add to existing noise sweep; no new application or extra TB. ",
                 )
             )
         if not mapping.get("noise_output_at_offset"):
@@ -1894,10 +1894,10 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-W1201",
                     "warning",
-                    "未找到显式 10 kHz flicker output",
-                    "noise analysis 可覆盖该频点，但 output 名/表达式未明确绑定 10 kHz。",
+                    "No explicit match for 10 kHz flicker output",
+                    "noise analysis can cover this frequency, but output name/expression is not explicitly bound to 10 kHz. ",
                     field="testbenches.replica.mapping.noise_output",
-                    action="可在高级映射中选择现有输出，或让提取器直接读取 raw noise 频点。",
+                    action="select an existing output in Advanced mappings, or let the extractor read directly raw noise frequency point. ",
                 )
             )
         if not mapping.get("vbs_variable"):
@@ -1905,8 +1905,8 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-W1201",
                     "warning",
-                    "Flicker TB 未发现 VBS 变量",
-                    "默认按 source/bulk 同电位处理；若 VCO 中 VBS(t) 非零需增加映射。",
+                    "Flicker TB not discovered VBS Variable",
+                    "by default uses source/bulk assumed equipotential; if VCO in VBS(t) add a mapping if nonzero. ",
                     field="testbenches.replica.mapping.vbs_variable",
                 )
             )
@@ -1915,9 +1915,9 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-W1202",
                     "info",
-                    "HBAC/PAC 未配置",
-                    "主方案仍使用 HBNOISE AM/PM 候选；10 kHz 确定性注入仅作为二次验证。",
-                    action="仅在需要二次相位核验时，由私有 replica 网表补充 HBAC/PAC。",
+                    "HBAC/PAC not configured",
+                    "the primary method still uses HBNOISE AM/PM Candidates; 10 kHz deterministic injection is only a secondary validation. ",
+                    action="only when secondary phase validation is needed, from private replica added to netlist HBAC/PAC. ",
                 )
             )
         if not flicker.get("selected_history"):
@@ -1928,14 +1928,14 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-W1203" if stale else "ISF-W1201",
                     "warning",
-                    "Flicker 可执行 history 不可用",
+                    "Flicker executable history unavailable",
                     (
-                        "RDB rawDir 指向旧机器或本机缺少 generated netlist/PSF。"
+                        "RDB rawDir points to an old machine or local files are missing for generated netlist/PSF. "
                         if stale
-                        else "未找到同时具有生成网表和完成结果的 flicker history。"
+                        else "No history with both generated netlists and completed results flicker history. "
                     ),
                     field="testbenches.replica.history",
-                    action="在当前机器运行所选 flicker Maestro；Live 用其网表作为 DC-noise/replica 模板。",
+                    action="run the selected setup on this machine flicker Maestro; Live use its netlist as DC-noise/replica template. ",
                 )
             )
 
@@ -1953,8 +1953,8 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-E1203",
                     "error",
-                    "两个角色绑定到同一 Maestro",
-                    "VCO 和 flicker-noise 必须来自两个独立 TB。",
+                    "Both roles are bound to the same Maestro",
+                    "VCO and flicker-noise must come from two independent TB. ",
                     field="testbenches",
                 )
             )
@@ -1975,10 +1975,10 @@ def inspect_maestro_pair(payload):
                 _issue(
                     "ISF-E1203",
                     "error",
-                    "两个 Maestro 的 PDK/model 不一致",
-                    "VCO=%s；Flicker=%s" % (sorted(vco_roots), sorted(flicker_roots)),
+                    "two Maestro of PDK/model inconsistent",
+                    "VCO=%s; Flicker=%s" % (sorted(vco_roots), sorted(flicker_roots)),
                     field="testbenches",
-                    action="重新选择同一 PDK 下的 flicker-noise Maestro。",
+                    action="select again from the same PDK under flicker-noise Maestro. ",
                 )
             )
         common = sorted(vco_roots & flicker_roots)
@@ -2015,7 +2015,7 @@ def inspect_maestro_pair(payload):
                         'flicker_template_key': operating_template_key(matched, bias),
                         'flicker_nonbias_parameters': operating_nonbias_parameters(matched, bias)})
             except (ValidationError, OSError, ValueError) as exc:
-                issues.append(_issue('ISF-E1203', 'error', '两个 TB 的有效工况无法安全对应', str(exc), field='testbenches'))
+                issues.append(_issue('ISF-E1203', 'error', 'two TB effective operating points cannot be safely matched', str(exc), field='testbenches'))
 
     errors = sum(1 for issue in issues if issue["severity"] == "error")
     warnings = sum(1 for issue in issues if issue["severity"] == "warning")

@@ -81,18 +81,18 @@ class BandGuiTests(unittest.TestCase):
                 self.ui.show(4);self.root.update()
                 rows=list(self.ui.table.rows.values())
                 key=rows[0]['key']
-                self.assertEqual('对称 gm pair · flicker 对比',rows[0]['label'])
+                self.assertEqual('symmetric gm pair · flicker comparison',rows[0]['label'])
                 hits=[h for h in self.ui.chart.hits if h['key']==key]
                 self.assertEqual(2,len(hits))
                 self.assertAlmostEqual(10*math.log10(2*4e-8),hits[1]['value'][1],places=10)
-                self.assertTrue(any('聚合' in str(self.ui.chart.itemcget(i,'text'))
+                self.assertTrue(any('aggregates' in str(self.ui.chart.itemcget(i,'text'))
                     for i in self.ui.chart.find_all() if self.ui.chart.type(i)=='text'))
                 self.ui.table.tree.selection_set(key);self.root.update()
                 self.assertEqual(key,self.ui.chart.selected_key)
                 target=next(h for h in self.ui.chart.hits if h['key']=='source:core_a/fn')
                 self.ui.chart._click(SimpleNamespace(x=target['x'],y=target['y']));self.root.update()
                 self.assertEqual(('source:core_a/fn',),self.ui.table.tree.selection())
-                self.assertIn('计入对称 gm pair 对比',self.ui.readout.get())
+                self.assertIn('included in symmetric gm pair comparison',self.ui.readout.get())
 
                 # The hint wraps into one or more lines depending on font metrics;
                 # what matters is that the lines never overlap.

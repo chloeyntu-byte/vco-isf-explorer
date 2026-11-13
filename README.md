@@ -18,7 +18,7 @@ Version 1.1.0 adds eight result views (00–07), a linked table drawer, the ISF 
 - **Offline replay**: import canonical CSV bundles ([formats/README.md](formats/README.md)) without any EDA tool. A synthetic ideal-LC example ships in [examples/ideal_lc](examples/ideal_lc).
 - **Maestro menu launcher** and a read-only environment report (`--diagnose`).
 
-The UI text is Chinese; the code, documentation and data formats are English/bilingual.
+The desktop and Web interfaces are in English. Data formats and export field names are unchanged.
 
 ## Requirements
 
@@ -35,7 +35,7 @@ python3.11 -m pip install -e '.[live]'      # or run from the source tree
 python3.11 run.py --workspace ./work
 ```
 
-1. On the first page click **载入示例** (Load example). The bundled synthetic ideal-LC replay (three operating points x seven offsets) is imported and the **分析结果** page opens.
+1. On the first page click **Load example**. The bundled synthetic ideal-LC replay (three operating points x seven offsets) is imported and the **Results** page opens.
 2. Browse phase noise vs offset, the contribution tables, harmonics, and the ISF waveform. The ideal-LC ISF is a pure sine; the two "asym" points add second-harmonic content.
 3. Regenerate the example data at any time:
 
@@ -49,11 +49,11 @@ On a headless host provide X11/VNC for Tk. An optional loopback-only Web UI is a
 
 ## Using with Cadence
 
-From a Maestro window use **Plug-in → Open VCO ISF Explorer**, choose a completed VCO history, the core MOS and the frequency offsets, then **开始分析**. Setup is described in [docs/MAESTRO_PLUGIN.md](docs/MAESTRO_PLUGIN.md); in short:
+From a Maestro window use **Plug-in → Open VCO ISF Explorer**, choose a completed VCO history, the core MOS and the frequency offsets, then **Start analysis**. Setup is described in [docs/MAESTRO_PLUGIN.md](docs/MAESTRO_PLUGIN.md); in short:
 
 - load `cadence/vco_isf_menu.il` from your `.cdsinit` after pointing it at your checkout (`export VCO_ISF_HOME=/path/to/vco-isf-explorer`, or set `isfMaestroLauncher` before loading);
 - the launcher looks for Python 3.11+ with Tk; set `VCO_ISF_PYTHON` to pick one explicitly;
-- PDK location, device names, corners and tool paths are **your configuration**: the tool detects names from the selected history and lets you override them under **高级设置**. `configs/` only contains fictional generic examples (`PDK_A`, `device_model.scs`, `generic_nmos`); see [configs/README.md](configs/README.md).
+- PDK location, device names, corners and tool paths are **your configuration**: the tool detects names from the selected history and lets you override them under **Advanced settings**. `configs/` only contains fictional generic examples (`PDK_A`, `device_model.scs`, `generic_nmos`); see [configs/README.md](configs/README.md).
 
 ## CLI for agents
 
@@ -101,10 +101,10 @@ MIT, see [LICENSE](LICENSE).
 
 Theory and synthetic examples: [ISF theory](docs/ISF_THEORY.md), [input bands](docs/input-noise-bands.md).
 
-![02-process](docs/screenshots/02-process.png)
+![ISF process](docs/screenshots/02-process.png)
 
-![03-harmonics](docs/screenshots/03-harmonics.png)
+![Harmonic decomposition](docs/screenshots/03-harmonics.png)
 
-![04-bands](docs/screenshots/04-bands.png)
+![Input noise band → phase noise](docs/screenshots/04-bands.png)
 
-![05-contributions](docs/screenshots/05-contributions.png)
+![Noise contributions](docs/screenshots/05-contributions.png)

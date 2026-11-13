@@ -1,23 +1,23 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="ISF Workbench 本地错误码与迁移排障说明">
-  <title>错误码 · ISF Workbench</title>
+  <meta name="description" content="ISF Workbench Local error codes & migration troubleshooting">
+  <title>Error codes · ISF Workbench</title>
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
 </head>
 <body data-page="errors">
   <header class="topbar">
-    <a class="brand" href="index.html" aria-label="ISF Workbench 首页">
+    <a class="brand" href="index.html" aria-label="ISF Workbench Setup">
       <span class="brand-mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 13.5c2.1 0 2.1-7 4.3-7s2.2 7 4.4 7 2.2-7 5.3-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
       <span class="brand-copy">ISF Workbench<small>Portable analysis</small></span>
     </a>
     <div class="topbar-tools">
-      <a class="tool-link" href="index.html">返回设置</a>
-      <span class="api-badge" id="api-status" data-state="checking"><span class="status-dot"></span><span class="api-label-long">正在检查 API</span><span class="sr-only" id="api-status-detail"></span></span>
-      <button class="icon-button" type="button" data-action="refresh-health" aria-label="重新检查 API"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.2 5.7A5.5 5.5 0 1 0 13 10.8M13.2 2.8v2.9h-2.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <a class="tool-link" href="index.html">Back to Setup</a>
+      <span class="api-badge" id="api-status" data-state="checking"><span class="status-dot"></span><span class="api-label-long">Checking API</span><span class="sr-only" id="api-status-detail"></span></span>
+      <button class="icon-button" type="button" data-action="refresh-health" aria-label="Check again API"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.2 5.7A5.5 5.5 0 1 0 13 10.8M13.2 2.8v2.9h-2.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
   </header>
 
@@ -25,21 +25,21 @@
     <header class="page-heading">
       <div class="page-heading-copy">
         <div class="eyebrow">Local diagnostics</div>
-        <h1>错误码与迁移排障</h1>
-        <p>目录随工程本地保存，不依赖联网。复制到新 Linux/PDK 环境后，可直接按代码定位原因和处理动作。</p>
+        <h1>Error codes & migration troubleshooting</h1>
+        <p>catalog is stored locally with the project, works offline. copy to new Linux/PDK environment, use the code to locate causes and actions directly. </p>
       </div>
       <div class="heading-actions">
-        <a class="btn" href="error_catalog.json">打开原始 JSON</a>
+        <a class="btn" href="error_catalog.json">Open raw JSON</a>
       </div>
     </header>
 
     <section class="card">
       <div class="card-header error-search-head">
-        <div><h2>本地目录</h2><p id="error-catalog-meta">正在载入 error_catalog.json</p></div>
-        <div class="field error-search"><label class="sr-only" for="error-search">搜索错误码</label><input id="error-search" type="search" placeholder="输入 ISF-E5002、关键词或处理动作"></div>
+        <div><h2>Local directory</h2><p id="error-catalog-meta">Loading error_catalog.json</p></div>
+        <div class="field error-search"><label class="sr-only" for="error-search">Search error codes</label><input id="error-search" type="search" placeholder="Input ISF-E5002, keywords or actions"></div>
       </div>
       <div class="card-body">
-        <div class="error-catalog-list" id="error-catalog-list"><div class="empty-state">正在载入…</div></div>
+        <div class="error-catalog-list" id="error-catalog-list"><div class="empty-state">Loading…</div></div>
       </div>
     </section>
   </main>

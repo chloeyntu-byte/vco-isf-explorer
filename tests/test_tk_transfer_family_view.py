@@ -39,43 +39,43 @@ class TransferFamilyViewTests(unittest.TestCase):
         del field["candidate_details"]
         self.assertEqual(field["candidates"], mapping_candidate_names(field))
         field = transfer_field()
-        field["candidate_details"]["harm_mag"]["errors"] = ["成员表达式不可读"]
+        field["candidate_details"]["harm_mag"]["errors"] = ["Member expression is unreadable"]
         self.assertEqual(field["candidates"], mapping_candidate_names(field))
 
     def test_details_show_actual_source_analysis_expression_and_sideband(self):
         field = transfer_field()
         text = "\n".join(mapping_selection_details(field))
-        for expected in ("系列 harm_mag", "3 个已发现成员", "原始电流源：I4", "分析：hbxf",
-                         "读取代表项：harm_mag_0", "harm_mag_m1 → 边带 -1", "边带 = k − 1",
-                         'getData("/I4"', "电路对应关系由用户确认"):
+        for expected in ("Family harm_mag", "3 discovered members", "Original current source: I4", "Analysis: hbxf",
+                         "Read anchor: harm_mag_0", "harm_mag_m1 → Sideband -1", "sideband = k − 1",
+                         'getData("/I4"', "the user confirms the circuit mapping"):
             self.assertIn(expected, text)
-        self.assertNotIn("支路核验通过", text)
+        self.assertNotIn("branch verification passed", text)
 
     def test_precise_selection_not_relabelled_family_and_unknown_does_not_reuse_old_evidence(self):
         field = transfer_field()
         exact = "\n".join(mapping_selection_details(field, "harm_mag_0"))
-        self.assertIn("精确输出：harm_mag_0", exact)
-        self.assertIn("尚待应用验证", exact)
+        self.assertIn("Exact output: harm_mag_0", exact)
+        self.assertIn("awaits application and validation", exact)
         unknown = "\n".join(mapping_selection_details(field, "unknown_name"))
-        self.assertIn("新输入", unknown)
+        self.assertIn("New input", unknown)
         self.assertNotIn("I4", unknown)
         self.assertNotIn("harm_mag", unknown)
 
     def test_read_errors_and_missing_members_remain_visible(self):
         field = transfer_field()
-        field["candidate_details"]["harm_mag"].update(errors=["成员读取失败"], missing_sidebands=[2, 3])
+        field["candidate_details"]["harm_mag"].update(errors=["Member read failed"], missing_sidebands=[2, 3])
         text = "\n".join(mapping_selection_details(field))
-        self.assertIn("读取提示：成员读取失败", text)
-        self.assertIn("缺少边带：2, 3", text)
+        self.assertIn("Read notes: Member read failed", text)
+        self.assertIn("Missing sidebands: 2, 3", text)
 
     def test_nonzero_representative_and_informational_notes_do_not_expand_or_fail_series(self):
         field = transfer_field()
-        field["candidate_details"]["harm_mag"].update(anchor_output="harm_mag_1", notes=["没有边带0；按用户选择读取代表项"])
+        field["candidate_details"]["harm_mag"].update(anchor_output="harm_mag_1", notes=["no sidebands0; use the user-selected read anchor"])
         self.assertEqual(["harm_mag", "other_output"], mapping_candidate_names(field))
         text = "\n".join(mapping_selection_details(field))
-        self.assertIn("读取代表项：harm_mag_1", text)
-        self.assertIn("系列提示（不阻止运行）", text)
-        self.assertNotIn("边带 0 锚点", text)
+        self.assertIn("Read anchor: harm_mag_1", text)
+        self.assertIn("Family notes (does not block execution)", text)
+        self.assertNotIn("Sideband 0 anchor", text)
 
     def test_review_preserves_family_contract_and_legacy_fields_are_unchanged(self):
         field = transfer_field()
@@ -88,18 +88,18 @@ class TransferFamilyViewTests(unittest.TestCase):
     def test_test_local_value_does_not_request_global_migration_when_global_evidence_exists(self):
         for evidence in ({"shadows_global": True}, {"global_expression": "0"}):
             text = mapping_source_text({"selected_details": {"scope": "test", **evidence}})
-            self.assertIn("全局已存在 / Test 保留同名值", text)
-            self.assertNotIn("需改为全局", text)
-        self.assertIn("需改为全局", mapping_source_text({"selected_details": {"scope": "test"}}))
+            self.assertIn("Global already exists / Test retain the same-name value", text)
+            self.assertNotIn("must be global", text)
+        self.assertIn("must be global", mapping_source_text({"selected_details": {"scope": "test"}}))
 
     def test_phase_role_consumption_is_shown_even_when_candidate_metadata_has_no_role_annotation(self):
         field = transfer_field()
         field["key"] = "transfer_phase_output"
         field["selected_details"] = copy.deepcopy(field["selected_details"])
-        notice = "参考来源；本次幅相从实际传递源重测完整复数，不合成不同来源。"
+        notice = "Reference source; magnitude and phase are remeasured as a full complex response from the actual transfer source, does not combine different sources. "
         field["selected_details"]["role_consumption"] = notice
         self.assertNotIn("role_consumption", field["candidate_details"]["harm_mag"])
-        self.assertIn("实际使用：" + notice, mapping_selection_details(field))
+        self.assertIn("Actually used: " + notice, mapping_selection_details(field))
 
 
 if __name__ == "__main__":

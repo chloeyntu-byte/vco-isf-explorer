@@ -45,22 +45,22 @@ test("binding detail distinguishes current design from each actual history view,
   const history = {serverHistory:{name:"history",path:"/history",complete_runs:2,checked_runs:2}, bindingReady:true};
   const before = JSON.stringify(report);
   let html = ui.roleDetailHtml(report,"vco",history);
-  assert.match(html,/当前 test 设计 · L\/VCO\/new_schematic/);
-  assert.match(html,/实际 history 网表 · 2 条 · 与当前设计存在差异/);
-  assert.match(html,/点 0 \/ corner tt · L\/VCO\/old_schematic/);
+  assert.match(html,/Current test design · L\/VCO\/new_schematic/);
+  assert.match(html,/actual history netlist · 2 curves · differs from the current design/);
+  assert.match(html,/points 0 \/ corner tt · L\/VCO\/old_schematic/);
   assert.match(html,/1970-01-01T00:00:00.000Z.*0123456789ab/);
-  assert.match(html,/点 1 \/ corner ss · L\/VCO\/new_schematic/);
-  assert.match(html,/不禁止合法历史回放/);
+  assert.match(html,/points 1 \/ corner ss · L\/VCO\/new_schematic/);
+  assert.match(html,/valid historical replay remains allowed/);
   assert.equal(JSON.stringify(report),before);
   history.bindingReady = false;
   html = ui.roleDetailHtml(report,"vco",history);
-  assert.match(html,/不能由当前设计推定/);
+  assert.match(html,/cannot be inferred from the current design/);
   assert.doesNotMatch(html,/old_schematic/);
   history.serverHistory.history_manifest = {source_netlists:[{point_id:2,source_design:{view:null},source_mtime:1e100}]};
   html = ui.roleDetailHtml(report,"vco",history);
-  assert.match(html,/部分来源未知/);
-  assert.match(html,/网表时间 · 未知 · SHA256 未知/);
-  assert.match(fs.readFileSync(path.join(__dirname,"../isf_tool/ui/index.html"),"utf8"),/VCO 私有运行副本.*不会修改原 TB/s);
+  assert.match(html,/Some sources unknown/);
+  assert.match(html,/Netlist timestamp · Unknown · SHA256 Unknown/);
+  assert.match(fs.readFileSync(path.join(__dirname,"../isf_tool/ui/index.html"),"utf8"),/private run copy.*original TB/s);
 });
 
 function transferFamilyField() {
@@ -92,7 +92,7 @@ test("transfer selector compacts backend members and retains exact old selection
 test("series are not guessed from spelling and unresolved members remain individually available", () => {
   const { ui } = uiHarness();
   const field = transferFamilyField();
-  field.candidate_details.harm_mag.errors = ["成员表达式不可读"];
+  field.candidate_details.harm_mag.errors = ["Member expression is unreadable"];
   assert.deepEqual(plain(ui.mappingCandidateNames(field)), field.candidates);
   delete field.candidate_details;
   assert.deepEqual(plain(ui.mappingCandidateNames(field)), field.candidates);
@@ -102,13 +102,13 @@ test("selected series details expose members and expression sidebands but do not
   const { ui } = uiHarness();
   const field = transferFamilyField();
   const text = ui.mappingSelectionLines(field).join("\n");
-  for (const value of ["系列 harm_mag", "3 个已发现成员", "原始电流源：I4", "分析：hbxf", "读取代表项：harm_mag_0", "harm_mag_m1 → 边带 -1", "边带 = k − 1", "电路对应关系由用户确认"]) assert.ok(text.includes(value));
-  assert.doesNotMatch(text, /支路核验通过/);
+  for (const value of ["Family harm_mag", "3 discovered members", "Original current source: I4", "Analysis: hbxf", "Read anchor: harm_mag_0", "harm_mag_m1 → Sideband -1", "sideband = k − 1", "the user confirms the circuit mapping"]) assert.ok(text.includes(value));
+  assert.doesNotMatch(text, /branch verification passed/);
   const exact = ui.mappingSelectionLines(field, "harm_mag_0").join("\n");
-  assert.match(exact, /精确输出：harm_mag_0/);
-  assert.match(exact, /尚待应用验证/);
+  assert.match(exact, /Exact output: harm_mag_0/);
+  assert.match(exact, /awaits application and validation/);
   const unknown = ui.mappingSelectionLines(field, "other_name").join("\n");
-  assert.match(unknown, /新输入/);
+  assert.match(unknown, /New input/);
   assert.doesNotMatch(unknown, /I4|harm_mag/);
 });
 
@@ -116,11 +116,11 @@ test("series member details escape markup and preserve missing-member/read diagn
   const { ui } = uiHarness();
   const field = transferFamilyField();
   field.candidate_details.harm_mag.members[0].expression = '<script>bad()</script>';
-  field.candidate_details.harm_mag.errors = ["成员读取失败"];
+  field.candidate_details.harm_mag.errors = ["Member read failed"];
   field.candidate_details.harm_mag.missing_sidebands = [2, 3];
   const html = ui.mappingSelectionHtml(field);
-  assert.match(html, /读取提示：成员读取失败/);
-  assert.match(html, /缺少边带：2, 3/);
+  assert.match(html, /Read notes: Member read failed/);
+  assert.match(html, /Missing sidebands: 2, 3/);
   assert.doesNotMatch(html, /<script>/);
   assert.match(html, /&lt;script&gt;/);
 });
@@ -129,12 +129,12 @@ test("nonzero series representatives and informational notes do not imply physic
   const { ui } = uiHarness();
   const field = transferFamilyField();
   field.candidate_details.harm_mag.anchor_output = "harm_mag_1";
-  field.candidate_details.harm_mag.notes = ["没有边带0；按用户选择读取代表项"];
+  field.candidate_details.harm_mag.notes = ["no sidebands0; use the user-selected read anchor"];
   assert.deepEqual(plain(ui.mappingCandidateNames(field)), ["harm_mag", "unrelated_output"]);
   const text = ui.mappingSelectionLines(field).join("\n");
-  assert.match(text, /读取代表项：harm_mag_1/);
-  assert.match(text, /系列提示（不阻止运行）/);
-  assert.doesNotMatch(text, /边带 0 锚点/);
+  assert.match(text, /Read anchor: harm_mag_1/);
+  assert.match(text, /Family notes \(does not block execution\)/);
+  assert.doesNotMatch(text, /Sideband 0 anchor/);
 });
 
 test("family and exact overrides retain their spelling in saved and run configurations", () => {
@@ -148,33 +148,33 @@ test("test-local values with global evidence do not falsely request global migra
   const { ui } = uiHarness();
   for (const evidence of [{ shadows_global: true }, { global_expression: "0" }]) {
     const html = ui.mappingTableHtml([{ key: "vgs_variable", value: "VGS", selected_details: Object.assign({ scope: "test" }, evidence) }], "flicker", {}, false);
-    assert.match(html, /全局已存在 \/ Test 保留同名值/);
-    assert.doesNotMatch(html, /需改为全局/);
+    assert.match(html, /Global already exists \/ Test retain the same-name value/);
+    assert.doesNotMatch(html, /must be global/);
   }
-  assert.match(ui.mappingTableHtml([{ key: "vgs_variable", value: "VGS", selected_details: { scope: "test" } }], "flicker", {}, false), /需改为全局/);
+  assert.match(ui.mappingTableHtml([{ key: "vgs_variable", value: "VGS", selected_details: { scope: "test" } }], "flicker", {}, false), /must be global/);
 });
 
 test("phase details disclose reference-only role even with independently described candidates", () => {
   const { ui } = uiHarness();
   const field = transferFamilyField();
   field.key = "transfer_phase_output";
-  const notice = "参考来源；本次幅相从实际传递源重测完整复数，不合成不同来源。";
+  const notice = "Reference source; magnitude and phase are remeasured as a full complex response from the actual transfer source, does not combine different sources. ";
   field.selected_details = Object.assign({}, field.selected_details, { role_consumption: notice });
   assert.equal(field.candidate_details.harm_mag.role_consumption, undefined);
-  assert.ok(ui.mappingSelectionLines(field).includes("实际使用：" + notice));
+  assert.ok(ui.mappingSelectionLines(field).includes("Actually used: " + notice));
   assert.ok(ui.mappingTableHtml([field], "vco", {}, false).includes(notice));
 });
 
 test("editable combobox shows selected name and offers unrelated aliases without semantic filtering", () => {
   const { ui } = uiHarness({ "config-form": { values: { mainTb: "/vco", replicaTb: "/noise", executionMode: "dry_run" } } });
-  const field = { key: "vgs_output", label: "栅源波形", value: "A1", detected: "A1", required: true,
+  const field = { key: "vgs_output", label: "Gate-source waveform", value: "A1", detected: "A1", required: true,
     candidates: ["A1", "totally_unrelated", "B7"], maestro_presence: "named_output",
     selected_details: { expression: 'v("G")-v("S")' } };
   const html = ui.mappingTableHtml([field], "vco", {}, false);
   assert.match(html, /role="combobox"/);
   assert.match(html, /value="A1"/);
   assert.match(html, /option value="totally_unrelated"/);
-  assert.match(html, /Maestro 命名输出/);
+  assert.match(html, /Maestro Named output/);
   ui.updateMappingOverride("vco", "vgs_output", "totally_unrelated");
   ui.updateMappingOverride("flicker", "dc_sense_source", "branch_q7");
   ui.updateMappingOverride("flicker", "vgs_pwl_variable", "file_alias_q");
@@ -192,14 +192,14 @@ test("waveform exchange exposes source derivation, global destination, relative 
   const panel = { innerHTML: "" };
   const { ui } = uiHarness({ "waveform-exchange": panel });
   ui.renderWaveformExchange(null);
-  assert.match(panel.innerHTML, /旧绑定不证明/);
-  ui.renderWaveformExchange({ ok: false, checked: "static_prepare", summary: "VBS 来源未保存", path_policy: "relative_to_run",
-    checks: [{ id: "vbs", status: "fail", detail: "必须保存实际端口" }],
+  assert.match(panel.innerHTML, /old bindings do not prove/);
+  ui.renderWaveformExchange({ ok: false, checked: "static_prepare", summary: "VBS source not saved", path_policy: "relative_to_run",
+    checks: [{ id: "vbs", status: "fail", detail: "Actual terminals must be saved" }],
     rows: [{ semantic: "VBS", source_kind: "script_derived", source_expression: 'V("B")-V("S")',
       destination_variable: "bias_c", destination_source: "port_c", pwl_variable: "file_c", scope: "global",
       relative_file: "waveforms/vbs.pwl", status: "fail", detail: '<script>bad()</script>' }] });
-  for (const name of ["script_derived", "port_c", "file_c", "global", "waveforms/vbs.pwl", "必须保存实际端口"]) assert.ok(panel.innerHTML.includes(name));
-  assert.match(panel.innerHTML, /不表示已完成新仿真/);
+  for (const name of ["script_derived", "port_c", "file_c", "global", "waveforms/vbs.pwl", "Actual terminals must be saved"]) assert.ok(panel.innerHTML.includes(name));
+  assert.match(panel.innerHTML, /does not mean new simulation has completed/);
   assert.doesNotMatch(panel.innerHTML, /<script>/);
   assert.match(panel.innerHTML, /&lt;script&gt;/);
 });
@@ -211,9 +211,9 @@ test("generated waveform variable fallback is displayed without becoming a manua
     candidate_kind: "variable", maestro_presence: "script_derived", status: "missing", active: true }] } },
     waveform_exchange: { rows: [{ semantic: "VGS", pwl_variable: "ISF_VGS_PWL_FILE" }] } });
   assert.match(panel.innerHTML, /value="ISF_VGS_PWL_FILE"/);
-  assert.match(panel.innerHTML, /本次脚本生成；Maestro 尚未声明/);
-  assert.match(panel.innerHTML, /生成波形文件变量/);
-  assert.doesNotMatch(panel.innerHTML, /器件端口求差/);
+  assert.match(panel.innerHTML, /Generated by this script; Maestro Not declared yet/);
+  assert.match(panel.innerHTML, /generated waveform file variable/);
+  assert.doesNotMatch(panel.innerHTML, /Script-derived terminal difference/);
   assert.deepEqual(plain(ui.state.mappingOverrides.flicker), {});
 });
 
@@ -312,23 +312,23 @@ test("mapping and complete signal catalog escape names, expressions and provenan
 
 test("saved unknown overrides remain visible and read-only execution fields cannot be edited", () => {
   const { ui } = uiHarness();
-  const html = ui.mappingTableHtml([{ key: "locked", label: "目标器件", detected: "M1", value: "M1", editable: false }], "execution", { obsolete: "OLD_NAME" }, false);
+  const html = ui.mappingTableHtml([{ key: "locked", label: "target device", detected: "M1", value: "M1", editable: false }], "execution", { obsolete: "OLD_NAME" }, false);
   assert.match(html, /obsolete/);
   assert.match(html, /OLD_NAME/);
-  assert.match(html, /名称已变化/);
+  assert.match(html, /names changed/);
   assert.match(html, /data-mapping-key="locked"[^>]* disabled/);
 });
 
 test("an expert file disables all generated execution suggestions and labels them inactive", () => {
   const { ui } = uiHarness();
   const html = ui.mappingTableHtml([
-    { key: "main.terminals.source", label: "源端", value: "TAIL", detected: "TAIL" },
-    { key: "engine.model_file", label: "模型", value: "model.scs", detected: "model.scs" }
+    { key: "main.terminals.source", label: "Source terminal", value: "TAIL", detected: "TAIL" },
+    { key: "engine.model_file", label: "Model", value: "model.scs", detected: "model.scs" }
   ], "execution", { "main.terminals.source": "OVERRIDDEN_TAIL" }, true);
   assert.equal((html.match(/<input[^>]+ disabled/g) || []).length, 2);
   assert.doesNotMatch(html, /data-mapping-reset/);
-  assert.match(html, /参考值（未生效）/);
-  assert.match(html, /专家文件优先；此项不生效/);
+  assert.match(html, /reference value \(not effective\)/);
+  assert.match(html, /Expert file takes precedence; This item is inactive/);
 });
 
 test("changing a binding drops its stale mappings and execution setup with a visible explanation", () => {
@@ -350,7 +350,7 @@ test("changing a binding drops its stale mappings and execution setup with a vis
   assert.equal(elements["pdk-root"].value, "");
   assert.equal(elements["replica-fingerprint"].value, "old");
   assert.equal(elements["mapping-change-notice"].hidden, false);
-  assert.match(elements["mapping-change-notice"].textContent, /已清除/);
+  assert.match(elements["mapping-change-notice"].textContent, /Cleared/);
   assert.equal(ui.state.currentMaestroPair, null);
   assert.equal(storage.get("isf-tool:preflight"), "null");
 });
@@ -380,9 +380,9 @@ test("automatic and expert controls live in Advanced and normal use never requir
   }
   const ids = Array.from(html.matchAll(/\bid="([^"]+)"/g), match => match[1]);
   assert.equal(new Set(ids).size, ids.length, "form controls must have unique IDs");
-  assert.doesNotMatch(html, /bundled Live 必填/);
-  assert.match(html, /无需手工编写配置文件/);
-  assert.match(html, /开始运行.*私有运行目录调用 Spectre/);
+  assert.doesNotMatch(html, /bundled Live required/);
+  assert.match(html, /no manual configuration file needed/);
+  assert.match(html, /Start run.*private run directory Spectre/);
   assert.doesNotMatch(html, /id="execution-mode"|id="allow-execute"/);
 });
 
@@ -390,13 +390,13 @@ test("complete catalog is folded diagnostics with explicit name categories", () 
   const html = fs.readFileSync(path.join(ROOT, "isf_tool", "ui", "index.html"), "utf8");
   assert.match(html, /<details class="nested-details catalog-diagnostics">/);
   assert.doesNotMatch(html, /<details[^>]*catalog-diagnostics[^>]*\bopen\b/);
-  assert.match(html, /本次实际使用与手动覆盖/);
+  assert.match(html, /Effective mappings & manual overrides/);
   for (const role of ["vco", "flicker"]) {
     assert.match(html, new RegExp('id="' + role + '-catalog-section"'));
     assert.ok(html.includes('data-catalog-kind="' + role + '"'));
   }
-  assert.match(html, /查看节点、输出、变量/);
-  assert.match(html, /不会改动 schematic 或 Maestro 原文件/);
+  assert.match(html, /View nodes, Output, Variable/);
+  assert.match(html, /does not change schematic or Maestro original file/);
 });
 
 test("catalog categories preserve arbitrary net, output, expression and design variable names", () => {
@@ -410,7 +410,7 @@ test("catalog categories preserve arbitrary net, output, expression and design v
     { kind: "save", name: "mn1:ids" },
     { kind: "trace", name: "customSavedTrace" }
   ];
-  assert.match(ui.signalCatalogSummary(catalog), /节点 1 项 · Maestro 输出 1 项 · Maestro 设计变量 1 项 · 网表参数 1 项/);
+  assert.match(ui.signalCatalogSummary(catalog), /Node 1 items · Maestro Output 1 items · Maestro Design variable 1 items · Netlist parameter 1 items/);
   const outputs = ui.signalCatalogHtml(catalog, "10k", "output");
   assert.match(outputs, /HB_PN_VCO_10k/);
   assert.match(outputs, /value\(pn/);
@@ -426,15 +426,15 @@ test("preflight shows concrete execution failures with safe field-specific actio
   const danger = '\"><img src=x onerror="bad()">';
   const portable = {
     ok: false,
-    fields: [{ key: "engine.device_subckt_file", label: "内部器件模型文件" }],
-    errors: [{ field: "engine.device_subckt_file", message: "无法在当前模型中唯一识别内部 MOS" }, { field: danger, message: danger }]
+    fields: [{ key: "engine.device_subckt_file", label: "Internal device model file" }],
+    errors: [{ field: "engine.device_subckt_file", message: "Cannot uniquely identify the internal MOS in the current model" }, { field: danger, message: danger }]
   };
-  ui.renderPreflight({ ok: false, required_user_fields: ["portable_setup"], checks: [{ label: "仿真执行设置", status: "fail", detail: "查看缺少的内部模型" }], resolved_config: { detection: { portable_setup: portable } } });
+  ui.renderPreflight({ ok: false, required_user_fields: ["portable_setup"], checks: [{ label: "Simulation execution settings", status: "fail", detail: "Inspect the missing internal model" }], resolved_config: { detection: { portable_setup: portable } } });
   const html = elements["preflight-required"].innerHTML;
-  assert.match(html, /内部器件模型文件/);
-  assert.match(html, /无法在当前模型中唯一识别内部 MOS/);
+  assert.match(html, /Internal device model file/);
+  assert.match(html, /Cannot uniquely identify the internal MOS in the current model/);
   assert.match(html, /data-settings-field="engine.device_subckt_file"/);
-  assert.match(html, /定位并修改此项/);
+  assert.match(html, /Locate and edit this item/);
   assert.doesNotMatch(html, /<img/);
   assert.match(html, /&lt;img/);
 });
@@ -455,9 +455,9 @@ test("failure actions open Advanced and focus the exact execution or mapping fie
   assert.equal(focused, "model");
 });
 
-test("Chinese helper text and preflight details have room to wrap", () => {
+test("English helper text and preflight details have room to wrap", () => {
   const css = fs.readFileSync(path.join(ROOT, "isf_tool", "ui", "styles.css"), "utf8");
-  assert.match(css, /--sans: "WenQuanYi Micro Hei", "Noto Sans CJK SC"/);
+  assert.match(css, /--sans: "Inter", "Noto Sans", "Liberation Sans", "DejaVu Sans"/);
   assert.match(css, /\.field > small\s*\{[^}]*display: block;[^}]*margin-top: 9px;[^}]*line-height: 1\.85;/);
   assert.match(css, /\.preflight-check small\s*\{[^}]*white-space: pre-wrap;[^}]*overflow-wrap: anywhere;/);
   assert.doesNotMatch(css.match(/\.preflight-check small\s*\{[^}]*\}/)[0], /nowrap|ellipsis/);

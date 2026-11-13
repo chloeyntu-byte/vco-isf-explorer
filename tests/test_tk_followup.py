@@ -20,11 +20,11 @@ class ContributionPieTests(unittest.TestCase):
         self.assertAlmostEqual(10, pies["simulated"][0]["power"] / pies["simulated"][1]["power"])
         self.assertAlmostEqual(1000 / 11, pies["reference_coverage_pct"])
         self.assertEqual(["R2 · rn"], pies["missing_calculated"])
-        self.assertIn("计算 N/A", pies["note"])
+        self.assertIn("Calculated N/A", pies["note"])
         self.assertEqual(pies["simulated"][0]["color_index"], pies["calculated"][0]["color_index"])
 
     def test_aligned_bars_share_total_reference_and_leave_unmodeled_sources_missing(self):
-        reference = {"kind": "aggregate", "label": "VCO 总仿真相噪", "psd_V2_Hz": 1e-10, "simulated_dbc": -100}
+        reference = {"kind": "aggregate", "label": "VCO simulated total phase noise", "psd_V2_Hz": 1e-10, "simulated_dbc": -100}
         modeled = dict(self.source("R1", -110, -107), psd_V2_Hz=1e-11, calculated_psd_V2_Hz=2e-11)
         unmodeled = dict(self.source("R2", -113, None), psd_V2_Hz=5e-12)
         bars = contribution_bars([reference, modeled, unmodeled])
@@ -39,7 +39,7 @@ class ContributionPieTests(unittest.TestCase):
         pies = contribution_pies([row, dict(row)])
         self.assertFalse(pies["simulated"])
         self.assertFalse(pies["calculated"])
-        self.assertIn("重复", pies["note"])
+        self.assertIn("duplicated", pies["note"])
 
     def test_calculation_only_and_nonfinite_values_are_not_fabricated(self):
         pies = contribution_pies([self.source("R1", None, -100), self.source("R2", float("nan"), float("inf"))])
@@ -69,17 +69,17 @@ class HistoryProvenanceTests(unittest.TestCase):
         self.assertEqual(2, len(rows))
         self.assertEqual("L/OSC/config", rows[0]["current"])
         self.assertEqual("L/OSC/schematic", rows[0]["history"])
-        self.assertIn("不一致", rows[0]["status"])
-        self.assertIn("内容以 History 为准", rows[1]["status"])
+        self.assertIn("differs from the current design", rows[0]["status"])
+        self.assertIn("content follows History is authoritative", rows[1]["status"])
         self.assertEqual("a" * 64, rows[0]["sha256"])
         self.assertEqual("1 / tt", rows[0]["point"])
 
     def test_unknown_history_is_not_filled_from_current_design(self):
         rows = history_provenance_rows({"roles": {"vco": {"selected_test": {"design": {"lib": "L", "cell": "OSC", "view": "config"}},
             "selected_history": {"history_manifest": {"source_netlists": [{"point_id": "1"}]}}}}})
-        self.assertEqual("未知/未知/未知", rows[0]["history"])
-        self.assertEqual("未知", rows[0]["sha256"])
-        self.assertIn("不推测", rows[0]["status"])
+        self.assertEqual("Unknown/Unknown/Unknown", rows[0]["history"])
+        self.assertEqual("Unknown", rows[0]["sha256"])
+        self.assertIn("not inferred", rows[0]["status"])
 
 
 if __name__ == "__main__":

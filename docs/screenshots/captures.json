@@ -1,6 +1,12 @@
 {
   "captures": [
     {
+      "file": "01-empty-state.png",
+      "view": "setup",
+      "rows": 0,
+      "synthetic": true
+    },
+    {
       "file": "01-overview.png",
       "view": 0,
       "rows": 7,
@@ -35,7 +41,26 @@
       "view": 7,
       "rows": 9,
       "synthetic": true
+    },
+    {
+      "file": "07-overlay.png",
+      "view": 1,
+      "overlay": true,
+      "synthetic": true
+    },
+    {
+      "file": "06-running.png",
+      "view": 1,
+      "demonstration": "running replay",
+      "synthetic": true
     }
   ],
-  "callback_errors": []
+  "callback_errors": [],
+  "language": "en",
+  "theme": "dark",
+  "size": [
+    1600,
+    1000
+  ],
+  "cjk_text_items": 0
 }

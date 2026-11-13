@@ -103,7 +103,7 @@ class PortableSetupTests(unittest.TestCase):
         self.assertEqual("MY_PRIVATE_PROBE", changed["engine"]["physical_profile"]["replica"]["sense_source"])
         self.assertEqual(16, changed["engine"]["hb_max_harmonic"])
         self.assertNotEqual(engine_content_sha256(original["engine"]), engine_content_sha256(changed["engine"]))
-        self.assertEqual("手动覆盖", next(f for f in changed["fields"] if f["key"] == "replica.sense_source")["source"])
+        self.assertEqual("Manual override", next(f for f in changed["fields"] if f["key"] == "replica.sense_source")["source"])
 
     def test_unresolved_device_is_not_filled_from_legacy_M1(self):
         report = self.reports()

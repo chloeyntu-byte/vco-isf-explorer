@@ -43,9 +43,9 @@ class TotalNoiseGuiTests(unittest.TestCase):
         self.assertEqual(before[3], after[3])
         self.assertEqual(before[4], after[4])
         self.assertEqual(reference_curve, next(row["points"] for row in app.phase_noise_chart._series if row["id"] == "spectre"))
-        self.assertIn("双器件", app.metrics_var.get())
-        self.assertIn("VCO 总仿真", app.summary_tree.heading("spectre", "text"))
-        self.assertIn("运行完成不代表验证通过", app.result_quality_var.get())
+        self.assertIn("two-device", app.metrics_var.get())
+        self.assertIn("VCO simulated total", app.summary_tree.heading("spectre", "text"))
+        self.assertIn("Completion does not imply validation", app.result_quality_var.get())
         self.assertFalse(hasattr(app, "contribution_operating_box"))
         app.operating_point_var.set("ff")
         app._operating_point_changed()
@@ -57,7 +57,7 @@ class TotalNoiseGuiTests(unittest.TestCase):
         devices = [app.noise_contribution_tree.item(iid, "values")[1] for iid in app.noise_contribution_tree.get_children()]
         self.assertIn("M0", devices)
         self.assertNotIn("R0", devices)  # flicker filter does not show rn
-        self.assertIn("ISF 双器件", app.summary_tree.heading("calculated", "text"))
+        self.assertIn("ISF two-device", app.summary_tree.heading("calculated", "text"))
         for geometry in ("1020x720", "1240x860"):
             self.root.geometry(geometry)
             self.root.update_idletasks()
@@ -72,8 +72,8 @@ class TotalNoiseGuiTests(unittest.TestCase):
         self.load(result)
         app = self.app
         self.assertEqual("N/A", app.summary_tree.item("summary-0", "values")[4])
-        self.assertIn("总仿真相噪未采集", app.metrics_var.get())
-        self.assertIn("未采集各器件", app.noise_contribution_note_var.get())
+        self.assertIn("simulated total phase noise was not collected", app.metrics_var.get())
+        self.assertIn("No collected per-device", app.noise_contribution_note_var.get())
         self.assertTrue(app.noise_contribution_tree.get_children())
 
 

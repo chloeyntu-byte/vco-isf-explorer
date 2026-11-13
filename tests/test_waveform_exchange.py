@@ -46,16 +46,16 @@ class WaveformExchangeTests(unittest.TestCase):
         export_waveforms(self.wave, self.traces, root)
         (root / 'input.scs').write_text('// ISF waveform-exchange-v1\n')
         (root / 'waveforms/vgs.pwl').write_text('0 100\n')
-        with self.assertRaisesRegex(ValueError, '校验不一致'):
+        with self.assertRaisesRegex(ValueError, 'checksum mismatch'):
             validate_waveform_assets(root)
         manifest = export_waveforms(self.wave, self.traces, root)
         manifest['channels'][0]['relative_file'] = '../escape'
         path = root / 'waveforms/manifest.json'
         path.write_text(json.dumps(manifest))
-        with self.assertRaisesRegex(ValueError, '相对路径'):
+        with self.assertRaisesRegex(ValueError, 'relative to the current netlist'):
             validate_waveform_assets(root)
         path.unlink()
-        with self.assertRaisesRegex(ValueError, '清单缺失'):
+        with self.assertRaisesRegex(ValueError, 'manifest is missing'):
             validate_waveform_assets(root)
 
     def test_invalid_waveforms_and_variable_collisions_are_rejected(self):
@@ -86,7 +86,7 @@ class WaveformExchangeTests(unittest.TestCase):
         self.assertTrue(exchange['ok'], exchange)
         self.assertEqual('static_prepare', exchange['checked'])
         self.assertTrue(exchange['dc_baseline_required'])
-        self.assertIn('本次 VCO 仿真后', exchange['summary'])
+        self.assertIn('after the VCO simulation', exchange['summary'])
         report['roles']['vco']['selected_history'] = {}
         self.assertFalse(inspect_waveform_exchange(report)['ok'])
 

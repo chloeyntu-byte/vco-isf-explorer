@@ -136,8 +136,8 @@ class ResultSeriesTests(unittest.TestCase):
         curves = harmonic_noise_series(result, "A")
         self.assertEqual(["harmonic_0", "harmonic_1", "coherent_total"], [row["id"] for row in curves])
         self.assertIsNone(curves[1]["points"][1][1])
-        self.assertIn("相干总和", curves[-1]["name"])
-        self.assertIn("单器件", curves[-1]["name"])
+        self.assertIn("coherent sum", curves[-1]["name"])
+        self.assertIn("single device", curves[-1]["name"])
         self.assertAlmostEqual(curves[-1]["points"][0][1], MANUAL_DBC, places=11)
         validate_json_compatible(curves)
 

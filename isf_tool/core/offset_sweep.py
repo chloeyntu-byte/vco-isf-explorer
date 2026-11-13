@@ -51,12 +51,12 @@ def _point_contract(scalar, identity, tables):
     metadata = (scalar.get("dual_tb") or {}).get("metadata") or {}
     records = metadata.get("operating_points") or {}
     if not isinstance(records, Mapping):
-        raise ValidationError("物理工况证据必须为对象")
+        raise ValidationError("Physical operating-point evidence must be an object")
     fixed = {}
     if identity in records:
         record = records[identity]
         if not isinstance(record, Mapping):
-            raise ValidationError("物理工况证据无效：%s" % identity)
+            raise ValidationError("Invalid physical operating-point evidence: %s" % identity)
         # RDB paths, run timestamps, whole-contract/runtime hashes and noise
         # offsets are deliberately excluded. The restored source netlist hash
         # precedes per-frequency analysis generation and must remain fixed.
@@ -68,11 +68,11 @@ def _point_contract(scalar, identity, tables):
     summaries = [{key: copy.deepcopy(row[key]) for key in ("corner", "operating_parameters")
                   if key in row} for row in rows]
     if summaries and any(value != summaries[0] for value in summaries[1:]):
-        raise ValidationError("同一频偏的工况 summary 证据不一致：%s" % identity)
+        raise ValidationError("operating point at the same offset summary evidence mismatch: %s" % identity)
     summary = summaries[0] if summaries else {}
     for summary_key, metadata_key in (("corner", "corner"), ("operating_parameters", "params")):
         if summary_key in summary and metadata_key in fixed and summary[summary_key] != fixed[metadata_key]:
-            raise ValidationError("工况 summary 与原始参数证据不一致：%s" % identity)
+            raise ValidationError("Operating point summary differs from raw parameter evidence: %s" % identity)
     # Presence is evidence too: do not silently merge a modern audited point
     # with a legacy child that lost its operating contract.
     return {"metadata_present": identity in records, "metadata": fixed, "summary": summary}
@@ -94,7 +94,7 @@ def aggregate_results(entries, requested_offsets, complete=False):
             "replica_source", "flicker_scope", "target_noise_trace", "peer_noise_trace"
         ) if key in metadata}
         if replica_identity is not None and replica != replica_identity:
-            raise ValidationError("不同频偏的 flicker 副本来源或目标器件不一致")
+            raise ValidationError("at different offsets flicker replica source or target device differs")
         replica_identity = replica
         child_kinds.append(scalar.get("run_kind"))
         if scalar.get("run_kind") == "plan":
@@ -106,7 +106,7 @@ def aggregate_results(entries, requested_offsets, complete=False):
             identity = str(name)
             contract = _point_contract(scalar, identity, tables)
             if identity in operating_contracts and operating_contracts[identity] != contract:
-                raise ValidationError("不同频偏的同名工况证据不一致，拒绝混合：%s" % identity,
+                raise ValidationError("Same-name operating-point evidence differs across offsets, refusing to mix: %s" % identity,
                                       details={"operating_point_id": identity, "offset_hz": hz})
             operating_contracts[identity] = contract
             key = "%s@%sHz" % (identity, offset_key(hz))
@@ -121,12 +121,12 @@ def aggregate_results(entries, requested_offsets, complete=False):
         for row in scalar["summary"]:
             identity = str(row.get("operating_point_id") or row.get("point") or "")
             if not identity or identity not in physical:
-                raise ValidationError("频偏子结果的 summary 与 point 身份不一致")
+                raise ValidationError("Offset child result summary and point identity mismatch")
             key = "%s@%sHz" % (identity, offset_key(hz))
             result["summary"].append(_annotate(row, identity, key, hz, entry))
         physical_sets.append(physical)
     if physical_sets and any(points != physical_sets[0] for points in physical_sets[1:]):
-        raise ValidationError("不同频偏的物理工况集合不一致，拒绝混合结果")
+        raise ValidationError("Physical operating-point sets differ across offsets, refusing to mix results")
     result["offset_sweep"] = {
         "schema_version": 1, "complete": bool(complete), "scope": "flicker",
         "offsets_hz": list(requested_offsets),
@@ -134,13 +134,13 @@ def aggregate_results(entries, requested_offsets, complete=False):
         "operating_point_count": len(physical_sets[0]) if physical_sets else 0,
         "operating_point_contracts": operating_contracts,
         "children": [{key: e.get(key) for key in ("offset_hz", "job_id", "workspace", "bundle_path", "result_sha256")} for e in entries],
-        "note": "各频偏独立计算；总相噪为指定器件 flicker 的各谐波复数贡献总和。",
+        "note": "Each offset is calculated independently; total phase noise uses the selected device flicker sum of complex harmonic contributions. ",
     }
     # A sweep does not multiply the number of physical signoff points.
     # The aggregate is a presentation manifest; child bundles retain their own gates.
     all_plans = bool(child_kinds) and all(kind == "plan" for kind in child_kinds)
     if child_plans and not all_plans:
-        raise ValidationError("执行计划与数值结果不能混合为频偏曲线")
+        raise ValidationError("Execution plans and numerical results cannot be mixed in an offset curve")
     result["run_kind"] = "plan" if all_plans else "replay"
     if all_plans:
         result["dry_run"] = True
@@ -156,7 +156,7 @@ def _annotate(row, identity, key, hz, entry):
     value = copy.deepcopy(row)
     for field in ("offset_Hz", "offset_hz"):
         if value.get(field) is not None and float(value[field]) != hz:
-            raise ValidationError("子任务结果频偏与请求不一致")
+            raise ValidationError("Child result offset differs from the request")
         value[field] = hz
     value["point"] = key
     value["operating_point_id"] = identity
@@ -169,7 +169,7 @@ def run_offset_sweep(service, job_id, payload, config, emit):
     offsets = expand_offsets(config["analysis"])
     root = payload.get("run_root")
     if not root:
-        raise ValidationError("多频偏任务需要独立工作目录")
+        raise ValidationError("Multi-offset jobs require separate work directories")
     path = os.path.join(root, SWEEP_STATE)
     configs = [scalar_config(config, hz) for hz in offsets]
     contract = _digest(configs)
@@ -179,7 +179,7 @@ def run_offset_sweep(service, job_id, payload, config, emit):
         with open(path, encoding="utf-8") as stream:
             manifest = json.load(stream)
         if manifest.get("job_id") != job_id or manifest.get("contract_sha256") != contract:
-            raise ResumeError("频偏任务清单身份不符，不能复用")
+            raise ResumeError("Offset job manifest identity mismatch, cannot be reused")
     entries = []
     service._atomic_json(path, manifest)
     # Check every requested frequency before any new simulation is submitted.
@@ -190,12 +190,12 @@ def run_offset_sweep(service, job_id, payload, config, emit):
         child_service = ToolService(workspace=workspace, command_runner=service._runner)
         report = child_service.preflight({"config": child_config})
         if not report.get("ok"):
-            raise PreflightError("频偏 %s 预检失败" % offset_label(hz),
+            raise PreflightError("Offset %s Preflight failed" % offset_label(hz),
                                  details={"offset_hz": hz, "failed_checks": [
                                      c for c in report.get("checks", []) if c.get("status") == "fail"]})
         children.append((child_service, child_config, workspace))
         emit("sweep_preflight", "running", 5 * (index + 1) / len(offsets),
-             "频偏预检 %d/%d：%s" % (index + 1, len(offsets), offset_label(hz)))
+             "Offset preflight %d/%d: %s" % (index + 1, len(offsets), offset_label(hz)))
     service._atomic_json(path, manifest)
 
     def save_partial():
@@ -210,28 +210,28 @@ def run_offset_sweep(service, job_id, payload, config, emit):
             stopped = service._jobs[job_id].get("cancel_requested", False)
         if stopped:
             save_partial()
-            raise OffsetSweepStopped("已停止后续频偏；当前已完成结果保留，可继续剩余频偏")
+            raise OffsetSweepStopped("Remaining offsets stopped; completed results are retained, remaining offsets can be resumed")
         child_service, child_config, workspace = child
         previous = next((item for item in manifest["children"] if item["offset_hz"] == hz), None)
         child_id = previous.get("job_id") if previous else None
         if child_id:
             old = child_service.get_job(child_id)
             if previous.get("status") == "succeeded" and old["status"] != "succeeded":
-                raise ResumeError("已完成子结果损坏或缺失，拒绝当成普通失败重试", details={"offset_hz": hz})
+                raise ResumeError("Completed child result is corrupt or missing, cannot retry as an ordinary failure", details={"offset_hz": hz})
             snapshot = child_service._jobs[child_id].get("_config_snapshot", {})
             if _runtime_identity_errors(snapshot.get("runtime_identity", {})):
-                raise ResumeError("子任务运行输入已改变，不能复用", details={"offset_hz": hz})
+                raise ResumeError("Child job inputs have changed, cannot be reused", details={"offset_hz": hz})
             if old["status"] == "succeeded":
                 result = child_service.get_result(child_id)
                 result_path = os.path.join(workspace, "jobs", child_id, "result.json")
                 with open(result_path, "rb") as stream:
                     actual_hash = hashlib.sha256(stream.read()).hexdigest()
                 if previous.get("result_sha256") and actual_hash != previous["result_sha256"]:
-                    raise ResumeError("子任务结果校验失败", details={"offset_hz": hz})
+                    raise ResumeError("Child result validation failed", details={"offset_hz": hz})
             elif old["status"] in ("failed", "interrupted"):
                 child_service.resume_job(child_id, {"background": True})
             else:
-                raise ResumeError("子任务仍在运行，不能重复启动", details={"offset_hz": hz})
+                raise ResumeError("Child job is still running, cannot start twice", details={"offset_hz": hz})
         else:
             child_id = child_service.start_run({"config": child_config, "background": True})
             previous = {"offset_hz": hz, "workspace": workspace, "job_id": child_id, "status": "running"}
@@ -244,7 +244,7 @@ def run_offset_sweep(service, job_id, payload, config, emit):
             if state != last:
                 progress = 5 + 94 * (index + min(float(status.get("progress", 0)), 100) / 100) / len(offsets)
                 emit("offset_%s" % offset_key(hz), status["status"], progress,
-                     "%s（%d/%d）：%s" % (offset_label(hz), index + 1, len(offsets), status.get("message", "")),
+                     "%s (%d/%d): %s" % (offset_label(hz), index + 1, len(offsets), status.get("message", "")),
                      {"offset_hz": hz, "child_job_id": child_id})
                 last = state
             if status["status"] not in ("queued", "running"):
@@ -254,7 +254,7 @@ def run_offset_sweep(service, job_id, payload, config, emit):
         service._atomic_json(path, manifest)
         if status["status"] != "succeeded":
             save_partial()
-            raise JobFailedError("频偏 %s 子任务失败；已完成频偏保留" % offset_label(hz),
+            raise JobFailedError("Offset %s Child job failed; completed offsets retained" % offset_label(hz),
                                  details={"offset_hz": hz, "child_job_id": child_id, "error": status.get("error")})
         result = child_service.get_result(child_id)
         result_path = os.path.join(workspace, "jobs", child_id, "result.json")
@@ -280,13 +280,13 @@ def run_offset_sweep(service, job_id, payload, config, emit):
                 expected = _tree_identity(child["bundle_path"])
                 if os.path.exists(target):
                     if not os.path.isdir(target) or _tree_identity(target) != expected:
-                        raise ValidationError("已有子 bundle 与当前结果不符，拒绝覆盖：%s" % target)
+                        raise ValidationError("Existing child bundle does not match the current result, refusing to overwrite: %s" % target)
                 else:
                     temporary = tempfile.mkdtemp(prefix=".isf-export-", dir=os.path.dirname(target))
                     staging = os.path.join(temporary, "bundle")
                     shutil.copytree(child["bundle_path"], staging)
                     if _tree_identity(staging) != expected:
-                        raise ValidationError("子 bundle 暂存校验失败")
+                        raise ValidationError("child bundle staging validation failed")
                     os.rename(staging, target)
                     os.rmdir(temporary)
                 child["bundle_tree_sha256"] = expected["sha256"]
@@ -295,7 +295,7 @@ def run_offset_sweep(service, job_id, payload, config, emit):
                 child["bundle_path"] = None
         service._atomic_json(os.path.join(bundle, "offset_sweep.json"), export)
         service._atomic_json(os.path.join(bundle, "result.json"), result)
-    emit("sweep_complete", "succeeded", 100, "全部 %d 个频偏完成" % len(offsets))
+    emit("sweep_complete", "succeeded", 100, "All %d offsets completed" % len(offsets))
     return result
 
 
@@ -304,11 +304,11 @@ def import_offset_sweep(payload):
     from .dual_tb import import_dual_tb_bundle
     root = os.path.realpath(os.path.expanduser(str(payload["path"])))
     if payload.get("signoff"):
-        raise ValidationError("聚合清单用于比较；签核需逐个频偏验证原始标量 bundle")
+        raise ValidationError("Aggregate manifests are for comparison; signoff requires validating the raw scalar result at every offset bundle")
     with open(os.path.join(root, SWEEP_STATE), encoding="utf-8") as stream:
         manifest = json.load(stream)
     if manifest.get("schema_version") != 1 or not manifest.get("complete"):
-        raise ValidationError("仅能导入完整的多频偏聚合清单")
+        raise ValidationError("Only complete multi-offset aggregate manifests can be imported")
     offsets = expand_offsets({"offsets": {"mode": "list", "values": manifest.get("offsets_hz", [])}})
     entries = []
     seen = set()
@@ -316,16 +316,16 @@ def import_offset_sweep(payload):
         hz = float(child["offset_hz"])
         relative = child.get("bundle_path")
         if hz not in offsets or hz in seen or not relative or os.path.isabs(relative):
-            raise ValidationError("多频偏子 bundle 身份或相对路径无效")
+            raise ValidationError("Multi-offset child bundle invalid identity or relative path")
         seen.add(hz)
         path = os.path.realpath(os.path.join(root, relative))
         if os.path.commonpath((root, path)) != root or path == root:
-            raise ValidationError("多频偏子 bundle 不得越出聚合目录")
+            raise ValidationError("Multi-offset child bundle must stay inside the aggregate directory")
         from .orchestrator import _tree_identity
         if child.get("bundle_tree_sha256") != _tree_identity(path)["sha256"]:
-            raise ValidationError("多频偏子 bundle 内容校验失败")
+            raise ValidationError("Multi-offset child bundle content validation failed")
         scalar = import_dual_tb_bundle({"path": path, "signoff": False})
         entries.append(dict(child, result=scalar))
     if seen != set(offsets):
-        raise ValidationError("多频偏清单缺少子结果")
+        raise ValidationError("Multi-offset manifest is missing child results")
     return aggregate_results(entries, offsets, complete=True)

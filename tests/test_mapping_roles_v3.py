@@ -56,7 +56,7 @@ class MappingRoleV3Tests(unittest.TestCase):
         role, _ = self.role('vco', {'output_p': '/removed_net'},
             lambda test: test['outputs'].append({'name': 'old_wave', 'expression': 'vtime(\'hb "/removed_net")'}))
         self.assertEqual('invalid', self.fields(role)['output_p']['status'])
-        self.assertTrue(any('真实网表不存在' in issue['message'] for issue in role['mapping_issues']))
+        self.assertTrue(any('actual netlist does not contain' in issue['message'] for issue in role['mapping_issues']))
 
     def test_selecting_target_recomputes_default_waveforms(self):
         def mutate(test):
@@ -158,7 +158,7 @@ class MappingRoleV3Tests(unittest.TestCase):
         config['portable_setup'] = {'overrides': {'replica.dc_sense_source': 'G_SOURCE'}}
         setup = self.fixture.build(report, config)
         self.assertFalse(setup['ok'])
-        self.assertTrue(any('信号对应' in item['message'] for item in setup['errors']))
+        self.assertTrue(any('signal mapping' in item['message'] for item in setup['errors']))
 
     def _with_transfer(self, test):
         test['outputs'].extend([

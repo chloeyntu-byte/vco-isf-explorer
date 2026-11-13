@@ -51,7 +51,7 @@ class FollowupGuiTests(unittest.TestCase):
                 labels = {row["label"] for row in rows if row["kind"] == "source"}
                 self.assertTrue(set(row["id"] for row in app.simulated_noise_pie._slices) <= labels)
                 self.assertTrue(set(row["id"] for row in app.calculated_noise_pie._slices) <= labels)
-        self.assertFalse(any("累计" in item for item in app.harmonic_curve_box["values"]))
+        self.assertFalse(any("Cumulative" in item for item in app.harmonic_curve_box["values"]))
 
     def test_supported_window_results_expand_and_other_pages_remain_reachable(self):
         self.load()
@@ -188,10 +188,10 @@ class FollowupGuiTests(unittest.TestCase):
         self.assertNotIn("|m| ≤ 7", self.app.result_quality_var.get())
         self.app.noise_kind_var.set("flicker")
         self.app._point_changed()
-        self.assertNotIn("Thermal 独立输入频带", self.app.result_quality_var.get())
+        self.assertNotIn("Thermal independent input bands", self.app.result_quality_var.get())
         self.app.noise_kind_var.set("both")
         self.app._result_loaded(thermal_fixture(), "fixture")
-        self.assertIn("实际频带范围未记录", self.app.result_quality_var.get())
+        self.assertIn("actual band limits were not recorded", self.app.result_quality_var.get())
 
     def test_real_controller_state_roundtrip_under_workspace_without_running(self):
         with tempfile.TemporaryDirectory(prefix="isf-tk-state-") as directory:
@@ -217,8 +217,8 @@ class FollowupGuiTests(unittest.TestCase):
             ]}}}}
         app._render_mapping_report(report)
         self.assertEqual(2, len(app.history_provenance_tree.get_children()))
-        self.assertIn("多种来源", app.binding_provenance_var.get())
-        self.assertIn("不会自动跟随", app.binding_provenance_var.get())
+        self.assertIn("multiple sources", app.binding_provenance_var.get())
+        self.assertIn("does not follow the current", app.binding_provenance_var.get())
         self.assertEqual("frozen-history", app.vars["vco_history"].get())
         self.controller.preflight.assert_not_called()
 

@@ -79,7 +79,7 @@ class NoiseKindGuiTests(unittest.TestCase):
                     self.assertIn(f"{expected:.7g}", self.app.metrics_var.get())
                     if kind == "thermal":
                         self.assertFalse(any(item["id"].startswith("harmonic_") for item in self.app.harmonic_noise_chart._series))
-                        self.assertFalse(any("累计" in value for value in self.app.harmonic_curve_box["values"]))
+                        self.assertFalse(any("Cumulative" in value for value in self.app.harmonic_curve_box["values"]))
         self.assertEqual(1e-6, result["points"]["tt@1000"]["harmonics"][0]["Q_real_V_rtHz"])
 
     def test_legacy_results_do_not_fill_missing_thermal_or_both_from_flicker(self):
@@ -115,13 +115,13 @@ class NoiseKindGuiTests(unittest.TestCase):
         self.assertEqual(before, result)
 
     def test_thermal_quality_is_explicitly_three_state_in_actual_view(self):
-        for value, label in ((None, "未提供"), (False, "未通过"), (True, "通过"), ("false", "未提供")):
+        for value, label in ((None, "Not provided"), (False, "Failed"), (True, "Passed"), ("false", "Not provided")):
             with self.subTest(value=value):
                 result = thermal_fixture()
                 for row in result["summary"]:
                     row["thermal_noise"]["numerical_quality"] = {"pass": value}
                 self.load(result)
-                self.assertIn("Thermal 仿真数值质量：" + label, self.app.result_quality_var.get())
+                self.assertIn("Thermal Simulation numerical quality: " + label, self.app.result_quality_var.get())
 
 
 if __name__ == "__main__":

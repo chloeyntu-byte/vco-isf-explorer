@@ -1318,13 +1318,13 @@ def inspect_engine_contract(
             ("testbenches.replica.mapping.dc_instance", (maestro_flicker_mapping or {}).get("dc_instance"), profile["replica"].get("dc_instance", "M1")),
         ):
             if selected and _normalized_net(selected).replace("/", ".") != str(effective):
-                errors.append({"field": field, "message": "映射表所选器件与执行设置不一致；请修正选择或清空专家文件以自动生成。", "selected": selected, "effective": effective})
+                errors.append({"field": field, "message": "Selected mapped device differs from execution settings; correct the selection or clear the expert file to generate settings. ", "selected": selected, "effective": effective})
         peer = (maestro_vco_mapping or {}).get("peer_instance")
         peer_trace = profile["main"]["traces"].get("peer_noise") or ""
         peer_trace_valid = (peer_trace == str(peer) if profile["replica"]["intrinsic"].get("inline_alias")
                             else peer_trace.startswith(str(peer) + "."))
         if peer and not peer_trace_valid:
-            errors.append({"field": "testbenches.vco.mapping.peer_instance", "message": "配对器件与实际噪声贡献路径不一致。", "selected": peer})
+            errors.append({"field": "testbenches.vco.mapping.peer_instance", "message": "Peer device differs from the actual noise contribution path. ", "selected": peer})
         seen_maestro_sources = set()
         for source in maestro_source_netlists or []:
             path = _real_path(source.get("path") if isinstance(source, Mapping) else source)

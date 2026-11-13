@@ -24,7 +24,7 @@ class ProcessViewModelTests(unittest.TestCase):
         self.assertEqual('8.192 pA/√Hz', engineering(8.192e-12, 'A/√Hz'))
         for value in (None, float('nan'), float('inf'), 'N/A'):
             self.assertEqual('—', engineering(value))
-        self.assertIn('字段', engineering({'one': 1}))
+        self.assertIn('Fields', engineering({'one': 1}))
         self.assertEqual('True', engineering(True))
 
     def test_workpoint_original_units_keys_and_hard_breaks(self):
@@ -55,7 +55,7 @@ class ProcessViewModelTests(unittest.TestCase):
     def test_missing_phase_is_not_fabricated_from_row_number(self):
         projected=process_projection({'points':{'p':{'workpoint':[{'sample':9,'isf_i':1.}]}}},'p')
         self.assertEqual([None],projected['panels'][2]['series'][0]['points'])
-        self.assertIn('缺',projected['panels'][2]['reason'])
+        self.assertIn('Missing',projected['panels'][2]['reason'])
 
     def test_thermal_sqrt_psd_preserves_native_grid_and_missing(self):
         raw=[{'device':'M0','mechanism':'id','source_time_s':[0.,.5,1.], 'source_psd_A2_Hz':[4e-24,-1,None]}]
@@ -65,7 +65,7 @@ class ProcessViewModelTests(unittest.TestCase):
         self.assertEqual('M0/id',projected['sources'][0]['id'])
         self.assertEqual([(0.,2e-12),None,None],projected['sources'][0]['series']['points'])
         self.assertIn('2/3',projected['sources'][0]['series']['reason'])
-        self.assertEqual('本结果没有 thermal 源系数',thermal_cycle_projection([],1.)['reason'])
+        self.assertEqual('This result has no thermal source coefficients',thermal_cycle_projection([],1.)['reason'])
 
     def test_thermal_loader_exact_corner_explicit_path_missing_and_bad_file(self):
         result={'summary':[{'point':'p','operating_point_id':'ff','f0_Hz':1.}], 'points':{'p':{}}}
@@ -83,13 +83,13 @@ class ProcessViewModelTests(unittest.TestCase):
             result['summary'][0]['thermal_noise']={'source_coefficients_path':str(target)}
             self.assertTrue(load_thermal_coefficients(result,'p')['sources'])
             target.write_text('{bad',encoding='utf8')
-            self.assertIn('本结果没有 thermal 源系数',load_thermal_coefficients(result,'p',job)['reason'])
+            self.assertIn('This result has no thermal source coefficients',load_thermal_coefficients(result,'p',job)['reason'])
 
     def test_thermal_missing_mode_has_explicit_reason_keeps_flicker_product_scope(self):
         raw={'points':{'p':{'workpoint':[]}}}
         projection=process_projection(raw,'p',noise_kind='thermal')
         self.assertEqual([],projection['panels'][1]['series'])
-        self.assertIn('没有 thermal 源系数',projection['panels'][1]['reason'])
+        self.assertIn('no thermal source coefficients',projection['panels'][1]['reason'])
         self.assertIn('flicker',projection['panels'][3]['title'])
 
     def test_harmonic_and_offset_keys_match_all_chart_series(self):
@@ -116,12 +116,12 @@ class ProcessViewModelTests(unittest.TestCase):
         keys=[r['key'] for r in projected['rows']]
         self.assertEqual(len(keys),len(set(keys)))
         self.assertEqual('comparison:flicker_pair',projected['rows'][0]['key'])
-        self.assertEqual('对称 gm pair · flicker 对比',projected['rows'][0]['label'])
+        self.assertEqual('symmetric gm pair · flicker comparison',projected['rows'][0]['label'])
         self.assertTrue(all(r['kind']=='source' for r in projected['rows'][1:]))
         for row in projected['rows']:
-            if not row['modeled']:self.assertIn('不参与 ISF 计算',row['scope'])
+            if not row['modeled']:self.assertIn('outside ISF calculation',row['scope'])
         self.assertTrue(projected['band_rows'])
-        self.assertIn('没有 thermal',contribution_projection({})['reason'])
+        self.assertIn('no thermal',contribution_projection({})['reason'])
 
     def test_legacy_thermal_evidence_is_visible_but_cannot_restore_eligibility(self):
         raw=thermal_fixture()
@@ -149,10 +149,10 @@ class ProcessViewModelTests(unittest.TestCase):
             row['thermal_noise']['scope'] = 'gm_pair_and_passive_network'
         before = copy.deepcopy(raw)
         view = build_result_view(raw, point=raw['summary'][0]['point'], noise_scope='pair', noise_kind='both')
-        self.assertIn('合计不可用', noise_scope_note(view, 'both'))
-        self.assertIn('切换 flicker', noise_scope_note(view, 'both'))
-        self.assertNotIn('合计不可用', noise_scope_note(view, 'flicker'))
-        self.assertNotIn('合计不可用', noise_scope_note({'selected_summary': {'thermal_noise': {'status': 'available'}}}, 'both'))
+        self.assertIn('total is N/A', noise_scope_note(view, 'both'))
+        self.assertIn('Select flicker', noise_scope_note(view, 'both'))
+        self.assertNotIn('total is N/A', noise_scope_note(view, 'flicker'))
+        self.assertNotIn('total is N/A', noise_scope_note({'selected_summary': {'thermal_noise': {'status': 'available'}}}, 'both'))
         self.assertEqual('N/A', view['metrics']['calculated_dbc'])
         self.assertEqual(before, raw)
 
@@ -176,7 +176,7 @@ class ProcessViewModelTests(unittest.TestCase):
         projection=process_projection(missing,point)
         self.assertTrue(projection['rows'])
         self.assertTrue(projection['derived'])
-        self.assertIn('派生',projection['panels'][2]['series'][0]['name'])
+        self.assertIn('derived',projection['panels'][2]['series'][0]['name'])
 
 
 if __name__=='__main__':unittest.main()

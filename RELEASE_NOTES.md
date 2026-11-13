@@ -1,5 +1,7 @@
 # VCO ISF Explorer 1.1.0
 
+- Desktop and Web interfaces are now fully in English, including charts, dialogs, metrics and troubleshooting. Data formats and export field names remain unchanged; older saved harmonic selections are accepted.
+
 Explore eight result views through a process navigator, with linked tables and charts.
 Inspect operating waveforms, DC/dynamic modulation, signed ISF and their products,
 and enable the normalized Fig.14 overlay. Harmonic views show coherent sums and
@@ -13,4 +15,4 @@ bands and an unmodeled source. All example references are synthetic. See
 
 Thermal scope remains the gm pair and passive LC. Other active devices are not
 modeled. Missing evidence stays unavailable; replay does not grant signoff.
-The UI is Chinese. Live analysis requires the user's licensed EDA environment.
+The UI is English. Live analysis requires the user's licensed EDA environment.

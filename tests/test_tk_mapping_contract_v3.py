@@ -13,26 +13,26 @@ class MappingEvidenceTests(unittest.TestCase):
         self.assertEqual(["vbs_output"], [row["key"] for row in rows])
 
     def test_provenance_distinguishes_named_output_from_script_and_scope(self):
-        self.assertIn("Maestro 命名输出", mapping_source_text({"maestro_presence": "named_output"}))
+        self.assertIn("Maestro Named output", mapping_source_text({"maestro_presence": "named_output"}))
         derived = mapping_source_text({"maestro_presence": "script_derived", "effective_derivation": "V(B)-V(S)", "scope": "test"})
         self.assertIn("V(B)-V(S)", derived)
-        self.assertIn("需改为全局", derived)
-        self.assertNotIn("Maestro 命名输出", derived)
+        self.assertIn("must be global", derived)
+        self.assertNotIn("Maestro Named output", derived)
 
     def test_new_exchange_schema_keeps_destination_relative_path_and_blocker(self):
-        self.assertIn("尚未检查", waveform_exchange_view({"ok": True, "bindings": {"vco": {"binding_fingerprint": "old"}}})["summary"])
+        self.assertIn("not checked", waveform_exchange_view({"ok": True, "bindings": {"vco": {"binding_fingerprint": "old"}}})["summary"])
         view = waveform_exchange_view({"waveform_exchange": {
-            "ok": False, "checked": "static_prepare", "summary": "缺少真实体源波形", "path_policy": "relative_to_run",
-            "checks": [{"id": "vbs", "status": "fail", "detail": "VBS 两端没有保存"}],
+            "ok": False, "checked": "static_prepare", "summary": "Actual body-source waveform missing", "path_policy": "relative_to_run",
+            "checks": [{"id": "vbs", "status": "fail", "detail": "VBS terminals not saved"}],
             "rows": [{"semantic": "VBS", "source_kind": "script_derived", "source_expression": "V(B)-V(S)",
                       "destination_variable": "bias_c", "pwl_variable": "wave_c", "destination_source": "port_c",
-                      "relative_file": "waveforms/vbs.pwl", "scope": "global", "status": "fail", "detail": "缺少源数据"}]
+                      "relative_file": "waveforms/vbs.pwl", "scope": "global", "status": "fail", "detail": "Source data missing"}]
         }})
         self.assertEqual("wave_c → port_c", view["rows"][0]["destination"])
         self.assertEqual("waveforms/vbs.pwl", view["rows"][0]["path_policy"])
         self.assertIn("V(B)-V(S)", view["rows"][0]["source"])
-        self.assertIn("缺少源数据", view["rows"][0]["status"])
-        self.assertEqual(["VBS 两端没有保存"], view["checks"])
+        self.assertIn("Source data missing", view["rows"][0]["status"])
+        self.assertEqual(["VBS terminals not saved"], view["checks"])
 
     def test_script_generated_fallback_is_visible_without_inventing_a_maestro_variable(self):
         report = {"roles": {"flicker": {"mapping_fields": [{"key": "vgs_pwl_variable", "value": None,
@@ -41,8 +41,8 @@ class MappingEvidenceTests(unittest.TestCase):
         row = mapping_review_rows(report)[0]
         self.assertEqual("ISF_VGS_PWL_FILE", row["effective_value"])
         self.assertIsNone(row["value"])
-        self.assertIn("文件变量", mapping_source_text(row))
-        self.assertNotIn("求差", mapping_source_text(row))
+        self.assertIn("file variable", mapping_source_text(row))
+        self.assertNotIn("terminal difference", mapping_source_text(row))
         self.assertNotIn("effective_value", report["roles"]["flicker"]["mapping_fields"][0])
 
 

@@ -51,7 +51,7 @@ class VariableDependencyScopeTests(unittest.TestCase):
     def test_conflicting_repeated_local_values_fail_instead_of_last_wins(self):
         tests = [{'name': 'DC', 'variables': [{'name': 'gate', 'expression': '0'},
                                            {'name': 'gate', 'expression': '1'}]}]
-        with self.assertRaisesRegex(ValidationError, 'DC.*gate.*冲突'):
+        with self.assertRaisesRegex(ValidationError, 'DC.*gate.*conflicting'):
             _attach_global_variables(tests, self.root())
 
 

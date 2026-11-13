@@ -141,7 +141,7 @@ finally:
         first=next(iter(self.ui.quality_table.rows))
         self.ui.quality_table.tree.selection_set(first)
         self.ui.quality_table.copy()
-        self.assertIn('全部指标与质量',self.root.clipboard_get())
+        self.assertIn('All metrics & quality',self.root.clipboard_get())
 
     def test_drawer_navigation_toggle_and_full_precision_copy(self):
         self.ui.show(1);self.root.update()
@@ -258,7 +258,7 @@ finally:
         self.root.update()
         texts = [self.ui.chart.itemcget(i, 'text') for i in self.ui.chart.find_all() if self.ui.chart.type(i)=='text']
         self.assertIn('357 G', texts)
-        self.assertTrue(any('范围 357 G' in t for t in texts))
+        self.assertTrue(any('range 357 G' in t for t in texts))
 
     def test_overview_allocates_more_height_to_phase_noise_and_bounds_readouts(self):
         for size, minimum in (('1600x1000', 160), ('1280x800', 80)):

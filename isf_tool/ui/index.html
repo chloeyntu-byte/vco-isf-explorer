@@ -1,31 +1,31 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="VCO 与 flicker-noise Maestro 双 TB 绑定">
-  <title>绑定双 TB · ISF Workbench</title>
+  <meta name="description" content="VCO and flicker-noise Maestro dual TB Binding">
+  <title>Bind both TB · ISF Workbench</title>
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
 </head>
 <body data-page="setup">
   <header class="topbar">
-    <a class="brand" href="index.html" aria-label="ISF Workbench 首页">
+    <a class="brand" href="index.html" aria-label="ISF Workbench Setup">
       <span class="brand-mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 13.5c2.1 0 2.1-7 4.3-7s2.2 7 4.4 7 2.2-7 5.3-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
       <span class="brand-copy">ISF Workbench<small>Maestro pair workflow</small></span>
     </a>
-    <nav class="step-nav" aria-label="分析步骤">
+    <nav class="step-nav" aria-label="Analysis steps">
       <ol>
-        <li data-nav-page="setup"><a class="step-link" href="index.html"><span class="step-number">01</span><span class="step-label">绑定双 TB</span></a></li>
-        <li data-nav-page="discover"><a class="step-link" href="discover.html"><span class="step-number">02</span><span class="step-label">检测与运行</span></a></li>
-        <li data-nav-page="results"><a class="step-link" href="results.html"><span class="step-number">03</span><span class="step-label">分析结果</span></a></li>
-        <li data-nav-page="inspect"><a class="step-link" href="inspect.html"><span class="step-number">04</span><span class="step-label">检查与导出</span></a></li>
+        <li data-nav-page="setup"><a class="step-link" href="index.html"><span class="step-number">01</span><span class="step-label">Bind both TB</span></a></li>
+        <li data-nav-page="discover"><a class="step-link" href="discover.html"><span class="step-number">02</span><span class="step-label">Detect & run</span></a></li>
+        <li data-nav-page="results"><a class="step-link" href="results.html"><span class="step-number">03</span><span class="step-label">Results</span></a></li>
+        <li data-nav-page="inspect"><a class="step-link" href="inspect.html"><span class="step-number">04</span><span class="step-label">Inspect & export</span></a></li>
       </ol>
     </nav>
     <div class="topbar-tools">
-      <a class="tool-link" href="errors.html">错误码</a>
-      <span class="api-badge" id="api-status" data-state="checking"><span class="status-dot"></span><span class="api-label-long">正在检查 API</span><span class="sr-only" id="api-status-detail"></span></span>
-      <button class="icon-button" type="button" data-action="refresh-health" aria-label="重新检查 API"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.2 5.7A5.5 5.5 0 1 0 13 10.8M13.2 2.8v2.9h-2.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <a class="tool-link" href="errors.html">Error codes</a>
+      <span class="api-badge" id="api-status" data-state="checking"><span class="status-dot"></span><span class="api-label-long">Checking API</span><span class="sr-only" id="api-status-detail"></span></span>
+      <button class="icon-button" type="button" data-action="refresh-health" aria-label="Check again API"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.2 5.7A5.5 5.5 0 1 0 13 10.8M13.2 2.8v2.9h-2.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
   </header>
 
@@ -33,26 +33,26 @@
     <header class="page-heading">
       <div class="page-heading-copy">
         <div class="eyebrow">Step 01 / Bind existing testbenches</div>
-        <h1>选择两个测试平台，自动对应信号</h1>
-        <p>选择 VCO 与电流噪声测试平台后，工具会读取分析、节点、输出表达式和变量，再按 VGS、VDS 等物理量对应两侧信号。识别不唯一时会提示选择；全部识别结果和手动覆盖集中在高级设置。</p>
+        <h1>Select two testbenches, Map signals automatically</h1>
+        <p>Select VCO and current-noise testbench, the tool reads analyses, Node, output expressions and variables, then by VGS, VDS and other physical quantities map signals on both sides. ambiguous detection prompts for selection; All detection results and manual overrides are in Advanced settings. </p>
       </div>
       <div class="heading-actions">
-        <button class="btn" type="button" id="load-config">读取已有绑定</button>
-        <a class="btn" href="errors.html">查看错误码</a>
+        <button class="btn" type="button" id="load-config">Read existing binding</button>
+        <a class="btn" href="errors.html">View error codes</a>
       </div>
     </header>
 
     <details class="card workspace-state-panel">
-      <summary>保存 / 加载工作状态</summary>
+      <summary>Save / Load workspace state</summary>
       <div class="card-body">
         <div class="workspace-state-controls">
-          <label class="field">状态名称<input id="workspace-state-name" maxlength="120" placeholder="例如：Class F · 多频偏"></label>
-          <button class="btn" id="workspace-state-save" type="button">保存当前状态</button>
-          <label class="field">工作区已保存状态<select id="workspace-state-list"><option value="">选择已保存状态</option></select></label>
-          <button class="btn" id="workspace-state-refresh" type="button">刷新列表</button>
-          <button class="btn" id="workspace-state-load" type="button">加载所选状态</button>
+          <label class="field">State name<input id="workspace-state-name" maxlength="120" placeholder="for example: Class F · Multi-offset"></label>
+          <button class="btn" id="workspace-state-save" type="button">Save current state</button>
+          <label class="field">Saved workspace states<select id="workspace-state-list"><option value="">Select saved state</option></select></label>
+          <button class="btn" id="workspace-state-refresh" type="button">Refresh list</button>
+          <button class="btn" id="workspace-state-load" type="button">Load selected state</button>
         </div>
-        <p class="caption" id="workspace-state-status" role="status">保存在工作区 states 目录。包含设置、手动对应关系及可核验的结果选择；不保存执行授权，加载后需重新检测绑定，不自动预检或仿真。</p>
+        <p class="caption" id="workspace-state-status" role="status">Saved in workspace states Directory. includes settings, manual mappings and verifiable result selection; execution consent is not saved, detect and bind again after loading, no automatic preflight or simulation. </p>
       </div>
     </details>
 
@@ -70,8 +70,8 @@
         <div class="content-stack">
           <section class="card pair-card">
             <div class="card-header">
-              <div class="card-title"><span class="section-index">01</span><div><h2>选择现有 Maestro</h2><p>手动选择是确定入口；自动查找只在候选唯一时填写。</p></div></div>
-              <span class="tag" id="tb-mode-tag">双 TB 主链</span>
+              <div class="card-title"><span class="section-index">01</span><div><h2>Select existing Maestro</h2><p>manual selection is authoritative; automatic discovery fills only unique candidates. </p></div></div>
+              <span class="tag" id="tb-mode-tag">dual TB primary workflow</span>
             </div>
             <div class="card-body content-stack">
               <datalist id="maestro-candidates"></datalist>
@@ -80,170 +80,170 @@
                   <div class="tb-card-head">
                     <div class="tb-role">
                       <span class="tb-glyph" aria-hidden="true">V</span>
-                      <span><strong>VCO Maestro</strong><small>周期工作点、HB/HBNOISE、输出参考</small></span>
+                      <span><strong>VCO Maestro</strong><small>Periodic operating point, HB/HBNOISE, Output reference</small></span>
                     </div>
-                    <span class="tag neutral" id="vco-bind-status">未检测</span>
+                    <span class="tag neutral" id="vco-bind-status">Not checked</span>
                   </div>
                   <div class="stack-fields">
                     <div class="field">
-                      <label for="main-tb">VCO 测试平台目录 <span class="required">*</span></label>
+                      <label for="main-tb">VCO Testbench directory <span class="required">*</span></label>
                       <input class="mono-input" id="main-tb" name="mainTb" type="text" list="maestro-candidates" placeholder="/path/to/TB_VCO/maestro" required autocomplete="off">
-                      <small>选择保存 Maestro 的目录，或其上一级 cell 目录；其中应有已完成的 HB/HBNOISE 仿真记录。</small>
+                      <small>Select the saved Maestro directory, or its parent cell Directory; must contain completed HB/HBNOISE History. </small>
                     </div>
                   </div>
-                  <div class="tb-detection" id="vco-bind-detail"><span>等待只读检测</span></div>
+                  <div class="tb-detection" id="vco-bind-detail"><span>Waiting for read-only detection</span></div>
                 </article>
 
                 <article class="tb-card" data-maestro-role="flicker">
                   <div class="tb-card-head">
                     <div class="tb-role">
                       <span class="tb-glyph warm" aria-hidden="true">F</span>
-                      <span><strong>Flicker-noise Maestro</strong><small>VGS/VDS(/VBS)、drain-current noise、10 kHz 绝对强度</small></span>
+                      <span><strong>Flicker-noise Maestro</strong><small>VGS/VDS(/VBS), drain-current noise, 10 kHz absolute magnitude</small></span>
                     </div>
-                    <span class="tag neutral" id="flicker-bind-status">未检测</span>
+                    <span class="tag neutral" id="flicker-bind-status">Not checked</span>
                   </div>
                   <div class="stack-fields">
                     <div class="field">
-                      <label for="replica-tb">电流噪声测试平台目录 <span class="required">*</span></label>
+                      <label for="replica-tb">Current-noise testbench directory <span class="required">*</span></label>
                       <input class="mono-input" id="replica-tb" name="replicaTb" type="text" list="maestro-candidates" placeholder="/path/to/i_flicker/maestro" required autocomplete="off">
-                      <small>选择做 DC/noise 扫描的 Maestro；两侧输出、节点和变量可以使用不同名字。</small>
+                      <small>Select for DC/noise sweep Maestro; outputs on both sides, nodes and variables may use different names. </small>
                     </div>
                   </div>
-                  <div class="tb-detection" id="flicker-bind-detail"><span>等待只读检测</span></div>
+                  <div class="tb-detection" id="flicker-bind-detail"><span>Waiting for read-only detection</span></div>
                 </article>
               </div>
 
               <div class="pair-actions">
-                <button class="btn primary" id="inspect-maestro-pair" type="button">检测并绑定当前设置</button>
-                <span class="caption">唯一完整候选自动选择，多个完整候选须手选后重新检测。选择入口在高级设置的“测试与仿真记录”。</span>
+                <button class="btn primary" id="inspect-maestro-pair" type="button">Detect & bind current settings</button>
+                <span class="caption">a unique complete candidate is selected automatically, select manually when multiple complete candidates exist, then detect again. Selection is in Advanced settings“Tests & History”. </span>
               </div>
-              <div class="mapping-readiness" role="status"><span id="mapping-readiness">检测后列出节点 net、Maestro 输出 Output 和设计变量；VGS / VDS / VBS 只是其中的跨 TB 对应关系。</span><button class="btn" id="open-signal-settings" type="button">查看节点、输出、变量</button></div>
+              <div class="mapping-readiness" role="status"><span id="mapping-readiness">After detection, list nodes net, Maestro output and design variables; VGS / VDS / VBS is only the cross- TB Mappings. </span><button class="btn" id="open-signal-settings" type="button">View nodes, Output, Variable</button></div>
               <p class="caption" id="mapping-change-notice" role="status" hidden></p>
-              <p class="caption">只计算 gm 的 flicker / thermal 与纯被动 LC 网络的 thermal，不计算电容阵列内部噪声；仿真参考仍为 VCO 总相噪。Thermal 在 VCO 私有运行副本中自动追加 noise 源谱测量及 HBXF 传递测量，不会修改原 TB，也不要求新增必须手选的 noise 输出。原有 HB/HBNOISE 与信号对应仍需核对。</p>
+              <p class="caption">calculates only gm of flicker / thermal and purely passive LC network thermal, capacitor-bank internal noise is not calculated; simulation reference remains VCO total phase noise. Thermal in VCO automatically added in the private run copy noise source-spectrum measurement and HBXF transfer measurement, does not modify the original TB, no new mandatory manual selection required for noise Output. existing HB/HBNOISE and signal mappings still require review. </p>
 
               <div class="pair-issues" id="maestro-pair-issues" hidden>
-                <div class="empty-state compact">尚无检测结果</div>
+                <div class="empty-state compact">No detection results yet</div>
               </div>
             </div>
           </section>
 
           <section class="card">
             <div class="card-header">
-              <div class="card-title"><span class="section-index">02</span><div><h2>计算与运行</h2><p>先检测并预检，再决定是否启动真实仿真。采样与谐波数量可在高级设置调整。</p></div></div>
+              <div class="card-title"><span class="section-index">02</span><div><h2>Calculation & execution</h2><p>detect and run preflight first, then decide whether to start live simulation. Adjust samples and harmonic count in Advanced settings. </p></div></div>
             </div>
             <div class="card-body">
               <div class="form-grid">
                 <div class="field full">
-                  <label for="offset-mode">频偏设置</label>
-                  <select id="offset-mode" name="offsetMode"><option value="single">单个频偏</option><option value="list">多个单点</option><option value="linear">线性范围</option><option value="log">对数范围</option></select>
-                  <small>裸数字为 Hz；k = 1000，M = 1000000。例如 1k,10k,1M,100M。不使用含糊的小写 m。</small>
+                  <label for="offset-mode">Offset settings</label>
+                  <select id="offset-mode" name="offsetMode"><option value="single">Single offset</option><option value="list">Offset list</option><option value="linear">Linear range</option><option value="log">Log range</option></select>
+                  <small>bare numbers use Hz; k = 1000, M = 1000000. for example 1k,10k,1M,100M. do not use ambiguous lowercase m. </small>
                 </div>
                 <div class="field" data-offset-modes="single">
-                  <label for="offset-value">关注的频偏</label>
+                  <label for="offset-value">offset of interest</label>
                   <div class="input-group"><input id="offset-value" name="offsetValue" type="number" min="0" step="0.1" value="10" required><select id="offset-unit" name="offsetUnit"><option value="Hz">Hz</option><option value="kHz" selected>kHz</option><option value="MHz">MHz</option></select></div>
-                  <small>例如 10 kHz。噪声输出表达式需要覆盖这个频偏，识别结果可在高级设置核对。</small>
+                  <small>for example 10 kHz. noise output expressions must cover this offset, review detected values in Advanced settings. </small>
                 </div>
-                <div class="field full" data-offset-modes="list" hidden><label for="offset-values">频偏列表</label><input id="offset-values" name="offsetValues" value="1k,10k,1M,100M" placeholder="1k,10k,1M,100M"><small>用逗号或空格分隔；后端按 Hz 排序、去重。</small></div>
-                <div class="field" data-offset-modes="linear log" hidden><label for="offset-start">起始频偏</label><input id="offset-start" name="offsetStart" value="1k" placeholder="1k"></div>
-                <div class="field" data-offset-modes="linear log" hidden><label for="offset-stop">终止频偏（包含）</label><input id="offset-stop" name="offsetStop" value="100M" placeholder="100M"></div>
+                <div class="field full" data-offset-modes="list" hidden><label for="offset-values">Offset list</label><input id="offset-values" name="offsetValues" value="1k,10k,1M,100M" placeholder="1k,10k,1M,100M"><small>separate with commas or spaces; backend uses Hz sort, deduplicate. </small></div>
+                <div class="field" data-offset-modes="linear log" hidden><label for="offset-start">Start offset</label><input id="offset-start" name="offsetStart" value="1k" placeholder="1k"></div>
+                <div class="field" data-offset-modes="linear log" hidden><label for="offset-stop">Stop offset (includes)</label><input id="offset-stop" name="offsetStop" value="100M" placeholder="100M"></div>
                 <div class="field full" data-offset-modes="linear" hidden>
-                  <label for="offset-spacing">线性间隔方式</label><select id="offset-spacing" name="offsetSpacing"><option value="intervals">间隔数 · N 个间隔产生 N+1 点</option><option value="step">步长 · 不整除时追加终点</option></select>
-                  <div class="field" data-offset-spacing="intervals"><label for="offset-intervals">间隔数 N</label><input id="offset-intervals" name="offsetIntervals" type="number" min="1" max="255" step="1" value="5"></div>
-                  <div class="field" data-offset-spacing="step" hidden><label for="offset-step">频偏步长</label><input id="offset-step" name="offsetStep" value="1k" placeholder="1k"></div>
+                  <label for="offset-spacing">Linear spacing</label><select id="offset-spacing" name="offsetSpacing"><option value="intervals">Intervals · N intervals produce N+1 points</option><option value="step">Step · append the endpoint if the step does not divide exactly</option></select>
+                  <div class="field" data-offset-spacing="intervals"><label for="offset-intervals">Intervals N</label><input id="offset-intervals" name="offsetIntervals" type="number" min="1" max="255" step="1" value="5"></div>
+                  <div class="field" data-offset-spacing="step" hidden><label for="offset-step">Offset step</label><input id="offset-step" name="offsetStep" value="1k" placeholder="1k"></div>
                 </div>
-                <div class="field full" data-offset-modes="log" hidden><label for="offset-per-decade">每 decade 点数</label><input id="offset-per-decade" name="offsetPerDecade" type="number" min="1" max="256" step="1" value="1"><small>1k → 100M，每 decade 1 点：1k、10k、100k、1M、10M、100M，共 6 点；非整 decade 也包含终点。</small></div>
-                <div class="field full offset-preview" id="offset-preview" role="status" aria-live="polite">连接后端后预览实际 Hz 点表与总任务量。</div>
-                <p class="field full execution-help">“预检”仅检查当前设置和所选仿真环境；“开始运行”会先预检，再在新的私有运行目录调用 Spectre。点击按钮仅授权本次请求，保存和绑定不会启动仿真。</p>
+                <div class="field full" data-offset-modes="log" hidden><label for="offset-per-decade">per decade Point count</label><input id="offset-per-decade" name="offsetPerDecade" type="number" min="1" max="256" step="1" value="1"><small>1k → 100M, per decade 1 points: 1k, 10k, 100k, 1M, 10M, 100M, total 6 points; nonintegral decade includes endpoint. </small></div>
+                <div class="field full offset-preview" id="offset-preview" role="status" aria-live="polite">Connect the backend to preview actual Hz point list and total workload. </div>
+                <p class="field full execution-help">“Preflight”checks only current settings and selected simulation environment; “Start run”runs preflight first, then invoke in a new private run directory Spectre. clicking the button authorizes only this request, saving and binding do not start simulation. </p>
               </div>
             </div>
           </section>
 
           <details class="card advanced-settings" id="signal-settings">
-            <summary><span><strong>高级设置 · 本次实际使用与手动覆盖</strong><small>显示生效的信号、注入支路和跨 TB 对应；完整清单及执行细节为折叠诊断</small></span><span class="details-caret">⌄</span></summary>
+            <summary><span><strong>Advanced settings · Effective mappings & manual overrides</strong><small>Shows effective signals, injection branch and cross- TB Mapping; full inventory and execution details are in collapsed diagnostics</small></span><span class="details-caret">⌄</span></summary>
             <div class="card-body content-stack">
-              <details class="nested-details catalog-diagnostics"><summary>完整名称清单 · 候选库与诊断</summary><div class="nested-body">
-              <div class="subsection-title" id="signal-catalog-overview" tabindex="-1">全部识别名称 · 节点 / Maestro 输出 / 设计变量</div>
-              <p class="caption">下列清单不局限于 VGS、VDS、VBS。节点来自当前仿真网表以及 Maestro 中的分析和输出引用，输出保留原始名字与表达式，设计变量保留 Maestro 名称。不会改动 schematic 或 Maestro 原文件；本次使用哪个名称，在后面的“信号用途与覆盖”中选择。</p>
-              <details class="nested-details signal-catalog-section" id="vco-catalog-section" open><summary>VCO 全部识别名称 <span id="vco-catalog-summary">检测后显示分类数量</span></summary><div class="nested-body"><div class="catalog-filters"><div class="field"><label for="vco-signal-kind">名称类型</label><select id="vco-signal-kind" data-catalog-kind="vco"><option value="">全部类型</option><option value="net">节点 net</option><option value="output">Maestro 输出 Output</option><option value="variable">Maestro 设计变量</option><option value="parameter">网表参数</option><option value="device">器件</option><option value="analysis">仿真分析</option><option value="save">保存信号</option></select></div><div class="field"><label for="vco-signal-filter">筛选名称、表达式或来源</label><input id="vco-signal-filter" data-catalog-filter="vco" type="search" placeholder="例如 VOUT_P、HB_TIME_VGS 或 PN 表达式"></div></div><div id="vco-signal-catalog"></div></div></details>
-              <details class="nested-details signal-catalog-section" id="flicker-catalog-section" open><summary>电流噪声 TB 全部识别名称 <span id="flicker-catalog-summary">检测后显示分类数量</span></summary><div class="nested-body"><div class="catalog-filters"><div class="field"><label for="flicker-signal-kind">名称类型</label><select id="flicker-signal-kind" data-catalog-kind="flicker"><option value="">全部类型</option><option value="net">节点 net</option><option value="output">Maestro 输出 Output</option><option value="variable">Maestro 设计变量</option><option value="parameter">网表参数</option><option value="device">器件</option><option value="analysis">仿真分析</option><option value="save">保存信号</option></select></div><div class="field"><label for="flicker-signal-filter">筛选名称、表达式或来源</label><input id="flicker-signal-filter" data-catalog-filter="flicker" type="search" placeholder="例如 i_out、noise、VDS 或 VGS"></div></div><div id="flicker-signal-catalog"></div></div></details>
+              <details class="nested-details catalog-diagnostics"><summary>Full name inventory · Candidate inventory & diagnostics</summary><div class="nested-body">
+              <div class="subsection-title" id="signal-catalog-overview" tabindex="-1">All detected names · Node / Maestro Output / Design variable</div>
+              <p class="caption">The following inventory includes more than VGS, VDS, VBS. nodes come from the current simulation netlist and Maestro analysis and output references, outputs retain original names and expressions, design variables preserve Maestro Name. does not change schematic or Maestro original file; which name this run uses, in the following“Signal roles & overrides”select in. </p>
+              <details class="nested-details signal-catalog-section" id="vco-catalog-section" open><summary>VCO All detected names <span id="vco-catalog-summary">Counts by type appear after detection</span></summary><div class="nested-body"><div class="catalog-filters"><div class="field"><label for="vco-signal-kind">Name type</label><select id="vco-signal-kind" data-catalog-kind="vco"><option value="">All types</option><option value="net">Node net</option><option value="output">Maestro output</option><option value="variable">Maestro Design variable</option><option value="parameter">Netlist parameter</option><option value="device">Device</option><option value="analysis">Simulation analysis</option><option value="save">Saved signals</option></select></div><div class="field"><label for="vco-signal-filter">Filter names, Expression or source</label><input id="vco-signal-filter" data-catalog-filter="vco" type="search" placeholder="for example VOUT_P, HB_TIME_VGS or PN Expression"></div></div><div id="vco-signal-catalog"></div></div></details>
+              <details class="nested-details signal-catalog-section" id="flicker-catalog-section" open><summary>Current noise TB All detected names <span id="flicker-catalog-summary">Counts by type appear after detection</span></summary><div class="nested-body"><div class="catalog-filters"><div class="field"><label for="flicker-signal-kind">Name type</label><select id="flicker-signal-kind" data-catalog-kind="flicker"><option value="">All types</option><option value="net">Node net</option><option value="output">Maestro output</option><option value="variable">Maestro Design variable</option><option value="parameter">Netlist parameter</option><option value="device">Device</option><option value="analysis">Simulation analysis</option><option value="save">Saved signals</option></select></div><div class="field"><label for="flicker-signal-filter">Filter names, Expression or source</label><input id="flicker-signal-filter" data-catalog-filter="flicker" type="search" placeholder="for example i_out, noise, VDS or VGS"></div></div><div id="flicker-signal-catalog"></div></div></details>
 
               </div></details>
-              <div class="subsection-title">测试与仿真记录</div>
-              <p class="caption">Test 是 Maestro 中的测试名称；history 是一次已有仿真记录。只有唯一完整候选才会自动选择，多项时请明确选择后重新检测。</p>
+              <div class="subsection-title">Tests & History</div>
+              <p class="caption">Test is Maestro test name in; history is an existing simulation record. only a unique complete candidate is selected automatically, select explicitly when multiple candidates exist, then detect again. </p>
               <div class="form-grid">
-                <div class="field"><label for="main-test">VCO Test <span class="field-note">唯一候选时自动</span></label><input class="mono-input" id="main-test" name="mainTest" type="text" list="vco-test-candidates" placeholder="留空自动选择" autocomplete="off"><datalist id="vco-test-candidates"></datalist></div>
-                <div class="field"><label for="replica-test">Flicker Test <span class="field-note">唯一候选时自动</span></label><input class="mono-input" id="replica-test" name="replicaTest" type="text" list="flicker-test-candidates" placeholder="留空自动选择" autocomplete="off"><datalist id="flicker-test-candidates"></datalist></div>
-                <div class="field"><label for="main-history">VCO History / RDB</label><select class="mono-input history-select" id="main-history" name="mainHistory" aria-describedby="vco-bind-detail"><option value="">先检测可用 history</option></select></div>
-                <div class="field"><label for="replica-history">Flicker History / RDB</label><select class="mono-input history-select" id="replica-history" name="replicaHistory" aria-describedby="flicker-bind-detail"><option value="">先检测可用 history</option></select></div>
+                <div class="field"><label for="main-test">VCO Test <span class="field-note">automatic when candidate is unique</span></label><input class="mono-input" id="main-test" name="mainTest" type="text" list="vco-test-candidates" placeholder="leave blank for automatic selection" autocomplete="off"><datalist id="vco-test-candidates"></datalist></div>
+                <div class="field"><label for="replica-test">Flicker Test <span class="field-note">automatic when candidate is unique</span></label><input class="mono-input" id="replica-test" name="replicaTest" type="text" list="flicker-test-candidates" placeholder="leave blank for automatic selection" autocomplete="off"><datalist id="flicker-test-candidates"></datalist></div>
+                <div class="field"><label for="main-history">VCO History / RDB</label><select class="mono-input history-select" id="main-history" name="mainHistory" aria-describedby="vco-bind-detail"><option value="">detect available candidates first for history</option></select></div>
+                <div class="field"><label for="replica-history">Flicker History / RDB</label><select class="mono-input history-select" id="replica-history" name="replicaHistory" aria-describedby="flicker-bind-detail"><option value="">detect available candidates first for history</option></select></div>
               </div>
 
-              <div class="subsection-title">两个测试平台如何对应</div>
-              <p class="caption">每行是一项计算用途，可直接选择同类全部候选或输入任意实际名称；名字无需包含 VGS/VDS 等关键词。输入即时保留，点击“应用全部并验证”检查实际消费。来源会区分 Maestro 命名输出、器件端口求差和缺项。</p>
+              <div class="subsection-title">Mapping the two testbenches</div>
+              <p class="caption">Each row describes one calculation role, select any same-kind candidate or enter an actual name; names need not contain VGS/VDS or similar keywords. input is retained immediately, Click“Apply all & validate”Inspect effective consumption. sources distinguish Maestro Named output, device-terminal differences and missing items. </p>
               <div id="cross-tb-mapping"></div>
-              <div class="subsection-title">VCO → 噪声 TB 波形传递检查</div>
+              <div class="subsection-title">VCO → Noise TB Waveform transfer check</div>
               <div id="waveform-exchange" aria-live="polite"></div>
 
-              <div class="subsection-title" id="actual-used-mappings" tabindex="-1">VCO 本次实际使用的信号</div>
+              <div class="subsection-title" id="actual-used-mappings" tabindex="-1">VCO Effective signals</div>
               <div id="vco-mapping-fields"></div>
 
-              <div class="subsection-title">电流噪声 TB 本次实际使用的信号</div>
+              <div class="subsection-title">Current noise TB Effective signals</div>
               <div id="flicker-mapping-fields"></div>
 
-              <div class="subsection-title" id="portable-execution-heading" tabindex="-1">自动生成的仿真执行设置</div>
-              <p class="caption" id="portable-execution-status">检测后显示器件端口、模型、探针和结果提取名称；无需手工编写配置文件。</p>
+              <div class="subsection-title" id="portable-execution-heading" tabindex="-1">Generated simulation execution settings</div>
+              <p class="caption" id="portable-execution-status">After detection, show device terminals, Model, probe and result-extraction names; no manual configuration file needed. </p>
               <div id="portable-execution-errors" role="status"></div>
               <div id="portable-execution-fields"></div>
-              <button class="btn" type="button" id="reinspect-signal-mapping">应用全部并验证</button>
+              <button class="btn" type="button" id="reinspect-signal-mapping">Apply all & validate</button>
 
-              <details class="nested-details"><summary>专家文件导入与旧版器件设置</summary><div class="form-grid nested-body">
-                <div class="field full"><label for="engine-config-path">使用已有执行配置文件 <span class="field-note">可选，专家模式</span></label><input class="mono-input" id="engine-config-path" name="engineConfigPath" type="text" placeholder="留空根据当前两个 TB 自动生成"><small>仅兼容已有 engine JSON。填写后优先使用该文件的执行设置；清空即恢复自动。普通使用无需理解 engine 或 profile。</small></div>
-                <div class="field"><label for="main-device">旧版 VCO 器件覆盖</label><input class="mono-input" id="main-device" name="mainDevice" type="text" placeholder="建议在上方信号映射中选择"><small>仅兼容旧绑定；新配置请使用上方目标器件选项。</small></div>
-                <div class="field"><label for="replica-device">旧版 Flicker 器件覆盖</label><input class="mono-input" id="replica-device" name="replicaDevice" type="text" placeholder="建议在上方信号映射中选择"></div>
+              <details class="nested-details"><summary>Expert file import & legacy device settings</summary><div class="form-grid nested-body">
+                <div class="field full"><label for="engine-config-path">Use existing execution configuration file <span class="field-note">optional, Expert mode</span></label><input class="mono-input" id="engine-config-path" name="engineConfigPath" type="text" placeholder="leave blank to use both current TB Generated"><small>compatibility with existing engine JSON. when filled, this file’s execution settings take precedence; clear to restore automatic settings. normal use does not require understanding engine or profile. </small></div>
+                <div class="field"><label for="main-device">Legacy VCO Device overrides</label><input class="mono-input" id="main-device" name="mainDevice" type="text" placeholder="prefer selecting in Signal mapping above"><small>legacy binding compatibility only; use target-device options above for new configurations. </small></div>
+                <div class="field"><label for="replica-device">Legacy Flicker Device overrides</label><input class="mono-input" id="replica-device" name="replicaDevice" type="text" placeholder="prefer selecting in Signal mapping above"></div>
               </div></details>
 
-              <div class="subsection-title">环境覆盖</div>
-              <p class="caption">工具路径和 PDK 从本机与当前 TB 自动识别；只有需要覆盖检测结果时才填写。</p>
+              <div class="subsection-title">Environment overrides</div>
+              <p class="caption">tool paths and PDK from this machine and current TB Automatic detection; fill only when overriding detected values. </p>
               <div class="form-grid">
-                <div class="field"><label for="pdk-name">PDK 名称</label><input id="pdk-name" name="pdkName" type="text" placeholder="由两个 Maestro model 自动识别"></div>
-                <div class="field"><label for="pdk-root">PDK 根目录</label><input class="mono-input" id="pdk-root" name="pdkRoot" type="text" placeholder="仅自动识别失败时填写"></div>
-                <div class="field full"><label for="spectre-executable">Spectre 可执行文件</label><input class="mono-input" id="spectre-executable" name="spectreExecutable" type="text" placeholder="默认从当前 Cadence 环境识别"></div>
-                <div class="field full"><label for="analysis-python">数值提取 Python</label><input class="mono-input" id="analysis-python" name="analysisPython" type="text" placeholder="自动选择 Python 3.11+ 且带 NumPy 的环境"></div>
-                <div class="field"><label for="adapter-mode">运行适配器</label><select id="adapter-mode" name="adapterMode"><option value="bundled" selected>Bundled · 轻量本地</option><option value="custom">Custom local wrapper</option><option value="protocol">Cluster JSON protocol</option></select></div>
-                <div class="field"><label for="timeout-seconds">阶段超时 (s)</label><input id="timeout-seconds" name="timeoutSeconds" type="number" min="1" max="86400" value="7200"></div>
-                <div class="field full"><label class="check-control" for="allow-degraded"><input id="allow-degraded" name="allowDegraded" type="checkbox"> 非 signoff 时允许显式使用旧结果 replay</label></div>
+                <div class="field"><label for="pdk-name">PDK Name</label><input id="pdk-name" name="pdkName" type="text" placeholder="from both Maestro model Automatic detection"></div>
+                <div class="field"><label for="pdk-root">PDK Root directory</label><input class="mono-input" id="pdk-root" name="pdkRoot" type="text" placeholder="fill in only if detection fails"></div>
+                <div class="field full"><label for="spectre-executable">Spectre Executable</label><input class="mono-input" id="spectre-executable" name="spectreExecutable" type="text" placeholder="defaults from current Cadence environment detection"></div>
+                <div class="field full"><label for="analysis-python">numerical extraction Python</label><input class="mono-input" id="analysis-python" name="analysisPython" type="text" placeholder="Automatic selection Python 3.11+ with NumPy environment"></div>
+                <div class="field"><label for="adapter-mode">Run adapter</label><select id="adapter-mode" name="adapterMode"><option value="bundled" selected>Bundled · lightweight local</option><option value="custom">Custom local wrapper</option><option value="protocol">Cluster JSON protocol</option></select></div>
+                <div class="field"><label for="timeout-seconds">Stage timeout (s)</label><input id="timeout-seconds" name="timeoutSeconds" type="number" min="1" max="86400" value="7200"></div>
+                <div class="field full"><label class="check-control" for="allow-degraded"><input id="allow-degraded" name="allowDegraded" type="checkbox"> non- signoff explicit reuse of old results allowed when replay</label></div>
               </div>
 
-              <div class="subsection-title">采样与私有路径</div>
+              <div class="subsection-title">Sampling & private paths</div>
               <div class="form-grid">
-                <div class="field"><label for="harmonics">最大谐波</label><input id="harmonics" name="harmonics" type="number" min="1" max="12" step="1" value="3" required></div>
-                <div class="field"><label for="phase-samples">相位采样点</label><select id="phase-samples" name="phaseSamples"><option>256</option><option selected>512</option><option>1024</option><option>2048</option></select></div>
-                <div class="field"><label for="period-count">累计周期</label><input id="period-count" name="periodCount" type="number" min="1" max="64" value="8"></div>
-                <div class="field"><label for="run-root">私有运行目录</label><input class="mono-input" id="run-root" name="runRoot" type="text" placeholder="留空按 job ID 创建"></div>
-                <div class="field"><label for="auto-bundle-path">Canonical 输出目录</label><input class="mono-input" id="auto-bundle-path" name="autoBundlePath" type="text" placeholder="留空按 job ID 创建"></div>
+                <div class="field"><label for="harmonics">Maximum harmonic</label><input id="harmonics" name="harmonics" type="number" min="1" max="12" step="1" value="3" required></div>
+                <div class="field"><label for="phase-samples">Phase samples</label><select id="phase-samples" name="phaseSamples"><option>256</option><option selected>512</option><option>1024</option><option>2048</option></select></div>
+                <div class="field"><label for="period-count">Accumulated periods</label><input id="period-count" name="periodCount" type="number" min="1" max="64" value="8"></div>
+                <div class="field"><label for="run-root">Private run directory</label><input class="mono-input" id="run-root" name="runRoot" type="text" placeholder="leave blank for job ID Create"></div>
+                <div class="field"><label for="auto-bundle-path">Canonical Output directory</label><input class="mono-input" id="auto-bundle-path" name="autoBundlePath" type="text" placeholder="leave blank for job ID Create"></div>
               </div>
 
-              <details class="nested-details"><summary>项目名称与自动查找</summary><div class="form-grid nested-body">
-                <div class="field"><label for="project-name">项目名称 <span class="field-note">可选</span></label><input id="project-name" name="projectName" type="text" placeholder="本次分析的名称" autocomplete="off"></div>
-                <div class="field"><label for="project-root">Maestro 搜索根目录 <span class="field-note">可选</span></label><div class="inline-field"><input class="mono-input" id="project-root" name="projectRoot" type="text" placeholder="/path/to/oa-library-root" autocomplete="off"><button class="btn" id="find-maestro-pair" type="button">查找</button></div></div>
+              <details class="nested-details"><summary>Project name & discovery</summary><div class="form-grid nested-body">
+                <div class="field"><label for="project-name">Project name <span class="field-note">optional</span></label><input id="project-name" name="projectName" type="text" placeholder="Name of this analysis" autocomplete="off"></div>
+                <div class="field"><label for="project-root">Maestro Search root <span class="field-note">optional</span></label><div class="inline-field"><input class="mono-input" id="project-root" name="projectRoot" type="text" placeholder="/path/to/oa-library-root" autocomplete="off"><button class="btn" id="find-maestro-pair" type="button">Discover</button></div></div>
               </div></details>
 
               <details class="nested-details">
-                <summary>旧结果回放（非主链）</summary>
+                <summary>Historical replay (auxiliary workflow)</summary>
                 <div class="form-grid nested-body">
                   <div class="field full"><label for="bundle-path">Canonical bundle</label><input class="mono-input" id="bundle-path" name="bundlePath" type="text" placeholder="/path/to/canonical_bundle"></div>
                   <div class="field"><label for="vco-csv-path">VCO CSV</label><input class="mono-input" id="vco-csv-path" name="vcoCsvPath" type="text" placeholder="/path/to/vco_results.csv"></div>
                   <div class="field"><label for="replica-csv-path">Replica CSV</label><input class="mono-input" id="replica-csv-path" name="replicaCsvPath" type="text" placeholder="/path/to/replica_results.csv"></div>
-                  <div class="field full"><button class="btn" id="import-data" type="button">导入为 replay / non-signoff</button></div>
+                  <div class="field full"><button class="btn" id="import-data" type="button">Import as replay / non-signoff</button></div>
                 </div>
               </details>
 
               <details class="nested-details">
-                <summary>阶段命令覆盖</summary>
+                <summary>Stage command overrides</summary>
                 <div class="form-grid nested-body">
-                  <div class="field full"><label for="vco-command">VCO 命令</label><input class="mono-input" id="vco-command" name="vcoCommand" type="text" placeholder="留空使用 bundled runner"></div>
-                  <div class="field full"><label for="exchange-command">工作点传递命令</label><input class="mono-input" id="exchange-command" name="exchangeCommand" type="text" placeholder="自动生成"></div>
-                  <div class="field full"><label for="replica-command">Replica 命令</label><input class="mono-input" id="replica-command" name="replicaCommand" type="text" placeholder="自动生成"></div>
-                  <div class="field full"><label for="extract-command">提取命令</label><input class="mono-input" id="extract-command" name="extractCommand" type="text" placeholder="自动生成"></div>
+                  <div class="field full"><label for="vco-command">VCO Command</label><input class="mono-input" id="vco-command" name="vcoCommand" type="text" placeholder="leave blank to use bundled runner"></div>
+                  <div class="field full"><label for="exchange-command">Operating-point transfer command</label><input class="mono-input" id="exchange-command" name="exchangeCommand" type="text" placeholder="Generated"></div>
+                  <div class="field full"><label for="replica-command">Replica Command</label><input class="mono-input" id="replica-command" name="replicaCommand" type="text" placeholder="Generated"></div>
+                  <div class="field full"><label for="extract-command">Extraction command</label><input class="mono-input" id="extract-command" name="extractCommand" type="text" placeholder="Generated"></div>
                 </div>
               </details>
 
@@ -253,23 +253,23 @@
           </details>
         </div>
 
-        <aside class="side-stack sticky-stack" aria-label="预检与摘要">
+        <aside class="side-stack sticky-stack" aria-label="Preflight & summary">
           <section class="card preflight-card">
-            <div class="card-header"><div><h3>双 TB 运行前预检</h3><p>绑定、变化、PDK、history 与私有执行链路。</p></div><span class="status-pill" id="preflight-status">未运行</span></div>
+            <div class="card-header"><div><h3>dual TB Preflight before execution</h3><p>Binding, Changes, PDK, history and private execution workflow. </p></div><span class="status-pill" id="preflight-status">Not run</span></div>
             <div class="card-body content-stack">
-              <div class="preflight-score" id="preflight-summary"><strong>—</strong><span>等待检查</span></div>
-              <div class="preflight-checks" id="preflight-checks"><div class="empty-state compact">先检测并绑定两个 Maestro</div></div>
-              <button class="btn primary" type="button" id="run-preflight">运行完整预检</button>
-              <div class="caption" id="preflight-required">需先选择两个 Maestro</div>
+              <div class="preflight-score" id="preflight-summary"><strong>—</strong><span>Waiting for checks</span></div>
+              <div class="preflight-checks" id="preflight-checks"><div class="empty-state compact">detect and bind both first Maestro</div></div>
+              <button class="btn primary" type="button" id="run-preflight">Run full preflight</button>
+              <div class="caption" id="preflight-required">Select both first Maestro</div>
             </div>
           </section>
 
           <section class="card">
-            <div class="summary-hero"><div class="eyebrow">Bound pair</div><h3 id="summary-project">未命名项目</h3><p>同一时间参考、无人工波形位移；复杂修正仅在私有副本中执行。</p></div>
+            <div class="summary-hero"><div class="eyebrow">Bound pair</div><h3 id="summary-project">Untitled project</h3><p>same time reference, no manual waveform shift; complex corrections run only in private copies. </p></div>
             <dl class="summary-list">
-              <div class="summary-row"><dt>主链</dt><dd id="summary-mode">双 Maestro</dd></div>
-              <div class="summary-row"><dt>VCO</dt><dd id="summary-main">待选择</dd></div>
-              <div class="summary-row"><dt>Flicker</dt><dd id="summary-replica">待选择</dd></div>
+              <div class="summary-row"><dt>primary workflow</dt><dd id="summary-mode">dual Maestro</dd></div>
+              <div class="summary-row"><dt>VCO</dt><dd id="summary-main">Awaiting selection</dd></div>
+              <div class="summary-row"><dt>Flicker</dt><dd id="summary-replica">Awaiting selection</dd></div>
               <div class="summary-row"><dt>Offset</dt><dd id="summary-offset">10 kHz</dd></div>
               <div class="summary-row"><dt>Harmonic</dt><dd id="summary-harmonics">k = 0…3</dd></div>
               <div class="summary-row"><dt>Samples</dt><dd id="summary-samples">512 × 8 periods</dd></div>
@@ -279,10 +279,10 @@
       </div>
 
       <div class="setup-actions">
-        <span class="caption" id="save-state">尚未保存本次绑定</span>
+        <span class="caption" id="save-state">Current binding not saved yet</span>
         <div class="button-row">
-          <button class="btn" type="button" id="save-config">仅保存绑定</button>
-          <button class="btn primary" type="submit">保存并进入检测页</button>
+          <button class="btn" type="button" id="save-config">Save binding only</button>
+          <button class="btn primary" type="submit">Save & open preflight</button>
         </div>
       </div>
     </form>

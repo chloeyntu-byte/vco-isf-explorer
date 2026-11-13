@@ -20,9 +20,9 @@ class NativeReadabilityTests(unittest.TestCase):
         self.root.update_idletasks()
         self.root.destroy()
 
-    def test_wrapped_chinese_guidance_has_spacing_and_grows_on_narrower_width(self):
-        font = tkfont.Font(self.root, family="WenQuanYi Micro Hei", size=11)
-        variable = tk.StringVar(value="第一行：确认 Maestro 的网名与输出表达式。\n第二行：选择一行可查看来源，也可以手动修改工具对应关系。" * 3)
+    def test_wrapped_english_guidance_has_spacing_and_grows_on_narrower_width(self):
+        font = tkfont.Font(self.root, family="DejaVu Sans", size=11)
+        variable = tk.StringVar(value="First line: Confirm Maestro net names and output expressions. \nSecond line: Select a row to view its source or edit the tool mapping. " * 3)
         widget = _HelpText(self.root, font=font, textvariable=variable)
         widget.pack(fill="x")
         self.root.geometry("850x700")
@@ -34,7 +34,7 @@ class NativeReadabilityTests(unittest.TestCase):
         self.assertGreaterEqual(int(widget.cget("spacing2")), 3)
         self.assertEqual("disabled", str(widget.cget("state")))
         self._assert_text_fits(widget)
-        variable.set("单行说明")
+        variable.set("One line of guidance")
         self.root.update_idletasks()
         self.assertLess(widget.winfo_height(), wide_height)
         self._assert_text_fits(widget)
@@ -54,8 +54,8 @@ class NativeReadabilityTests(unittest.TestCase):
             ]}, "flicker": {"signal_catalog": [{"kind": "variable", "name": "VGS"}]}}})
             app._open_catalog()
             self.assertEqual(str(app.inventory_tab), app.advanced_tabs.select())
-            self.assertIn("网名 1 项", app.catalog_status_var.get())
-            app.catalog_kind_var.set("输出 · Output")
+            self.assertIn("Net name 1 items", app.catalog_status_var.get())
+            app.catalog_kind_var.set("Output")
             self.assertEqual(1, len(app.catalog_tree.get_children()))
             for geometry in ("1020x720", "1240x860"):
                 self.root.geometry(geometry)
@@ -100,17 +100,17 @@ class NativeReadabilityTests(unittest.TestCase):
         with mock.patch.object(IsfApplication, "_submit"), mock.patch.object(IsfApplication, "_refresh_jobs"):
             app = IsfApplication(self.root, controller)
         try:
-            pair = {"roles": {"vco": {"mapping_fields": [{"key": "target_instance", "label": "VCO 目标器件", "status": "ambiguous", "candidates": ["M0", "M1"]}]}}}
-            setup = {"fields": [{"key": "main.target_instance", "label": "VCO 目标器件（网表局部名）", "status": "missing"}],
-                     "errors": [{"field": "main.target_instance", "message": "存在两个候选，请选择"}]}
+            pair = {"roles": {"vco": {"mapping_fields": [{"key": "target_instance", "label": "VCO target device", "status": "ambiguous", "candidates": ["M0", "M1"]}]}}}
+            setup = {"fields": [{"key": "main.target_instance", "label": "VCO target device (Netlist-local name)", "status": "missing"}],
+                     "errors": [{"field": "main.target_instance", "message": "Two candidates exist, Select"}]}
             report = {"ok": False, "summary": {"fail": 2}, "required_user_fields": ["portable_setup", "execution.allow_execute"],
-                      "checks": [{"status": "fail", "field": "portable_setup", "label": "仿真执行设置", "detail": "需补充"},
-                                 {"status": "fail", "field": "execution.allow_execute", "label": "本次授权", "detail": "请勾选本次 Live 授权"}],
+                      "checks": [{"status": "fail", "field": "portable_setup", "label": "Simulation execution settings", "detail": "Needs input"},
+                                 {"status": "fail", "field": "execution.allow_execute", "label": "Execution consent", "detail": "Authorize this Live consent"}],
                       "detected": {"maestro_pair": pair}, "resolved_config": {"detection": {"portable_setup": setup}}}
             app._render_preflight(report)
             self.assertFalse(app.last_preflight["ok"])
-            self.assertIn("VCO 目标器件（网表局部名）：存在两个候选", app.preflight_detail_var.get())
-            self.assertIn("本次 Live 授权", app.preflight_detail_var.get())
+            self.assertIn("VCO target device (Netlist-local name): Two candidates exist", app.preflight_detail_var.get())
+            self.assertIn("Authorize this Live consent", app.preflight_detail_var.get())
             app._locate_preflight_issue()
             self.assertEqual(str(app.mapping_tab), app.advanced_tabs.select())
             self.assertEqual(("M0", "M1"), app._mapping_inputs["vco:target_instance"].cget("values"))
@@ -129,11 +129,11 @@ class NativeReadabilityTests(unittest.TestCase):
             app.vars["vco_path"].set("/test/vco/maestro")
             app.vars["replica_path"].set("/test/noise/maestro")
             report = {"roles": {"vco": {"mapping_fields": [
-                {"key": "vgs_output", "label": "栅源电压时域波形", "value": "A1", "detected": "A1", "status": "detected", "candidates": ["A1", "completely_unrelated_alias"], "maestro_presence": "named_output"},
-                {"key": "vbs_output", "label": "体源电压时域波形", "required": True, "active": False, "status": "missing", "maestro_presence": "script_derived", "effective_derivation": "V(B)-V(S)"}
+                {"key": "vgs_output", "label": "Gate-source time waveform", "value": "A1", "detected": "A1", "status": "detected", "candidates": ["A1", "completely_unrelated_alias"], "maestro_presence": "named_output"},
+                {"key": "vbs_output", "label": "Body-source time waveform", "required": True, "active": False, "status": "missing", "maestro_presence": "script_derived", "effective_derivation": "V(B)-V(S)"}
             ]}, "flicker": {"mapping_fields": [
-                {"key": "dc_sense_source", "label": "电流检测电压源", "status": "ambiguous", "candidates": ["V0", "branch_q7"]},
-                {"key": "vgs_pwl_variable", "label": "栅源周期波形文件变量", "value": "file_a", "detected": "file_a", "selected_details": {"scope": "global"}}
+                {"key": "dc_sense_source", "label": "Current-sensing voltage source", "status": "ambiguous", "candidates": ["V0", "branch_q7"]},
+                {"key": "vgs_pwl_variable", "label": "Gate-source waveform file variable", "value": "file_a", "detected": "file_a", "selected_details": {"scope": "global"}}
             ]}}}
             app._render_mapping_report(report)
             self.assertIn("vco:vbs_output", app._mapping_inputs)
@@ -147,7 +147,7 @@ class NativeReadabilityTests(unittest.TestCase):
             self.assertEqual("portable_file_alias", payload["testbenches"]["replica"]["mapping_overrides"]["vgs_pwl_variable"])
             app._render_mapping_report(report)
             self.assertEqual("completely_unrelated_alias", app._mapping_inputs["vco:vgs_output"].get())
-            self.assertIn("待验证", app._mapping_status_labels["vco:vgs_output"].cget("text"))
+            self.assertIn("Awaiting validation", app._mapping_status_labels["vco:vgs_output"].cget("text"))
             captured = {}
             app._submit = lambda _label, _function, success: captured.update(success=success)
             app._pair_inspected = mock.Mock()
@@ -217,11 +217,11 @@ class NativeReadabilityTests(unittest.TestCase):
             app._submit = lambda _label, check, show, **_options: show(check())
             report = {"status": "attention"}
             with mock.patch("isf_tool.core.environment_report.inspect_environment", return_value=report) as inspect, \
-                 mock.patch("isf_tool.core.environment_report.format_environment_report", return_value="Spectre 待检查"):
+                 mock.patch("isf_tool.core.environment_report.format_environment_report", return_value="Spectre Awaiting check"):
                 app.environment_button.invoke()
             inspect.assert_called_once_with({}, controller.workspace, None)
             dialogs = [window for window in self.root.winfo_children() if isinstance(window, tk.Toplevel)]
-            self.assertEqual(["ISF 环境检测"], [window.title() for window in dialogs])
+            self.assertEqual(["ISF environment check"], [window.title() for window in dialogs])
             self.assertFalse(app.environment_button.instate(("disabled",)))
         finally:
             app.queue.close()

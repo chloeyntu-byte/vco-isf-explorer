@@ -40,7 +40,7 @@ def thermal_evidence(row):
         raise ValueError("thermal result needs independent PM-SSB validation")
     if output.get("scope") in {"gm_pair_and_passive_network", "gm_pair_passives_and_selected_objects"}:
         return {"schema_version": 1, "status": "unavailable", "previous_scope": output.get("scope"),
-                "reason": "旧 thermal 结果可能包含阵列内部噪声；请重新运行 gm + LC 测量 (rerun required)"}
+                "reason": "legacy thermal results may include capacitor-bank internal noise; rerun gm + LC measurement (rerun required)"}
     if output.get("scope") != "gm_pair_and_lc_network" or output.get("pair_model") != "symmetric_independent":
         raise ValueError("unsupported thermal source scope")
     if output.get("passive_scope") != "passive_only_lc_roots_v1":

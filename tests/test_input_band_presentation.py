@@ -37,13 +37,13 @@ class InputBandPresentationTests(unittest.TestCase):
         for row in result['summary']:row.pop('thermal_noise')
         data=input_band_noise_series(result,'SYNTHETIC','both')
         self.assertEqual([0],[s['n'] for s in data['series'] if s.get('n') is not None])
-        self.assertTrue(data['partial']);self.assertIn('没有有效 thermal',';'.join(data['notes']))
+        self.assertTrue(data['partial']);self.assertIn('no valid thermal',';'.join(data['notes']))
         self.assertIsNotNone(data['series'][0]['points'][0][1])
         self.assertIsNone(enrich_summary(result['summary'][0])['predicted_total_dBc_Hz'])
 
     def test_single_offset_keeps_points_and_explains_slope(self):
         data=input_band_noise_series(make_band_result((1e4,)),'SYNTHETIC','thermal')
-        self.assertTrue(data['single_offset']);self.assertIn('只有 1 个频偏，无法看斜率',data['notes'])
+        self.assertTrue(data['single_offset']);self.assertIn('Only one offset; slope unavailable',data['notes'])
         self.assertTrue(all(s['slope'] is None and len(s['points'])==1 for s in data['series']))
 
     def test_projection_negative_cancellation_and_sum_to_one(self):
@@ -103,7 +103,7 @@ class InputBandPresentationTests(unittest.TestCase):
                 self.assertEqual(dc, overlay['means']['product_dc'])
                 self.assertEqual(dyn, overlay['means']['product_overlay_dyn'])
                 self.assertIsNone(overlay['ratio_db'])
-                self.assertIn('周期均值为零', overlay['note'])
+                self.assertIn('the period mean is zero', overlay['note'])
 
     def test_overlay_signed_means_use_magnitudes(self):
         process = {'rows': [dict(key=str(i), phase=i, isf_i=1.,

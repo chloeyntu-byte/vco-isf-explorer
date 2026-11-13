@@ -29,7 +29,7 @@
   --radius-md: 11px;
   --radius-sm: 8px;
   --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  --sans: "WenQuanYi Micro Hei", "Noto Sans CJK SC", "Source Han Sans SC", "Microsoft YaHei", "PingFang SC", "DejaVu Sans", ui-sans-serif, sans-serif;
+  --sans: "Inter", "Noto Sans", "Liberation Sans", "DejaVu Sans", ui-sans-serif, sans-serif;
 }
 
 * {

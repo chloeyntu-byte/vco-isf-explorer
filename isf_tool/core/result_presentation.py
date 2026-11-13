@@ -290,20 +290,20 @@ def phase_noise_series(result, operating_point_id=None, scope="single", noise_ki
     if not rows:
         return []
     predicted = "dynamic_dBc_Hz" if scope == "single" else "predicted_pair_dBc_Hz"
-    label = "单器件 flicker" if scope == "single" else "独立双器件 flicker"
+    label = "single device flicker" if scope == "single" else "independent device pair flicker"
     if noise_kind not in {"flicker", "thermal", "both"}:
         raise ValueError("invalid noise kind")
     if noise_kind != "flicker":
         series = []
         if noise_kind == "both":
-            series.append(_series("flicker", "ISF flicker · 对称 gm pair", rows, [row[predicted] for row in rows], scope=scope))
+            series.append(_series("flicker", "ISF flicker · symmetric gm pair", rows, [row[predicted] for row in rows], scope=scope))
         series.append(_series("thermal", "ISF thermal · gm pair + LC", rows, [row["thermal_dBc_Hz"] for row in rows], scope="pair"))
         if noise_kind == "both":
-            series.append(_series("calculated", "计算合计 · flicker + thermal", rows, [row["predicted_total_dBc_Hz"] for row in rows], scope="pair"))
-        series.append(_series("spectre", "VCO 总仿真相噪 · PM-SSB（全部噪声源）", rows, [row.get("spectre_total_dBc_Hz") for row in rows], scope="whole_vco"))
+            series.append(_series("calculated", "Calculated total · flicker + thermal", rows, [row["predicted_total_dBc_Hz"] for row in rows], scope="pair"))
+        series.append(_series("spectre", "VCO simulated total phase noise · PM-SSB (all noise sources)", rows, [row.get("spectre_total_dBc_Hz") for row in rows], scope="whole_vco"))
         return series
-    return [_series("calculated", "ISF 计算 · " + label, rows, [row[predicted] for row in rows], scope=scope),
-            _series("spectre", "VCO 总仿真相噪 · PM-SSB（全部噪声源）", rows,
+    return [_series("calculated", "ISF calculated · " + label, rows, [row[predicted] for row in rows], scope=scope),
+            _series("spectre", "VCO simulated total phase noise · PM-SSB (all noise sources)", rows,
                     [row.get("spectre_total_dBc_Hz") for row in rows], scope="whole_vco")]
 
 
@@ -324,15 +324,15 @@ def noise_contribution_rows(summary, scope=None, noise_kind="both"):
                        "psd_V2_Hz": psd, "calculated_psd_V2_Hz": calculated_psd,
                        "asd_V_rtHz": asd, "kind": kind})
 
-    add("VCO 总仿真相噪", "全部器件", "全部机制 · PM-SSB", total_asd,
+    add("VCO simulated total phase noise", "all devices", "all mechanisms · PM-SSB", total_asd,
         row.get("spectre_total_dBc_Hz"))
     generated = row.get("replica_source") == "generated"
     if (scope != "pair" or generated) and noise_kind != "thermal":
-        add("目标单器件 flicker 对比", row.get("target_noise_trace") or "目标器件", "fn", _value(row, "spectre_fn_pm_asd_V_rtHz"),
+        add("target single device flicker comparison", row.get("target_noise_trace") or "target device", "fn", _value(row, "spectre_fn_pm_asd_V_rtHz"),
             row.get("spectre_fn_dBc_Hz"), row.get("dynamic_dBc_Hz"))
     if noise_kind != "thermal":
-        pair_label = "对称双管估算 · +3.01 dB" if generated else "对称 gm pair · flicker 对比"
-        add(pair_label, "目标 + 配对器件", "fn", _value(row, "spectre_pair_pm_asd_V_rtHz"),
+        pair_label = "symmetric pair estimate · +3.01 dB" if generated else "symmetric gm pair · flicker comparison"
+        add(pair_label, "Target + Peer device", "fn", _value(row, "spectre_pair_pm_asd_V_rtHz"),
             row.get("spectre_pair_dBc_Hz"), row.get("predicted_pair_dBc_Hz"))
         output[-1]["comparison_group"] = "flicker_pair"
         identity = row.get("flicker_pair_identity") or {}
@@ -371,7 +371,7 @@ def noise_contribution_rows(summary, scope=None, noise_kind="both"):
         reference_psd = (math.fsum(unique_reference_psd(identity) for identity in predicted_sources)
                          if not reference_issues else None)
         reference_asd = math.sqrt(reference_psd) if reference_psd is not None else None
-        label = "已建模 thermal 对比" + ("（参考源不完整）" if reference_issues else "")
+        label = "modeled thermal comparison" + (" (reference sources incomplete)" if reference_issues else "")
         add(label, "gm pair + LC", "thermal", reference_asd,
             dBc_from_pm_asd(reference_asd, carrier) if reference_asd is not None and carrier else None,
             row["thermal_dBc_Hz"])
@@ -396,7 +396,7 @@ def noise_contribution_rows(summary, scope=None, noise_kind="both"):
             details.append((psd, item))
         for psd, item in sorted(details, key=lambda entry: (-entry[0], str(entry[1].get("device")), str(entry[1].get("mechanism")))):
             asd = math.sqrt(psd)
-            device, mechanism = str(item.get("device") or "未知器件"), str(item.get("mechanism") or "未知机制")
+            device, mechanism = str(item.get("device") or "unknown device"), str(item.get("mechanism") or "unknown mechanism")
             is_thermal = (mechanism == "rn" or (device, mechanism) in predicted_sources
                           or item.get("noise_family") in {"channel_thermal", "resistive_thermal"})
             if (noise_kind == "flicker" and mechanism != "fn") or (noise_kind == "thermal" and not is_thermal):
@@ -423,7 +423,7 @@ def noise_contribution_rows(summary, scope=None, noise_kind="both"):
             matches = references_by_source.get(identity, [])
             if not matches or (len(matches) == 1 and unique_reference_psd(identity) is None):
                 device, mechanism = identity
-                label = "（仿真参考无效）" if matches else "（仿真参考缺失）"
+                label = " (invalid simulation reference)" if matches else " (simulation reference missing)"
                 add(device + " · " + mechanism + label, device, mechanism,
                     None, None, calculated=source.get("phase_noise_dBc_Hz"), kind="source",
                     calculated_psd=source.get("psd_V2_Hz"))
@@ -443,9 +443,9 @@ def phase_noise_comparison_series(result, operating_point_id=None, noise_kind="f
     if noise_kind == "flicker":
         scope = "selected gm · fn" if single else "gm pair · fn"
     elif noise_kind == "thermal":
-        scope = "已建模 thermal"
+        scope = "modeled thermal"
     else:
-        scope = "gm pair · fn + 已建模 thermal"
+        scope = "gm pair · fn + modeled thermal"
 
     predicted, measured = [], []
     for row in rows:
@@ -472,7 +472,7 @@ def phase_noise_comparison_series(result, operating_point_id=None, noise_kind="f
 
     difference = [prediction - reference if prediction is not None and reference is not None else None
                   for prediction, reference in zip(predicted, measured)]
-    prediction = _series("matched_prediction", "ISF 单管 · fn", rows, predicted, scope=scope) if single and noise_kind == "flicker" else None
+    prediction = _series("matched_prediction", "ISF single device · fn", rows, predicted, scope=scope) if single and noise_kind == "flicker" else None
     reference = _series("matched_reference", "HBnoise · " + scope, rows, measured, scope=scope)
     error = _series("matched_error", "ISF − HBnoise · " + scope, rows, difference, scope=scope)
     error["unit"] = "dB"
@@ -504,10 +504,10 @@ def harmonic_noise_series(result, operating_point_id=None, scope="single", noise
     prefix = "pair_" if scope == "pair" else ""
     series = []
     if noise_kind == "flicker":
-        series = [_series("harmonic_" + str(k), "flicker k={} 单阶等效".format(k), rows,
+        series = [_series("harmonic_" + str(k), "flicker k={} single-order equivalent".format(k), rows,
                           [sample.get(k, {}).get(prefix + "harmonic_equivalent_dBc_Hz") for sample in sample_harmonics], scope=scope, harmonic=k)
                   for k in orders]
-        series.append(_series("coherent_total", "flicker 全谐波相干总和 · " + ("对称 gm pair" if scope == "pair" else "单器件"), rows,
+        series.append(_series("coherent_total", "flicker coherent sum of all harmonics · " + ("symmetric gm pair" if scope == "pair" else "single device"), rows,
                               [row["predicted_pair_dBc_Hz" if scope == "pair" else "dynamic_dBc_Hz"] for row in rows], scope=scope))
     if noise_kind != "flicker":
         # k pairs belong to c0_eff. They must never be matched to input band m.
@@ -529,7 +529,7 @@ def cumulative_noise_series(result, operating_point_id=None, k=0, scope="single"
     if not rows:
         return []
     samples = _sample_harmonics(source, rows)
-    return [_series("cumulative_" + str(order), "累计至 k={} · 相干总和".format(order), rows,
+    return [_series("cumulative_" + str(order), "Cumulative through k={} · coherent sum".format(order), rows,
                     [sample.get(order, {}).get("pair_cumulative_dBc_Hz" if scope == "pair" else "cumulative_dBc_Hz") for sample in samples], scope=scope, harmonic=order)]
 
 
@@ -551,7 +551,7 @@ def band_color(order):
 
 
 def fit_noise_slope(points):
-    """OLS dB/dec over valid samples in the lowest two decades (no interpolation)."""
+    """OLS dB/dec over valid samples in the lowest two decadess (no interpolation)."""
     pairs = [(math.log10(x), y) for x, y in points
              if _number(x) is not None and x > 0 and _number(y) is not None]
     if len({x for x, _ in pairs}) < 2:
@@ -585,20 +585,20 @@ def input_band_noise_series(result, operating_point_id=None, noise_kind="both"):
                         n = abs(part["input_band"])
                         bands[n] = bands.get(n, 0.) + part["psd_V2_Hz"]
             else:
-                missing.add("本结果没有有效 thermal 数据" + ("：" + str(budget["reason"]) if budget.get("reason") else ""))
+                missing.add("This result has no valid thermal data" + (": " + str(budget["reason"]) if budget.get("reason") else ""))
         if noise_kind != "thermal":
             asd = _value(row, "predicted_pair_pm_asd_V_rtHz")
             if asd is not None:
                 bands[0] = bands.get(0, 0.) + asd ** 2
             else:
-                missing.add("本结果没有双器件 flicker 相干总和数据")
+                missing.add("This result has no two-device flicker coherent-sum data")
         powers.append(bands)
     orders = sorted({n for bands in powers for n in bands})
     output = []
     for n in orders:
         values = [dBc_from_pm_asd(math.sqrt(bands[n]), row["carrier_peak_V"])
                   if n in bands and row.get("carrier_peak_V") else None for bands, row in zip(powers, rows)]
-        label = "n=0 · DC 附近" if n == 0 else "n={} · {}f0 附近".format(n, "" if n == 1 else str(n)+"·")
+        label = "n=0 · near DC" if n == 0 else "n={} · near {}f0".format(n, "" if n == 1 else str(n)+"·")
         trace = _series("input_band_"+str(n), label, rows, values, scope="pair", harmonic=n)
         trace.update(n=n, color=band_color(n), row_key="band:"+str(n),
                      power_V2_Hz=[bands.get(n) for bands in powers],
@@ -606,11 +606,11 @@ def input_band_noise_series(result, operating_point_id=None, noise_kind="both"):
         output.append(trace)
     totals = [dBc_from_pm_asd(math.sqrt(math.fsum(bands.values())), row["carrier_peak_V"])
               if bands and row.get("carrier_peak_V") else None for bands, row in zip(powers, rows)]
-    total = _series("calculated_total", "已纳入频带总和" if missing else "所有频带功率总和", rows, totals, scope="pair")
+    total = _series("calculated_total", "sum of included bands" if missing else "sum of all band powers", rows, totals, scope="pair")
     total.update(width=3.5, role="total", row_key="band:total")
     if orders:
         output.append(total)
-    reference = _series("hbnoise_total", "HBnoise 仿真总 PN", rows,
+    reference = _series("hbnoise_total", "HBnoise simulated total PN", rows,
                         [r.get("spectre_total_dBc_Hz") for r in rows], scope="whole_vco")
     reference.update(dash=True, color="#9b8790", width=2, row_key="band:reference")
     output.append(reference)
@@ -618,10 +618,10 @@ def input_band_noise_series(result, operating_point_id=None, noise_kind="both"):
         trace["slope"] = fit_noise_slope(trace["points"])
         trace["keys"] = [trace["row_key"]] * len(rows)
         slope = trace["slope"]
-        trace["name"] += " · {:.1f} dB/dec".format(slope) if slope is not None else " · 斜率不可用"
+        trace["name"] += " · {:.1f} dB/dec".format(slope) if slope is not None else " · slope unavailable"
     notes = sorted(missing)
     if len(rows) == 1:
-        notes.append("只有 1 个频偏，无法看斜率")
+        notes.append("Only one offset; slope unavailable")
     return {"series": output, "rows": rows, "powers": powers, "notes": notes,
             "single_offset": len(rows) == 1, "partial": bool(missing)}
 

@@ -112,7 +112,7 @@ class ProcessChart(tk.Canvas):
         if width < 120 or height < 60:
             return
         if not self.panels:
-            self._text(width / 2, height / 2, '选择任务结果后查看 ISF 分析链路')
+            self._text(width / 2, height / 2, 'Select job results to inspect ISF analysis chain')
             return
         for index, panel in enumerate(self.panels):
             layout = panel.get('layout', (0, index / len(self.panels), 1, (index + 1) / len(self.panels)))
@@ -142,7 +142,7 @@ class ProcessChart(tk.Canvas):
         self.create_rectangle(x0 + 2, y0 + 2, x1 - 2, y1 - 2, fill=self.palette['background'], outline=self.palette['grid'])
         self._text(x0 + 10, y0 + 10, panel.get('title', ''), anchor='w', font=self.title_font, tags=f'title:{index}')
         if panel.get('open') is not None:
-            self._text(x1 - 12, y0 + 10, '展开 ↗', anchor='e', fill=self.palette['accent'])
+            self._text(x1 - 12, y0 + 10, 'Expand ↗', anchor='e', fill=self.palette['accent'])
         if panel.get('kind') == 'sources':
             self._sources(index, panel, box)
             return
@@ -193,7 +193,7 @@ class ProcessChart(tk.Canvas):
         log = panel.get('log_x', False)
         all_points = [p for s in visible for p in s['points'] if p is not None and finite_number(p[1]) is not None and (not log or p[0] > 0)]
         if not all_points:
-            reason = panel.get('reason') or '本结果未保存该阶段的数据'
+            reason = panel.get('reason') or 'No data for this stage was saved in this result'
             self._message((left + right) / 2, (top + bottom) / 2, reason, max(100, right - left - 12), tag=f'reason:{index}')
             self._text((left + right) / 2, y1 - 10, panel.get('xlabel', ''), fill=self.palette['muted'])
             return
@@ -309,7 +309,7 @@ class ProcessChart(tk.Canvas):
         points = panel.get('phasors', [])
         left, top, right, bottom = x0 + 80, y0 + 39, x1 - 32, y1 - 33
         if not points:
-            self._text((x0 + x1) / 2, (y0 + y1) / 2, '本结果没有可用的 ΣQk 复数累计')
+            self._text((x0 + x1) / 2, (y0 + y1) / 2, 'This result has no available ΣQk complex cumulative sum')
             return
         extent = max(max(abs(p['real']), abs(p['imag'])) for p in points) * 1.18 or 1.
         side = min(right - left, bottom - top)
@@ -321,7 +321,7 @@ class ProcessChart(tk.Canvas):
             self.create_oval(cx - radius, cy - radius, cx + radius, cy + radius, outline=self.palette['grid'])
         self.create_line(left, cy, right, cy, fill=self.palette['border'])
         self.create_line(cx, top, cx, bottom, fill=self.palette['border'])
-        self._text((left + right) / 2, y1 - 12, 'Re{ΣQk} (V/√Hz) · 半径 ' + engineering(extent, 'V/√Hz'))
+        self._text((left + right) / 2, y1 - 12, 'Re{ΣQk} (V/√Hz) · radius ' + engineering(extent, 'V/√Hz'))
         self._text(x0 + 16, (top + bottom) / 2, 'Im{ΣQk} (V/√Hz)', angle=90)
         path = [(cx, cy)] + [project_point((p['real'], p['imag']), b, rect) for p in points]
         self.create_line(*[v for p in path for v in p], fill=COLORS[0], width=2)
@@ -346,11 +346,11 @@ class ProcessChart(tk.Canvas):
         values = [finite_number(r.get(k)) for r in rows for k in ('simulated_dbc', 'calculated_dbc', 'stored_thermal_dbc')]
         values = [v for v in values if v is not None]
         if not values:
-            self._text((x0 + x1) / 2, (y0 + y1) / 2, '未采集各器件 / 噪声机制贡献')
+            self._text((x0 + x1) / 2, (y0 + y1) / 2, 'No collected per-device / noise mechanism contributions')
             return
         low = min(values) - 5
         high = max(values) + 6
-        self._text(x0 + 10, y0 + 31, f'聚合置顶 / 源功率排序 {len(displayed)}/{len(rows)} 行 · 蓝 HBnoise / 橙 ISF / 紫 未验诊断', anchor='w', width=x1-x0-20, fill=self.palette['muted'])
+        self._text(x0 + 10, y0 + 31, f'aggregates first / sources ranked by power {len(displayed)}/{len(rows)} rows · blue HBnoise / orange ISF / purple unverified diagnostic', anchor='w', width=x1-x0-20, fill=self.palette['muted'])
         for i, row in enumerate(displayed):
             y = y0 + 48 + i * ((y1 - y0 - 75) / max(1, len(displayed)))
             label = (str(row.get('label')) if row.get('kind') == 'aggregate'
@@ -367,7 +367,7 @@ class ProcessChart(tk.Canvas):
                 self._text(x + 5, y + j * 11 - 4, engineering(value), anchor='w', fill=COLORS[j])
                 self.hits.append({'key': row['key'], 'x': x, 'y': y, 'value': (i, value),
                                   'series': {'name': label + ' · ' + row['scope'], 'unit':'dBc/Hz'}, 'color': COLORS[j], 'plot': {'index': index, 'rect': (left, y - 6, right, y + 12), 'panel': panel}})
-        self._text((left + right) / 2, y1 - 13, f'相噪 (dBc/Hz) · 范围 {engineering(low, digits=3)} … {engineering(high, digits=3)}', fill=self.palette['muted'])
+        self._text((left + right) / 2, y1 - 13, f'Phase noise (dBc/Hz) · range {engineering(low, digits=3)} … {engineering(high, digits=3)}', fill=self.palette['muted'])
 
     def _cursor(self):
         self.delete('cursor')
@@ -408,7 +408,7 @@ class ProcessChart(tk.Canvas):
                     rect=plot['rect']
                     x=project_point((target,0),plot['bounds']['left'],rect)[0]
                     self.create_line(x,rect[1],x,rect[3],fill=self.palette['selection'],dash=(3,3),tags='cursor')
-                    self._text(rect[2],rect[1]-8,'该相位缺少有效采样',anchor='e',fill=self.palette['muted'],tags='cursor')
+                    self._text(rect[2],rect[1]-8,'No valid sample at this phase',anchor='e',fill=self.palette['muted'],tags='cursor')
 
     def _nearest(self, event):
         in_panel = [h for h in self.hits if h['plot']['rect'][0] - 8 <= event.x <= h['plot']['rect'][2] + 8 and h['plot']['rect'][1] - 10 <= event.y <= h['plot']['rect'][3] + 10]

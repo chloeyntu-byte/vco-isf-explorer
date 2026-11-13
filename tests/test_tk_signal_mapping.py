@@ -27,29 +27,29 @@ class Variable:
 class PortableMappingTests(unittest.TestCase):
     def test_execution_failures_name_the_field_and_route_to_the_actual_editor(self):
         pair = {"roles": {"vco": {"mapping_fields": [
-            {"key": "target_instance", "label": "VCO 目标器件", "status": "ambiguous", "value": None},
-            {"key": "vgs_output", "label": "VGS 时域输出", "value": "CUSTOM_GATE"},
+            {"key": "target_instance", "label": "VCO target device", "status": "ambiguous", "value": None},
+            {"key": "vgs_output", "label": "VGS time-domain output", "value": "CUSTOM_GATE"},
         ]}}}
         setup = {"fields": [
-            {"key": "engine.spectre", "label": "Spectre 仿真程序"},
-            {"key": "main.instance_path", "label": "VCO 目标器件完整层级"},
+            {"key": "engine.spectre", "label": "Spectre Simulator"},
+            {"key": "main.instance_path", "label": "VCO Target device full hierarchy"},
         ], "errors": [
-            {"field": "engine.spectre", "message": "未找到可执行文件"},
-            {"field": "main.instance_path", "message": "未能唯一识别"},
-            {"field": "testbenches.vco.mapping_overrides.vgs_output", "message": "CUSTOM_GATE 不是可计算波形"},
+            {"field": "engine.spectre", "message": "Executable not found"},
+            {"field": "main.instance_path", "message": "Not uniquely detected"},
+            {"field": "testbenches.vco.mapping_overrides.vgs_output", "message": "CUSTOM_GATE is not a calculable waveform"},
         ]}
         original = copy.deepcopy(setup)
         rows = portable_issue_rows(setup, pair)
         self.assertEqual("vco:target_instance", rows[0]["mapping_iid"])
-        self.assertEqual("VCO 目标器件完整层级：未能唯一识别", rows[0]["message"])
+        self.assertEqual("VCO Target device full hierarchy: Not uniquely detected", rows[0]["message"])
         self.assertEqual("physical", rows[1]["tab"])
-        self.assertEqual("Spectre 仿真程序：未找到可执行文件", rows[1]["message"])
+        self.assertEqual("Spectre Simulator: Executable not found", rows[1]["message"])
         self.assertEqual("vco:vgs_output", rows[2]["mapping_iid"])
         self.assertEqual(original, setup)
 
-    def test_installed_cjk_font_is_selected_without_installing_or_forcing_missing_faces(self):
-        self.assertEqual("WenQuanYi Micro Hei", _ui_font_family(["DejaVu Sans", "WenQuanYi Micro Hei"], "DejaVu Sans"))
-        self.assertEqual("Noto Sans CJK SC", _ui_font_family(["Noto Sans CJK SC", "WenQuanYi Micro Hei"], "DejaVu Sans"))
+    def test_latin_sans_is_preferred_and_missing_faces_use_default(self):
+        self.assertEqual("DejaVu Sans", _ui_font_family(["DejaVu Sans", "WenQuanYi Micro Hei"], "DejaVu Sans"))
+        self.assertEqual("DejaVu Sans", _ui_font_family(["Noto Sans CJK SC", "WenQuanYi Micro Hei"], "DejaVu Sans"))
         self.assertEqual("DejaVu Sans", _ui_font_family(["DejaVu Sans"], "DejaVu Sans"))
         self.assertEqual("liberation sans", _ui_font_family(["gothic", "song ti", "liberation sans"], "gothic"))
 
@@ -65,10 +65,10 @@ class PortableMappingTests(unittest.TestCase):
         original = copy.deepcopy(report)
         rows = catalog_review_rows(report)
         self.assertEqual(5, len(rows))
-        self.assertEqual("网名 2 项 · Outputs 2 项 · Variables 1 项 · 全部 5 项", catalog_summary(report))
+        self.assertEqual("Net name 2 items · Outputs 2 items · Variables 1 items · All 5 items", catalog_summary(report))
         self.assertEqual(["HB_PN_VCO_10k", "HB_TIME_VDS"], [row["name"] for row in catalog_review_rows(report, kind="output")])
         self.assertEqual(["VOUT_N"], [row["name"] for row in catalog_review_rows(report, query="vout_n")])
-        self.assertEqual(["VDS"], [row["name"] for row in catalog_review_rows(report, query="变量")])
+        self.assertEqual(["VDS"], [row["name"] for row in catalog_review_rows(report, query="Variable")])
         self.assertEqual(0, catalog_review_rows(report, kind="variable")[0]["expression"])
         rows[0]["name"] = "changed"
         self.assertEqual(original, report)
@@ -129,7 +129,7 @@ class PortableMappingTests(unittest.TestCase):
         self.assertEqual(("gate_time", "x_bias"), (rows["vgs"]["vco"], rows["vgs"]["replica"]))
         self.assertEqual(("drain_time", "y_bias"), (rows["vds"]["vco"], rows["vds"]["replica"]))
         report["roles"]["vco"]["mapping_fields"][1]["status"] = "invalid"
-        self.assertEqual("需确认", cross_tb_review_rows(report)[0]["status"])
+        self.assertEqual("Needs confirmation", cross_tb_review_rows(report)[0]["status"])
         mapped = mapping_review_rows(report)
         mapped[0]["value"] = "changed"
         self.assertEqual("drain_time", report["roles"]["vco"]["mapping_fields"][0]["value"])
@@ -148,7 +148,7 @@ class PortableMappingTests(unittest.TestCase):
         instance._selection_revision += 1
         captured["success"]({"ok": True})
         instance._pair_inspected.assert_not_called()
-        self.assertIn("过期", instance.binding_status_var.get())
+        self.assertIn("Stale", instance.binding_status_var.get())
 
     def test_cross_tb_derived_nodes_are_usable_without_a_named_maestro_output(self):
         report = {"roles": {
@@ -157,14 +157,14 @@ class PortableMappingTests(unittest.TestCase):
         }, "cross_tb_mapping": [{
             "semantic": "VGS", "vco_value": "V(net6)-V(net3)",
             "vco_expression": "V(net6)-V(net3)", "vco_source": "pin_derived",
-            "replica_value": "VGS", "status": "derived", "help": "使用原始节点波形计算。",
+            "replica_value": "VGS", "status": "derived", "help": "Calculate from raw node waveforms. ",
         }]}
         row = cross_tb_review_rows(report)[0]
         self.assertEqual("V(net6)-V(net3)", row["vco"])
         self.assertEqual("VGS", row["replica"])
-        self.assertEqual("原始节点计算", row["source"])
-        self.assertEqual("按节点对应", row["status"])
-        self.assertIn("原始节点", row["help"])
+        self.assertEqual("Derived from raw nodes", row["source"])
+        self.assertEqual("Mapped by nodes", row["status"])
+        self.assertIn("raw node", row["help"])
 
     def test_complex_expression_is_reference_only_not_an_executable_pair(self):
         report = {"cross_tb_mapping": [{
@@ -174,8 +174,8 @@ class PortableMappingTests(unittest.TestCase):
         row = cross_tb_review_rows(report)[1]
         self.assertEqual("CALC_COMPLEX", row["vco"])
         self.assertEqual("customCalc(data)", row["expression"])
-        self.assertEqual("仅对照 / 不可计算", row["status"])
-        self.assertEqual("表达式仅供对照", row["source"])
+        self.assertEqual("reference only / not calculable", row["status"])
+        self.assertEqual("Expression for reference only", row["source"])
 
 
 if __name__ == "__main__":

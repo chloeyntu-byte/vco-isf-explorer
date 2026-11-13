@@ -183,7 +183,7 @@ def contribution_pies(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {"simulated": [], "calculated": [], "missing_simulated": [],
                               "missing_calculated": [], "note": ""}
     if any(not all(identity) for identity in identities) or len(set(identities)) != len(identities):
-        result["note"] = "N/A：器件 / 噪声机制身份缺失或重复，未绘制可能重复计数的饼图。"
+        result["note"] = "N/A: Device / noise mechanism identity is missing or duplicated, pie chart omitted to avoid possible double counting. "
         return result
     sources.sort(key=lambda row: (str(row.get("device")), str(row.get("mechanism"))))
     for index, row in enumerate(sources):
@@ -209,13 +209,13 @@ def contribution_pies(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     modeled = {row["id"] for row in result["calculated"]}
     covered = math.fsum(row["power"] for row in result["simulated"] if row["id"] in modeled)
     result["reference_coverage_pct"] = 100 * covered / simulated if simulated else None
-    result["note"] = ("两图分别按已展示的独立源线性功率归一化；颜色对应相同器件 / 机制，面积不是绝对相噪。"
-                      "计算图仅含已建模且有数据的源，缺失项不视为零；汇总行不重复计入。")
+    result["note"] = ("each chart is normalized by the displayed independent-source linear power; colors identify the same device / Mechanism, area does not represent absolute phase noise. "
+                      "the calculation chart includes only modeled sources with data, missing items are not treated as zero; aggregate rows are not counted twice. ")
     if result["reference_coverage_pct"] is not None:
-        result["note"] += f" 已建模源覆盖所选仿真明细功率 {result['reference_coverage_pct']:.3g}%。"
-    for key, label in (("missing_calculated", "计算 N/A"), ("missing_simulated", "仿真 N/A")):
+        result["note"] += f" modeled sources cover the selected simulated detail power by {result['reference_coverage_pct']:.3g}%. "
+    for key, label in (("missing_calculated", "Calculated N/A"), ("missing_simulated", "Simulation N/A")):
         if result[key]:
-            result["note"] += f" {label}：" + "、".join(result[key]) + "。"
+            result["note"] += f" {label}: " + ", ".join(result[key]) + ". "
     return result
 
 
@@ -223,7 +223,7 @@ def contribution_bars(rows: Sequence[Mapping[str, Any]], limit: int = 8) -> dict
     """Align leading source contributions on the same whole-VCO PSD scale."""
     data = contribution_pies(rows)
     reference = next((row for row in rows if row.get("kind") == "aggregate"
-                      and row.get("label") == "VCO 总仿真相噪"), {})
+                      and row.get("label") == "VCO simulated total phase noise"), {})
     reference_psd = _finite(reference.get("psd_V2_Hz"))
     reference_db = _finite(reference.get("simulated_dbc"))
     by_source: dict[str, float] = {}
@@ -244,13 +244,13 @@ def contribution_bars(rows: Sequence[Mapping[str, Any]], limit: int = 8) -> dict
     data["axis_max"] = max(100., *(by_source[name] for name in data["order"])) if data["order"] else 100.
     if not by_source:
         return data
-    data["note"] = "双图共用 VCO 总仿真 PSD 作分母。N/A 表示缺测或未建模。"
+    data["note"] = "both plots share VCO simulated total PSD as the denominator. N/A means not measured or not modeled. "
     if not any(row["percent"] is not None for key in ("simulated", "calculated") for row in data[key]):
-        data["note"] += " 当前 History 缺少可用的总仿真 PSD，无法绘制占比。"
+        data["note"] += " Current History No usable simulated total PSD, Cannot plot fractions. "
     if len(by_source) > len(data["order"]):
-        data["note"] += f" 图中显示占比最高的 {len(data['order'])} 项，全部 {len(by_source)} 项见表格。"
+        data["note"] += f" the chart shows the largest fractions {len(data['order'])} items, All {len(by_source)} items are in the table. "
     if data["reference_coverage_pct"] is not None:
-        data["note"] += f" 已建模源覆盖所选仿真明细功率 {data['reference_coverage_pct']:.3g}%。"
+        data["note"] += f" modeled sources cover the selected simulated detail power by {data['reference_coverage_pct']:.3g}%. "
     return data
 
 
@@ -290,7 +290,7 @@ class ContributionBars(tk.Canvas):
     def _show_details(self, row: Mapping[str, Any]) -> None:
         self.delete("tooltip")
         value = row.get("percent")
-        description = f"{value:.5g}% 总仿真 PSD" if value is not None else "N/A"
+        description = f"{value:.5g}% simulated total PSD" if value is not None else "N/A"
         if row.get("dbc") is not None:
             description += f"   {row['dbc']:.6g} dBc/Hz"
         label = self.create_text(9, 21, text=description, anchor="w", font=self._font,
@@ -311,7 +311,7 @@ class ContributionBars(tk.Canvas):
         color = self._palette
         self.create_text(9, 17, text=self.title, anchor="w", font=self._font, fill=color["text"])
         if not self._order:
-            self.create_text(width / 2, height / 2, text="暂无独立源数据", font=self._font, fill=color["muted"])
+            self.create_text(width / 2, height / 2, text="No independent-source data", font=self._font, fill=color["muted"])
             return
         left, right = max(60, width * .40), width - 52
         span = max(1, right - left)
@@ -631,9 +631,9 @@ class LineChart(tk.Canvas):
         if visible_count < len(display_series):
             legend_y += 29
             self._selector_ids = [None] + [item["id"] for item in display_series]
-            self._series_selector.configure(values=[f"全部 {len(display_series)} 条（另 {len(display_series) - visible_count} 条图例已折叠）"] + [item["name"] for item in display_series])
+            self._series_selector.configure(values=[f"All {len(display_series)} curves (another {len(display_series) - visible_count} legend entries collapsed)"] + [item["name"] for item in display_series])
             self._series_selector.current(self._selector_ids.index(self.selected_series_id))
-            self.create_text(left, legend_y, text="选择曲线：", anchor="w", fill=self._palette["text"], font=self._tick_font, tags="legend-overflow")
+            self.create_text(left, legend_y, text="Select curve: ", anchor="w", fill=self._palette["text"], font=self._tick_font, tags="legend-overflow")
             self.create_window(left + 90, legend_y, window=self._series_selector, anchor="w", width=max(50, right - left - 90), tags="legend-overflow")
         else:
             self._selector_ids = []
@@ -659,7 +659,7 @@ class LineChart(tk.Canvas):
             self.create_line(left, y, right, y, fill=self._palette["grid"])
             self.create_text(left - 8, y, text=_tick(value), anchor="e", fill=self._palette["muted"], font=self._tick_font)
         if self._x_label:
-            self.create_text((left + right) / 2, height - 14, text=self._x_label + ("（log）" if self._log_x else ""), fill=self._palette["text"], font=self._axis_font)
+            self.create_text((left + right) / 2, height - 14, text=self._x_label + (" (log)" if self._log_x else ""), fill=self._palette["text"], font=self._axis_font)
         if self._y_label:
             self.create_text(14, (top + bottom) / 2, text=self._y_label, angle=90, fill=self._palette["text"], font=self._axis_font)
         if self._include_zero:

@@ -2,6 +2,7 @@
 
 ## 1.1.0 - 2026-11-13
 
+- Desktop and Web interfaces are now fully in English, including charts, dialogs, metrics and troubleshooting. Data formats and export field names remain unchanged; older saved harmonic selections are accepted.
 - Eight linked result views with a process navigator and table drawer.
 - ISF process and normalized Fig.14 overlay; harmonic projection fractions.
 - Input-noise-band phase noise, slopes, and per-source thermal bands.
@@ -16,9 +17,9 @@ First public release.
 ### UI
 
 - New unified RF-FIELDWORK look: dark theme (default; the light mode stays available as an option), shared header with product accent bar, bottom status bar with idle/running/done/error chip and progress indicator, window title `VCO ISF Explorer — <project>`.
-- Button hierarchy: exactly one primary button per page (**开始分析** on the setup page, **开始实际运行** on the job page); file actions use the default style, the theme switch is a ghost button.
+- Button hierarchy: exactly one primary button per page (**Start analysis** on the setup page, **Start live run** on the job page); file actions use the default style, the theme switch is a ghost button.
 - Charts use the dark plot background and the shared series colours; the selected curve is drawn thick in the product accent while the others fade.
-- Empty state with a **载入示例** button that imports the bundled synthetic ideal-LC bundle.
+- Empty state with a **Load example** button that imports the bundled synthetic ideal-LC bundle.
 - Smaller base font (10 pt) so the main pages fit at 1280 x 800.
 
 ### Data and examples

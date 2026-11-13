@@ -33,11 +33,11 @@ try:
         rows['tk'] = {'status': 'pass', 'detail': interpreter.call('package', 'require', 'Tk')}
         interpreter.destroy()
     else:
-        rows['tk'] = {'status': 'not_tested', 'detail': 'DISPLAY 未设置'}
+        rows['tk'] = {'status': 'not_tested', 'detail': 'DISPLAY not set'}
 except Exception as error:
     target = 'tk' if stage == 'tk_init' else 'tcl'
     rows[target] = {'status': 'fail', 'detail': stage + ' / ' + type(error).__name__}
-    rows.setdefault('tk', {'status': 'not_tested', 'detail': '依赖 Tcl 初始化'})
+    rows.setdefault('tk', {'status': 'not_tested', 'detail': 'dependencies Tcl initialization'})
 print(json.dumps(rows))
 """
 
@@ -69,7 +69,7 @@ def inspect_environment(config=None, workspace=None, maestro_context=None):
     if analysis.get("probe_deferred") and analysis.get("source") != "automatic":
         python_checks["analysis"] = {"status": "not_tested", "detail": analysis.get("candidate")}
     elif not analysis.get("executable"):
-        python_checks["analysis"] = {"status": "fail", "detail": analysis.get("candidate") or "未识别"}
+        python_checks["analysis"] = {"status": "fail", "detail": analysis.get("candidate") or "Unresolved"}
     target = _target_directory_status(detected["workspace"]["path"]) if workspace else None
     inherited = context.get("runtime_env") or {}
     license_present = any((inherited.get(key) if key in inherited else os.environ.get(key))
@@ -102,20 +102,20 @@ def inspect_environment(config=None, workspace=None, maestro_context=None):
 def format_environment_report(report):
     platform = report["platform"]
     python = report["python"]
-    sources = {"profile": "手动设置", "maestro-context": "当前 Maestro", "cadence-bridge": "环境脚本线索",
-               "PATH": "PATH", "installation-hint": "安装目录线索", "companion-tool": "同安装目录",
-               "project-hint": "工程目录线索", "ISF_CADENCE_ENV": "ISF_CADENCE_ENV"}
-    status = {"pass": "通过", "fail": "失败", "not_tested": "未测试", "found": "已找到", "missing": "未找到", "invalid": "设置无效"}
+    sources = {"profile": "Manual setting", "maestro-context": "Current Maestro", "cadence-bridge": "environment-script hint",
+               "PATH": "PATH", "installation-hint": "installation hint", "companion-tool": "same installation directory",
+               "project-hint": "project hint", "ISF_CADENCE_ENV": "ISF_CADENCE_ENV"}
+    status = {"pass": "Passed", "fail": "failed", "not_tested": "not tested", "found": "Found", "missing": "not found", "invalid": "Invalid settings"}
     lines = [
-        "环境就绪" if report["status"] == "ready" else "环境检查发现待处理项",
+        "Environment ready" if report["status"] == "ready" else "Environment check found items needing attention",
         f"{platform['system']} · {platform['machine']} · {platform['libc']} {platform['libc_version']}",
         f"Python {python['version']} · {python['executable']}",
     ]
-    labels = {"numpy": "NumPy", "tcl": "Tcl", "tk": "Tk", "analysis": "分析解释器", "runtime": "Python 依赖"}
+    labels = {"numpy": "NumPy", "tcl": "Tcl", "tk": "Tk", "analysis": "Analysis interpreter", "runtime": "Python dependencies"}
     for key, item in report["python_checks"].items():
         lines.append(f"{labels[key]}  {status[item['status']]} · {item['detail']}")
     lines.append("")
-    for name, item in {**report["tools"], "Cadence 环境脚本": report["cadence_env"]}.items():
+    for name, item in {**report["tools"], "Cadence Environment script": report["cadence_env"]}.items():
         path = item.get("path") or item.get("configured")
         parts = [name, status[item["status"]]]
         if item.get("source"):
@@ -124,7 +124,7 @@ def format_environment_report(report):
             parts.append(path)
         lines.append("  ·  ".join(parts))
     if report["workspace"]["target"]:
-        lines.append("工作区  ·  " + report["workspace"]["target"]["detail"])
-    lines.append("许可证变量  ·  " + ("已设置" if report["license_environment_present"] else "未检测到"))
-    lines.extend(("", "此检查只定位工具和本机 Python 依赖。Cadence 启动、许可证签出、PSF 读取和仿真未测试。"))
+        lines.append("Workspace  ·  " + report["workspace"]["target"]["detail"])
+    lines.append("License environment variables  ·  " + ("Set" if report["license_environment_present"] else "not detected"))
+    lines.extend(("", "This check locates tools and local Python dependencies. Cadence startup, license checkout, PSF reading and simulation are not tested. "))
     return "\n".join(lines)

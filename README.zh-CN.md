@@ -4,21 +4,21 @@
 
 LC VCO 冲激敏感函数（ISF / PPV）与闪烁噪声上变频的桌面分析工作流，界面为深色仪器风格的 Tk 窗口。
 
-![VCO ISF Explorer：自带 ideal-LC 示例的总览](docs/screenshots/01-overview.png)
+![VCO ISF Explorer：自带 ideal-LC 示例的 Overview](docs/screenshots/01-overview.png)
 
 
-1.1.0：结果页提供 00–07 流程导航、表格抽屉与图表双向联动；新增 ISF 全过程与 Fig.14 叠加、Qk 投影占比、输入频带相噪及斜率、逐源 thermal 频带。噪声贡献恢复 pair 对比，并按参考功率排序。示例含合成 thermal 与未建模源；thermal 计算范围为 gm 对管与无源 LC。
+1.1.0：结果页提供 00–07 流程导航、表格抽屉与图表双向联动；新增 ISF process 与 Fig.14 叠加、Qk 投影占比、输入频带相噪及斜率、逐源 Thermal bands。Noise contributions 恢复 pair 对比，并按参考功率排序。示例含合成 thermal 与未建模源；thermal 计算范围为 gm 对管与无源 LC。
 
 ## 功能
 
 - **闪烁噪声上变频**：从已完成的 VCO HB/HBNOISE Maestro history 和选定的一颗核心 MOS 生成私有闪烁夹具，给出单管结果和对称独立双管估算（+3.01 dB）。
-- **ISF 与谐波闭合**：以载波为参考的带符号 H（I/Q）ISF 分支、逐阶谐波贡献和复数累计（“ISF 全过程”和“谐波分解”视图）。
+- **ISF 与谐波闭合**：以载波为参考的带符号 H（I/Q）ISF 分支、逐阶谐波贡献和复数累计（“ISF process”和“Harmonic decomposition”视图）。
 - **相噪视图**：相噪与同口径误差随频偏联动，源贡献横条使用统一 PSD 分母，支持缩放、平移、显隐和 EPS 导出。
 - **热噪声支路**（手工噪声 TB 工作流）：gm 对管加受支持的原生 LC 损耗源，见 [docs/THERMAL_NOISE.md](docs/THERMAL_NOISE.md)。
 - **离线回放**：导入 canonical CSV bundle（[formats/README.md](formats/README.md)），无需任何 EDA 工具；仓库自带合成 ideal-LC 示例 [examples/ideal_lc](examples/ideal_lc)。
 - **Maestro 菜单启动器**与只读环境检测（`--diagnose`）。
 
-界面文字为中文；代码、文档与数据格式为中英双语。
+桌面和 Web 界面均为英文；数据格式与导出字段名保持不变。
 
 ## 环境要求
 
@@ -35,7 +35,7 @@ python3.11 -m pip install -e '.[live]'      # 也可直接在源码目录运行
 python3.11 run.py --workspace ./work
 ```
 
-1. 在第一页点击 **载入示例**。自带的合成 ideal-LC 回放（3 个工况 × 7 个频偏）会被导入，并自动切到 **分析结果** 页。
+1. 在第一页点击 **Load example**。自带的合成 ideal-LC 回放（3 个工况 × 7 个频偏）会被导入，并自动切到 **Results** 页。
 2. 查看相噪随频偏曲线、贡献表、谐波和 ISF 波形。理想 LC 的 ISF 是纯正弦；两个 “asym” 工况加入了二次谐波成分。
 3. 随时可以重新生成示例数据：
 
@@ -49,11 +49,11 @@ python3.11 examples/generate_example.py examples/ideal_lc
 
 ## 在 Cadence 中使用
 
-在 Maestro 窗口选择 **Plug-in → Open VCO ISF Explorer**，选择已完成的 VCO history、核心 MOS 和频偏，然后点击 **开始分析**。详见 [docs/MAESTRO_PLUGIN.md](docs/MAESTRO_PLUGIN.md)，要点：
+在 Maestro 窗口选择 **Plug-in → Open VCO ISF Explorer**，选择已完成的 VCO history、核心 MOS 和频偏，然后点击 **Start analysis**。详见 [docs/MAESTRO_PLUGIN.md](docs/MAESTRO_PLUGIN.md)，要点：
 
 - 在 `.cdsinit` 中加载 `cadence/vco_isf_menu.il`，先指向你的检出目录（`export VCO_ISF_HOME=/path/to/vco-isf-explorer`，或在加载前设置 `isfMaestroLauncher`）；
 - 启动器会查找带 Tk 的 Python 3.11+，也可用 `VCO_ISF_PYTHON` 明确指定；
-- PDK 位置、器件名、工艺角和工具路径都是**你的配置**：工具从所选 history 检测名称，并允许在 **高级设置** 中覆盖。`configs/` 只含虚构的通用示例（`PDK_A`、`device_model.scs`、`generic_nmos`），见 [configs/README.md](configs/README.md)。
+- PDK 位置、器件名、工艺角和工具路径都是**你的配置**：工具从所选 history 检测名称，并允许在 **Advanced settings** 中覆盖。`configs/` 只含虚构的通用示例（`PDK_A`、`device_model.scs`、`generic_nmos`），见 [configs/README.md](configs/README.md)。
 
 ## 命令行（供 agent 使用）
 
@@ -101,10 +101,10 @@ MIT，见 [LICENSE](LICENSE)。
 
 理论与示例: [ISF theory](docs/ISF_THEORY.md), [input bands](docs/input-noise-bands.md).
 
-![02-process](docs/screenshots/02-process.png)
+![ISF process](docs/screenshots/02-process.png)
 
-![03-harmonics](docs/screenshots/03-harmonics.png)
+![Harmonic decomposition](docs/screenshots/03-harmonics.png)
 
-![04-bands](docs/screenshots/04-bands.png)
+![Input noise band → phase noise](docs/screenshots/04-bands.png)
 
-![05-contributions](docs/screenshots/05-contributions.png)
+![Noise contributions](docs/screenshots/05-contributions.png)
