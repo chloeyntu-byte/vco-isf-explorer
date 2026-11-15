@@ -6,7 +6,6 @@ Desktop analysis procedure for LC-VCO impulse sensitivity function (ISF / PPV) a
 
 ![VCO ISF Explorer: overview from the bundled ideal-LC example](docs/screenshots/01-overview.png)
 
-
 Version 1.1.0 adds eight result views (00–07), a linked table drawer, the ISF process and Fig.14 overlay, signed Qk projection fractions, input-band phase noise with slopes, and per-source thermal bands. Source details rank by reference power; the flicker pair comparison remains an aggregate, never counted twice. The analytic example includes thermal and an unmodeled source; thermal scope is the gm pair and passive LC.
 
 ## What it does
@@ -83,14 +82,26 @@ python3.11 -m unittest discover -s tests
 ISF_GUI_TEST=1 python3.11 -m unittest discover -s tests   # also runs the GUI tests (needs a display)
 ```
 
+## Not included in this repository
+
+The following are not part of this repository:
+
+- Your PDK, model files, device names and corners. `configs/` holds fictional generic examples only.
+- Your Cadence Virtuoso, Maestro and Spectre environment and licences, needed for live extraction.
+- A PSS/PNOISE adapter; the bundled runner uses the HB/HBNOISE path.
+- Measured results from any real process. The example bundle is a synthetic ideal LC.
+
+If you need one of these, or an example for your setup, please open a [GitHub issue](https://github.com/chloeyntu-byte/vco-isf-explorer/issues); the maintainer will reply there.
+
 ## RF-FIELDWORK
 
-Product page: https://rf-fieldwork.pages.dev/isf/?lang=en
+- Lab home (all tools, narrated films and progress): https://rf-fieldwork.pages.dev/?lang=en
+- This tool's page (with a narrated film): https://rf-fieldwork.pages.dev/isf/?lang=en
 
 Other open-source tools:
 
 - [Flux Studio](https://github.com/chloeyntu-byte/flux-studio): parametric RF passives, EMX sweeps, multi-objective search and SNPFit
-- [Cap Array Lab](https://github.com/chloeyntu-byte/cap-array-lab): capacitor-array C/Q, parasitic paths, resonance and Z11
+- [Tank Scan Lab](https://github.com/chloeyntu-byte/tank-scan-lab): LC tank scans (f0, Rp, gm, startup margin, loss shares), capacitor-array C/Q and resonance
 - [Layout 3D Viewer](https://github.com/chloeyntu-byte/layout-3d-viewer): read IC layouts in 3D, locate pins and trace connections
 - [Crescendo](https://github.com/chloeyntu-byte/crescendo): automatic device-size optimization inside Cadence Maestro
 - [VCO Design Studio](https://github.com/chloeyntu-byte/vco-design-studio): five literature LC VCO topology families, packaged schematics and native export

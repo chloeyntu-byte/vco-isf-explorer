@@ -6,7 +6,6 @@ LC VCO 冲激敏感函数（ISF / PPV）与闪烁噪声上变频的桌面分析�
 
 ![VCO ISF Explorer：自带 ideal-LC 示例的 Overview](docs/screenshots/01-overview.png)
 
-
 1.1.0：结果页提供 00–07 流程导航、表格抽屉与图表双向联动；新增 ISF process 与 Fig.14 叠加、Qk 投影占比、输入频带相噪及斜率、逐源 Thermal bands。Noise contributions 恢复 pair 对比，并按参考功率排序。示例含合成 thermal 与未建模源；thermal 计算范围为 gm 对管与无源 LC。
 
 ## 功能
@@ -83,14 +82,26 @@ python3.11 -m unittest discover -s tests
 ISF_GUI_TEST=1 python3.11 -m unittest discover -s tests   # 同时运行 GUI 测试（需要显示）
 ```
 
+## 未随仓库提供的内容
+
+以下内容不随本仓库提供：
+
+- 你的 PDK、模型文件、器件名和工艺角。`configs/` 里只有虚构的通用示例。
+- 你自己的 Cadence Virtuoso、Maestro、Spectre 环境和许可证，实时提取时才需要。
+- PSS/PNOISE 适配器；自带的运行器走 HB/HBNOISE 路径。
+- 任何真实工艺的实测结果。示例数据包是一个合成的理想 LC。
+
+需要其中某一项，或想为你的环境要一个示例，请在 [GitHub Issues](https://github.com/chloeyntu-byte/vco-isf-explorer/issues) 提出，维护者会在那里回复。
+
 ## RF-FIELDWORK
 
-产品介绍页：https://rf-fieldwork.pages.dev/isf/?lang=zh（含配音演示片的工具在页面上可直接观看）
+- 总站（全部工具、演示片与项目进展）：https://rf-fieldwork.pages.dev/?lang=zh
+- 本工具介绍页（含配音演示片）：https://rf-fieldwork.pages.dev/isf/?lang=zh
 
 其他开源工具：
 
 - [Flux Studio](https://github.com/chloeyntu-byte/flux-studio)：参数化射频无源器件、EMX 扫参、多目标优化与 SNPFit 拟合
-- [Cap Array Lab](https://github.com/chloeyntu-byte/cap-array-lab)：电容阵列 C/Q、寄生路径、谐振与 Z11
+- [Tank Scan Lab](https://github.com/chloeyntu-byte/tank-scan-lab)：LC 谐振腔扫描（f0、Rp、gm、起振裕量、损耗分摊）、电容阵列 C/Q 与谐振
 - [Layout 3D Viewer](https://github.com/chloeyntu-byte/layout-3d-viewer)：三维阅读版图、定位 pin、追踪连接
 - [Crescendo](https://github.com/chloeyntu-byte/crescendo)：在 Cadence Maestro 里自动优化器件尺寸
 - [VCO Design Studio](https://github.com/chloeyntu-byte/vco-design-studio)：五类文献 LC VCO 拓扑、分层原理图与原生导出
