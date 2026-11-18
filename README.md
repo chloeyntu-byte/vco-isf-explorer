@@ -18,7 +18,7 @@ VCO ISF Explorer analyzes how oscillator waveforms and selected noise sources co
 
 Python 3.11 or newer. Tk is required for the desktop. NumPy is required for live analysis and optimization metrics, and Pillow enables PNG export. The synthetic replay and result viewing require no generator, Cadence installation, PDK or license.
 
-Testbench entries A/B/C require the separate [VCO TB Generator](https://github.com/chloeyntu-byte/vco-tb-generator), your own Cadence Virtuoso/MAESTRO and Spectre tools and licenses, and the PDK and models for your circuit. Entry A also needs a Design Lab project export. The generator is published separately.
+Testbench entries A/B/C require the separate [VCO TB Generator](https://github.com/chloeyntu-byte/vco-testbench-generator), your own Cadence Virtuoso/MAESTRO and Spectre tools and licenses, and the PDK and models for your circuit. Entry A also needs a Design Lab project export. The generator is published separately.
 
 ## Install and run the synthetic example
 
@@ -47,7 +47,7 @@ Confirm the target gm device. Under **Two-device analysis**, choose **Complement
 
 ```sh
 vco-isf --help
-vco-isf capabilities --tbgen-root /path/to/vco-tb-generator --json
+vco-isf capabilities --tbgen-root /path/to/vco-testbench-generator --json
 vco-isf --diagnose --workspace ./isf-workspace --json
 vco-isf metrics --workspace ./isf-workspace --job JOB_ID --point lc_ideal --offset-hz 10000 --json
 vco-isf metrics compare before.json after.json --point lc_ideal --offset-hz 10000 --json
@@ -85,7 +85,7 @@ Other open-source tools:
 - [Tank Scan Lab](https://github.com/chloeyntu-byte/tank-scan-lab): LC tank scans (f0, Rp, gm, startup margin, loss shares), capacitor-array C/Q and resonance
 - [Layout 3D Viewer](https://github.com/chloeyntu-byte/layout-3d-viewer): read IC layouts in 3D, locate pins and trace connections
 - [VCO Design Studio](https://github.com/chloeyntu-byte/vco-design-studio): five literature LC VCO topology families, packaged schematics and native export
-- [VCO TB Generator](https://github.com/chloeyntu-byte/vco-tb-generator): Virtuoso testbench and Maestro HB/HBNOISE/HBXF setup for LC VCOs; required by testbench entries A/B/C
+- [VCO TB Generator](https://github.com/chloeyntu-byte/vco-testbench-generator): Virtuoso testbench and Maestro HB/HBNOISE/HBXF setup for LC VCOs; required by testbench entries A/B/C
 
 
 ## License

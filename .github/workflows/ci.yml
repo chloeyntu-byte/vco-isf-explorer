@@ -34,12 +34,12 @@ jobs:
         continue-on-error: true
         timeout-minutes: 2
         with:
-          repository: chloeyntu-byte/vco-tb-generator
-          path: vco-tb-generator
+          repository: chloeyntu-byte/vco-testbench-generator
+          path: vco-testbench-generator
           persist-credentials: false
       - name: Enable TB Generator integration tests
         if: steps.tbgen.outcome == 'success'
-        run: echo "VCO_TBGEN_ROOT=${GITHUB_WORKSPACE}/vco-tb-generator" >> "${GITHUB_ENV}"
+        run: echo "VCO_TBGEN_ROOT=${GITHUB_WORKSPACE}/vco-testbench-generator" >> "${GITHUB_ENV}"
       - name: Install a virtual display for Tk tests
         run: sudo apt-get update && sudo apt-get install -y xvfb
       - name: Install the package

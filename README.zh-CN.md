@@ -18,7 +18,7 @@ VCO ISF Explorer 使用脉冲灵敏度函数（ISF）分析振荡器波形和所
 
 Python 3.11 或更新版本。桌面需要 Tk，实时分析和优化指标需要 NumPy，导出 PNG 需要 Pillow。合成回放和查看结果无需台架生成器、Cadence、PDK 或许可证。
 
-台架入口 A/B/C 需要独立发布的 [VCO TB Generator](https://github.com/chloeyntu-byte/vco-tb-generator)、用户自己的 Cadence Virtuoso/MAESTRO、Spectre 与许可证，以及电路所用的 PDK 和模型。入口 A 还需要 Design Lab 项目导出。
+台架入口 A/B/C 需要独立发布的 [VCO TB Generator](https://github.com/chloeyntu-byte/vco-testbench-generator)、用户自己的 Cadence Virtuoso/MAESTRO、Spectre 与许可证，以及电路所用的 PDK 和模型。入口 A 还需要 Design Lab 项目导出。
 
 ## 安装并运行合成示例
 
@@ -47,7 +47,7 @@ vco-isf --workspace ./isf-workspace
 
 ```sh
 vco-isf --help
-vco-isf capabilities --tbgen-root /path/to/vco-tb-generator --json
+vco-isf capabilities --tbgen-root /path/to/vco-testbench-generator --json
 vco-isf --diagnose --workspace ./isf-workspace --json
 vco-isf metrics --workspace ./isf-workspace --job JOB_ID --point lc_ideal --offset-hz 10000 --json
 vco-isf metrics compare before.json after.json --point lc_ideal --offset-hz 10000 --json
@@ -79,7 +79,7 @@ vco-isf optim calibrate selected-result-ref.json
 - [实验室主页](https://rf-fieldwork.pages.dev/?lang=zh)
 - [本工具主页](https://rf-fieldwork.pages.dev/isf/?lang=zh)
 
-其他工具包括 Flux Studio、Tank Scan Lab、Layout 3D Viewer、VCO Design Studio 和 [VCO TB Generator](https://github.com/chloeyntu-byte/vco-tb-generator)（测试台入口 A/B/C 需要它）。
+其他工具包括 Flux Studio、Tank Scan Lab、Layout 3D Viewer、VCO Design Studio 和 [VCO TB Generator](https://github.com/chloeyntu-byte/vco-testbench-generator)（测试台入口 A/B/C 需要它）。
 
 ## 许可证
 

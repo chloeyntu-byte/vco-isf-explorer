@@ -1,20 +1,20 @@
 # Using VCO TB Generator from ISF Explorer
 
-Testbench entries A, B and C build or extend a Virtuoso/Maestro test through the separate [VCO TB Generator](https://github.com/chloeyntu-byte/vco-tb-generator). ISF Explorer itself never writes OA data or Maestro setups; every write goes through the generator, following its [calling rules](https://github.com/chloeyntu-byte/vco-tb-generator/blob/main/docs/CALLING_RULES.md). The synthetic example, result viewing, metrics and the Maestro-history import in **Setup** do not need the generator.
+Testbench entries A, B and C build or extend a Virtuoso/Maestro test through the separate [VCO TB Generator](https://github.com/chloeyntu-byte/vco-testbench-generator). ISF Explorer itself never writes OA data or Maestro setups; every write goes through the generator, following its [calling rules](https://github.com/chloeyntu-byte/vco-testbench-generator/blob/main/docs/CALLING_RULES.md). The synthetic example, result viewing, metrics and the Maestro-history import in **Setup** do not need the generator.
 
 ## 1. Install
 
 Either install it into the same Python environment:
 
 ```sh
-git clone https://github.com/chloeyntu-byte/vco-tb-generator.git
-python -m pip install ./vco-tb-generator
+git clone https://github.com/chloeyntu-byte/vco-testbench-generator.git
+python -m pip install ./vco-testbench-generator
 ```
 
 or keep a checkout and point ISF Explorer at it (no install needed):
 
 ```sh
-export VCO_TBGEN_ROOT=/path/to/vco-tb-generator
+export VCO_TBGEN_ROOT=/path/to/vco-testbench-generator
 ```
 
 ISF Explorer resolves the generator in this order: the **TB Generator path** field (desktop) or `--tbgen-root` (CLI) / `tbgen_root=` (Python API), then `VCO_TBGEN_ROOT`, then an installed `vco_tbgen` package. When a path is given, the imported module must come from that path, otherwise preparation stops with a module identity error. This release requires TB Generator 1.x with the `vco_tbgen.isf` module.
@@ -22,7 +22,7 @@ ISF Explorer resolves the generator in this order: the **TB Generator path** fie
 Check the connection:
 
 ```sh
-vco-isf capabilities --tbgen-root /path/to/vco-tb-generator --json
+vco-isf capabilities --tbgen-root /path/to/vco-testbench-generator --json
 ```
 
 ## 2. Configure Cadence for the generator
@@ -35,7 +35,7 @@ The generator runs Virtuoso in batch mode with your own installation and PDK:
 | `TBGEN_ENVIRONMENT_SCRIPT` | Shell script that sets up Cadence, Spectre and license variables |
 | `TBGEN_COMMAND_TEMPLATE` | Optional JSON argv wrapper for a site lock or scheduler, e.g. `["site-lock", "--library", "{library}", "--", "{command}"]` |
 
-Use one environment script for both tools so the generator and the ISF solver run under the same setup. Describe your PDK's model includes in a [binding file](https://github.com/chloeyntu-byte/vco-tb-generator/blob/main/docs/BINDINGS.md).
+Use one environment script for both tools so the generator and the ISF solver run under the same setup. Describe your PDK's model includes in a [binding file](https://github.com/chloeyntu-byte/vco-testbench-generator/blob/main/docs/BINDINGS.md).
 
 ## 3. What each entry asks the generator to do
 
