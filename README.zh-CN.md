@@ -79,7 +79,7 @@ vco-isf optim calibrate selected-result-ref.json
 - [实验室主页](https://rf-fieldwork.pages.dev/?lang=zh)
 - [本工具主页](https://rf-fieldwork.pages.dev/isf/?lang=zh)
 
-其他工具包括 Flux Studio、Tank Scan Lab、Layout 3D Viewer 和 VCO Design Studio。
+其他工具包括 Flux Studio、Tank Scan Lab、Layout 3D Viewer、VCO Design Studio 和 [VCO TB Generator](https://github.com/chloeyntu-byte/vco-tb-generator)（测试台入口 A/B/C 需要它）。
 
 ## 许可证
 

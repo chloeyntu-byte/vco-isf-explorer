@@ -85,6 +85,7 @@ Other open-source tools:
 - [Tank Scan Lab](https://github.com/chloeyntu-byte/tank-scan-lab): LC tank scans (f0, Rp, gm, startup margin, loss shares), capacitor-array C/Q and resonance
 - [Layout 3D Viewer](https://github.com/chloeyntu-byte/layout-3d-viewer): read IC layouts in 3D, locate pins and trace connections
 - [VCO Design Studio](https://github.com/chloeyntu-byte/vco-design-studio): five literature LC VCO topology families, packaged schematics and native export
+- [VCO TB Generator](https://github.com/chloeyntu-byte/vco-tb-generator): Virtuoso testbench and Maestro HB/HBNOISE/HBXF setup for LC VCOs; required by testbench entries A/B/C
 
 
 ## License
