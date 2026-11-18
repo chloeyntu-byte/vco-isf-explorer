@@ -35,7 +35,7 @@ Click **Load synthetic example** in the header. The result opens in **Results**.
 
 ## Use with Cadence
 
-Set `VCO_TBGEN_ROOT` to the generator checkout or pass `--tbgen-root` to a preparation or capabilities command. In [Testbench setup](docs/screenshots/testbench-setup.png), select:
+Set `VCO_TBGEN_ROOT` to the generator checkout or pass `--tbgen-root` to a preparation or capabilities command. [Using VCO TB Generator](docs/TB_GENERATOR.md) covers installation, Cadence variables, what each entry asks the generator to do, and the writing rules. In [Testbench setup](docs/screenshots/testbench-setup.png), select:
 
 - **A · Design Lab** for a generated project directory and exported DUT.
 - **B · Existing Maestro** to review and add an ISF test to an existing setup. Explicitly confirm the new test. Use the current-session action when working from the matching Maestro window.

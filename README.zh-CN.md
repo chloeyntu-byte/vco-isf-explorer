@@ -35,7 +35,7 @@ vco-isf --workspace ./isf-workspace
 
 ## 在 Cadence 中使用
 
-将 `VCO_TBGEN_ROOT` 设为生成器仓库路径，或在支持的命令上指定 `--tbgen-root`。在 [Testbench setup](docs/screenshots/testbench-setup.png) 中选择入口。
+将 `VCO_TBGEN_ROOT` 设为生成器仓库路径，或在支持的命令上指定 `--tbgen-root`。安装方式、Cadence 环境变量、各入口调用生成器的哪些功能以及写入规则见 [Using VCO TB Generator](docs/TB_GENERATOR.md)（英文）。在 [Testbench setup](docs/screenshots/testbench-setup.png) 中选择入口。
 
 - **A · Design Lab** 选择生成目录和已导出的 DUT。
 - **B · Existing Maestro** 审核并确认新增测试。若从匹配的 Maestro 窗口启动，可使用当前会话的新增测试操作。
