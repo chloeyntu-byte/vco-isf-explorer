@@ -38,8 +38,10 @@ simulator options, and creates the four-terminal DC/noise template. The
 dynamic replica uses the same selected device and periodic D/G/S/B voltages.
 Unsupported hierarchical expressions, non-unique models or unproven terminal
 order fail during inspection or preparation. The generated scope is selected
-MOS flicker with a symmetric independent power estimate. Thermal and formal
-pair signoff use the manual reference path.
+MOS flicker with a symmetric independent power estimate. Both generated and
+manual fixtures feed the shared thermal collector through their phase-resolved
+DC samples. Thermal covers the proven symmetric gm pair and independently
+passive LC branches.
 
 ## Portable signal and execution setup
 

@@ -74,9 +74,9 @@ def expand_offsets(analysis):
         if isinstance(values, str):
             # Whitespace separates entries, but allow an optional space before a unit.
             values = re.sub(r"(?<=\d)\s+(?=[kKMG]|[Hh]z)", "", values.strip())
-            if re.search(r"[,, ;]\s*[,, ;]|^[,, ;]|[,, ;]$", values):
+            if re.search(r"[,;]\s*[,;]|^[,;]|[,;]$", values):
                 raise ValidationError("Offset list contains an empty item")
-            values = re.split(r"[,, ;\s]+", values) if values else []
+            values = re.split(r"[,;\s]+", values) if values else []
         if not isinstance(values, (list, tuple)):
             raise ValidationError("Offset-list mode requires a list, for example 1k,10k,1M,100M")
         if len(values) > MAX_OFFSET_POINTS:

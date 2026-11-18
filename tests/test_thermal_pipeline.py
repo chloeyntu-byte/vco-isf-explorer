@@ -184,6 +184,7 @@ bsim3v3: X7.core of model
 
     def test_bsim4_intrinsic_and_access_ports_keep_distinct_transfer_functions(self):
         nodes = parse_terminal_map(self.MAP.replace('bsim3v3', 'bsim4'))
+        nodes['X7.core']['access_resistance'] = {'rd':0, 'rs':0}
         values = {'drain': 8+3j, 'source': 2-1j,
                   'X7.core:int_d': 5+2j, 'X7.core:int_s': 3-2j}
         expected = {'id': 2+4j, 'rd': 3+1j, 'rs': -1+1j}
@@ -198,6 +199,7 @@ bsim3v3: X7.core of model
 
     def test_bsim4_eliminated_access_nodes_do_not_invent_a_nonzero_branch(self):
         nodes = parse_terminal_map(self.MAP.replace('bsim3v3', 'bsim4'))
+        nodes['X7.core']['access_resistance'] = {'rd':0, 'rs':0}
         values = {'drain': 5j, 'source': 2j}
         self.assertEqual(3j, port_transfer(values, physical_noise_port('X7.core', 'id', nodes, values)))
         for mechanism in ('rd', 'rs'):

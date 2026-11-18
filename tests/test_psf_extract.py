@@ -38,7 +38,7 @@ class MaestroRunFixture:
             )
             connection.execute("INSERT INTO point VALUES (17, 1, 8)")
             connection.execute("INSERT INTO test VALUES (4, 'vco_nominal')")
-            connection.execute("INSERT INTO corner VALUES (8, 'Fhigh')")
+            connection.execute("INSERT INTO corner VALUES (8, 'band_high')")
             connection.execute("INSERT INTO testStatus VALUES (17, 4, 3)")
             connection.executemany(
                 "INSERT INTO parameter VALUES (?, ?, ?, ?)",
@@ -78,7 +78,7 @@ class MaestroRunTests(unittest.TestCase):
             runs = load_maestro_runs(rdb, test="vco_nominal")
             self.assertEqual(1, len(runs))
             run = runs[0]
-            self.assertEqual("Fhigh", run["corner"])
+            self.assertEqual("band_high", run["corner"])
             self.assertEqual({"k": 0.4, "bias": 0.001}, run["params"])
             self.assertEqual(17, run["point_id"])
             self.assertEqual(4, run["test_id"])
@@ -127,27 +127,27 @@ class PairingTests(unittest.TestCase):
 
     def test_pairs_by_corner_and_sweep_not_point_id(self):
         vco = [
-            self.record(("v", 91), "Fhigh", 0.4),
-            self.record(("v", 92), "Flow", 0.6),
+            self.record(("v", 91), "band_high", 0.4),
+            self.record(("v", 92), "band_low", 0.6),
         ]
         replica = [
-            self.record(("r", 3), "Flow", "0.600"),
-            self.record(("r", 4), "Fhigh", 0.4),
+            self.record(("r", 3), "band_low", "0.600"),
+            self.record(("r", 4), "band_high", 0.4),
         ]
         pairs = pair_runs(vco, replica, ["k"])
         self.assertEqual(2, len(pairs))
         by_corner = {row["key"]["corner"]: row for row in pairs}
-        self.assertEqual(("v", 91), by_corner["Fhigh"]["vco"]["identity"])
-        self.assertEqual(("r", 4), by_corner["Fhigh"]["replica"]["identity"])
+        self.assertEqual(("v", 91), by_corner["band_high"]["vco"]["identity"])
+        self.assertEqual(("r", 4), by_corner["band_high"]["replica"]["identity"])
 
     def test_duplicate_and_missing_keys_fail_closed(self):
-        run = self.record(("v", 1), "Fhigh", 0.4)
+        run = self.record(("v", 1), "band_high", 0.4)
         with self.assertRaises(ValidationError):
             pair_runs([run, dict(run, identity=("v", 2))], [run], ["k"])
         with self.assertRaises(ValidationError):
             pair_runs(
-                [self.record(("v", 1), "Fhigh", 0.4)],
-                [self.record(("r", 1), "Fhigh", 0.6)],
+                [self.record(("v", 1), "band_high", 0.4)],
+                [self.record(("r", 1), "band_high", 0.6)],
                 ["k"],
             )
 

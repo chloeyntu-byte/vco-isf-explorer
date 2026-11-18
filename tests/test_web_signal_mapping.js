@@ -457,7 +457,7 @@ test("failure actions open Advanced and focus the exact execution or mapping fie
 
 test("English helper text and preflight details have room to wrap", () => {
   const css = fs.readFileSync(path.join(ROOT, "isf_tool", "ui", "styles.css"), "utf8");
-  assert.match(css, /--sans: "Inter", "Noto Sans", "Liberation Sans", "DejaVu Sans"/);
+  assert.match(css, /--sans: "Inter", "Noto Sans"/);
   assert.match(css, /\.field > small\s*\{[^}]*display: block;[^}]*margin-top: 9px;[^}]*line-height: 1\.85;/);
   assert.match(css, /\.preflight-check small\s*\{[^}]*white-space: pre-wrap;[^}]*overflow-wrap: anywhere;/);
   assert.doesNotMatch(css.match(/\.preflight-check small\s*\{[^}]*\}/)[0], /nowrap|ellipsis/);

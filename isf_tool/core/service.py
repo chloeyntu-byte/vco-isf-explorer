@@ -18,6 +18,7 @@ try:
 except ImportError:  # pragma: no cover
     from collections import Mapping
 
+from .. import __version__
 from .bundle import import_csv_bundle
 from .discovery import discover_result_directories, inspect_rdb
 from .dual_tb import import_dual_tb_bundle
@@ -32,6 +33,7 @@ from .errors import (
 )
 from .error_catalog import load_error_catalog
 from .events import EventRecorder
+from .complementary import prepare_devices, run_complementary
 from .models import normalize_result, utc_now, validate_json_compatible
 from .maestro_pair import discover_maestro_setups, inspect_maestro_pair
 from .orchestrator import DualTBOrchestrator, _validate_bundle_provenance
@@ -40,7 +42,7 @@ from .preflight import resolve_config, _runtime_identity
 from .portable_setup import build_portable_setup, engine_content_sha256
 from .waveform_exchange import inspect_waveform_exchange
 from .run_state import STATE_FILENAME
-from . import ui_state
+from . import api_jobs, ui_state
 from .offset_sweep import SWEEP_STATE, OffsetSweepStopped, is_sweep, run_offset_sweep
 
 
@@ -591,7 +593,7 @@ class ToolService(object):
         return {
             "status": "ok",
             "service": "isf-portable-tool-core",
-            "version": "1.1.0",
+            "version": __version__,
             "jobs": counts,
             "capabilities": {
                 "discovery": ["maestro-pair", "maestro", "psf", "sqlite-rdb"],
@@ -625,7 +627,19 @@ class ToolService(object):
             config_snapshot = _deep_merge(config_snapshot, embedded)
         elif "config" not in payload:
             config_snapshot = _deep_merge(config_snapshot, payload)
+        if config_snapshot.get('analysis', {}).get('complementary') is not None:
+            return self._core_preflight(config_snapshot)
         return run_preflight(config_snapshot, workspace=self.workspace, **self._environment_options)
+
+    def _core_preflight(self, config):
+        try:
+            _, reports = prepare_devices(self, config)
+        except (PreflightError, ValidationError) as exc:
+            checks = exc.details.get('failed_checks') or [
+                dict(status='fail', field='analysis.complementary', message=str(exc))]
+            return dict(ok=False, status='fail', checks=checks, summary=dict(fail=len(checks)),
+                        required_user_fields=['analysis.complementary'])
+        return dict(reports[0], complementary_devices=reports)
 
     def list_states(self):
         return ui_state.list_states(self.workspace)
@@ -826,6 +840,18 @@ class ToolService(object):
         if path is not None and os.path.isfile(os.path.join(_absolute_path(path, "bundle path"), SWEEP_STATE)):
             from .offset_sweep import import_offset_sweep
             return import_offset_sweep(payload)
+        if path is not None:
+            candidate = _absolute_path(path, "bundle path")
+            result_path = os.path.join(candidate, 'result.json') if os.path.isdir(candidate) else candidate
+            if os.path.basename(result_path) == 'result.json' and os.path.isfile(result_path):
+                try:
+                    with open(result_path, encoding='utf-8') as stream:
+                        evidence = json.load(stream)
+                except (OSError, ValueError):
+                    evidence = None
+                core = evidence.get('complementary_core') if isinstance(evidence, dict) else None
+                if isinstance(core, dict) and core.get('schema') == 'isf.complementary-core.v1':
+                    return normalize_result(evidence)
         if mode in ("dual_tb", "canonical", "two_tb", "two-testbench"):
             return import_dual_tb_bundle(payload)
         if path is not None:
@@ -953,7 +979,9 @@ class ToolService(object):
             job["updated_at"] = job["started_at"]
         try:
             recorder.emit("queued", "succeeded", 0, "Job started")
-            if is_sweep(config_snapshot):
+            if config_snapshot.get('analysis', {}).get('complementary') is not None:
+                result = run_complementary(self, payload, config_snapshot, recorder.emit)
+            elif is_sweep(config_snapshot):
                 result = run_offset_sweep(self, job_id, payload, config_snapshot, recorder.emit)
             else:
                 orchestrator = DualTBOrchestrator(
@@ -1008,7 +1036,14 @@ class ToolService(object):
             config_snapshot = _deep_merge(config_snapshot, embedded)
         payload.pop("config", None)
         config_snapshot = _seal_run_contract(config_snapshot, payload)
-        config_snapshot = resolve_config(config_snapshot, workspace=self.workspace, **self._environment_options)
+        complementary = config_snapshot.get('analysis', {}).get('complementary') is not None
+        if complementary:
+            if not self.workspace:
+                raise ValidationError('Complementary core requires an owned workspace')
+            # Both devices are fully preflighted before the first child can run.
+            config_snapshot['execution']['resume_enabled'] = False
+        else:
+            config_snapshot = resolve_config(config_snapshot, workspace=self.workspace, **self._environment_options)
         # The resolved snapshot is authoritative from this point onward.
         # Keeping the raw embedded object in the payload would let the
         # orchestrator shallow-merge it a second time and erase generated
@@ -1027,7 +1062,7 @@ class ToolService(object):
                 and execution.get("require_preflight", False)
             )
         )
-        if require_preflight:
+        if require_preflight and not complementary:
             report = run_preflight(config_snapshot, workspace=self.workspace, **self._environment_options)
             if not report.get("ok"):
                 failed = [
@@ -1347,7 +1382,10 @@ class ToolService(object):
             job = self._jobs.get(str(job_id))
             if job is None:
                 raise JobNotFoundError("unknown job: %s" % job_id)
-            if job.get("status") not in ("queued", "running") or not is_sweep(job.get("_config_snapshot", {})):
+            config = job.get('_config_snapshot', {})
+            if config.get('analysis', {}).get('complementary') is not None:
+                raise ValidationError('Stop after current offset is unavailable for complementary jobs')
+            if job.get("status") not in ("queued", "running") or not is_sweep(config):
                 raise ValidationError("This action applies only to running multi-offset jobs")
             job["cancel_requested"] = True
             job["message"] = "will stop after the current offset completes, completed results will be retained"
@@ -1355,6 +1393,10 @@ class ToolService(object):
         return {"ok": True, "job_id": str(job_id), "stop_after_current_offset": True}
 
     def get_job(self, job_id):
+        if self.workspace:
+            row = api_jobs.manifest(self.workspace, str(job_id))
+            if row is not None:
+                return api_jobs.desktop_job(row)
         with self._lock:
             job = self._jobs.get(str(job_id))
             if job is None:
@@ -1363,7 +1405,8 @@ class ToolService(object):
         value.pop("result", None)
         request_snapshot = value.pop("_request", None)
         config_snapshot = value.pop("_config_snapshot", None) or {}
-        value["is_offset_sweep"] = is_sweep(config_snapshot)
+        value["is_offset_sweep"] = (config_snapshot.get('analysis', {}).get('complementary') is None
+                                    and is_sweep(config_snapshot))
         value["offset_sweep"] = None
         if value["is_offset_sweep"]:
             from .offsets import expand_offsets
@@ -1426,10 +1469,23 @@ class ToolService(object):
                         ),
                     }
                 )
+        if self.workspace:
+            for job in api_jobs.desktop_jobs(self.workspace):
+                values.append(job)
         values.sort(key=lambda item: item.get("created_at") or "", reverse=True)
         return {"jobs": values}
 
     def get_result(self, job_id):
+        if self.workspace:
+            row = api_jobs.manifest(self.workspace, str(job_id))
+            if row is not None:
+                if isinstance(row.get("result"), dict):
+                    return row["result"]
+                job = api_jobs.desktop_job(row)
+                if job["status"] == "failed":
+                    raise JobFailedError(f"Job failed: {job_id}", details=job["error"] or {})
+                raise JobNotReadyError(f"Job result is not ready: {job_id}",
+                                       details={"status": job["status"]})
         with self._lock:
             job = self._jobs.get(str(job_id))
             if job is None:

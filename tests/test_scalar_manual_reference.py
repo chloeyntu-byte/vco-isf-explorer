@@ -41,7 +41,7 @@ M_DC = {0: 2.0e-9 + 0j, 1: 0.5e-9 + 1.0e-9j, 2: 1.0e-9 - 0.5e-9j}
 CARRIER = 0.6 + 0.8j
 OFFSET_HZ = 10000.0
 F0_HZ = 5.0e9
-POINT = "Fhigh_SW0_manual_reference"
+POINT = "band_high_SW0_manual_reference"
 
 # Explicit literals, not values calculated using the implementation under test.
 MANUAL_Q = (2.0e-6 + 2.0e-6j, 7.0e-6 + 7.0e-6j, -4.0e-6 - 5.0e-6j)
@@ -69,7 +69,7 @@ def canonical_fixture():
     for harmonic, transfer in TRANSFER_OHM.items():
         vco.append({
             "point": POINT,
-            "corner": "Fhigh",
+            "corner": "band_high",
             "k": harmonic,
             "f0_Hz": F0_HZ,
             "offset_Hz": OFFSET_HZ,
@@ -164,7 +164,7 @@ class ScalarManualReferenceTests(unittest.TestCase):
         self.assertEqual([POINT], list(result["points"]))
         self.assertEqual(1, len(result["summary"]))
         summary = result["summary"][0]
-        self.assertEqual((POINT, "Fhigh", OFFSET_HZ), (summary["point"], summary["corner"], summary["offset_Hz"]))
+        self.assertEqual((POINT, "band_high", OFFSET_HZ), (summary["point"], summary["corner"], summary["offset_Hz"]))
         self.assertEqual(2e-9, summary["sqrt_Sxi_A_rtHz"])
         self.assertTrue(math.isclose(summary["dynamic_pm_asd_V_rtHz"], MANUAL_ASD, rel_tol=1e-12))
         self.assertAlmostEqual(summary["dynamic_dBc_Hz"], MANUAL_DBC, places=11)

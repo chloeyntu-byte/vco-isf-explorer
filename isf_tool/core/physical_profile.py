@@ -166,6 +166,9 @@ def validate_physical_profile(profile):
         )
     _require_text(profile.get("profile_id"), "physical_profile.profile_id")
     main = _require_mapping(profile.get("main"), "physical_profile.main")
+    if "thermal_scope" in main and (main["thermal_scope"] != "selected_device"
+                                    or main.get("polarity") not in {"nmos", "pmos"}):
+        raise ProfileError("Selected-device thermal requires a proven NMOS or PMOS profile")
     replica = _require_mapping(
         profile.get("replica"), "physical_profile.replica"
     )
@@ -226,8 +229,6 @@ def validate_physical_profile(profile):
         for name in ("drain", "gate", "source", "bulk"):
             _require_text(resolved_terminals[name], "physical_profile.main.resolved_terminals.%s" % name)
     required_traces = ("current", "target_noise")
-    if profile.get("replica_source") != "generated":
-        required_traces += ("peer_noise",)
     for name in required_traces:
         _require_text(
             traces.get(name), "physical_profile.main.traces.%s" % name
@@ -317,14 +318,14 @@ def validate_physical_profile(profile):
     instance_path = str(main.get("instance_path") or "")
     parent_path = instance_path.rsplit(".", 1)[0] if "." in instance_path else ""
     for name in ("drain", "gate", "source", "bulk"):
-        terminal = str(terminals[name]).lower()
-        trace = str(traces[name]).lower()
+        terminal = str(terminals[name])
+        trace = str(traces[name])
         hierarchical_terminal = (
-            "%s.%s" % (parent_path.lower(), terminal)
+            "%s.%s" % (parent_path, terminal)
             if parent_path
             else None
         )
-        allowed_traces = ((str(resolved_terminals[name]).lower(),)
+        allowed_traces = ((str(resolved_terminals[name]),)
                           if resolved_terminals is not None
                           else (terminal, hierarchical_terminal))
         if trace not in allowed_traces:
@@ -336,22 +337,13 @@ def validate_physical_profile(profile):
             }
     if terminal_trace_mismatches:
         semantic["terminal_traces"] = terminal_trace_mismatches
-    if str(output["positive"]).lower() == str(output["negative"]).lower():
+    if str(output["positive"]) == str(output["negative"]):
         semantic["output"] = "positive and negative outputs must differ"
-    resolved_drain = resolved_terminals["drain"] if resolved_terminals is not None else terminals["drain"]
-    if str(resolved_drain).lower() not in (
-        str(output["positive"]).lower(),
-        str(output["negative"]).lower(),
-    ):
-        semantic["drain_output"] = {
-            "drain": resolved_drain,
-            "output": output,
-        }
     if (
-        str(injection["positive"]).lower()
-        != str(terminals["drain"]).lower()
-        or str(injection["negative"]).lower()
-        != str(terminals["source"]).lower()
+        str(injection["positive"])
+        != str(terminals["drain"])
+        or str(injection["negative"])
+        != str(terminals["source"])
     ):
         semantic["injection_direction"] = {
             "expected_positive": terminals["drain"],
@@ -359,14 +351,14 @@ def validate_physical_profile(profile):
             "actual_positive": injection["positive"],
             "actual_negative": injection["negative"],
         }
-    if str(probe["node"]).lower() in set(
-        str(value).lower() for value in terminals.values()
+    if str(probe["node"]) in set(
+        str(value) for value in terminals.values()
     ):
         semantic["drain_probe_node"] = (
             "probe node must be a new node distinct from device terminals"
         )
     expected_current_trace = probe.get("trace", "%s:p" % probe["source"])
-    if str(traces["current"]).lower() != expected_current_trace.lower():
+    if str(traces["current"]) != expected_current_trace:
         semantic["drain_probe_trace"] = {
             "expected": expected_current_trace,
             "actual": traces["current"],
@@ -377,8 +369,10 @@ def validate_physical_profile(profile):
     inline_alias = intrinsic.get("inline_alias", False)
     if not isinstance(inline_alias, bool):
         raise ProfileError("physical_profile.replica.intrinsic.inline_alias must be boolean")
-    target_trace_valid = (str(traces["target_noise"]).lower() == target_prefix[:-1].lower()
-                          if inline_alias else str(traces["target_noise"]).lower().startswith(target_prefix.lower()))
+    if not isinstance(intrinsic.get('direct_primitive',False), bool):
+        raise ProfileError('physical_profile.replica.intrinsic.direct_primitive must be boolean')
+    target_trace_valid = (str(traces["target_noise"]) == target_prefix[:-1]
+                          if inline_alias or intrinsic.get("direct_primitive") else str(traces["target_noise"]).startswith(target_prefix))
     if not target_trace_valid:
         semantic["target_noise_trace"] = {
             "expected_prefix": target_prefix,
@@ -390,14 +384,14 @@ def validate_physical_profile(profile):
             if parent_path
             else injection["source"]
         )
-        if str(injection["trace"]).lower() != expected_injection_trace.lower():
+        if str(injection["trace"]) != expected_injection_trace:
             semantic["injection_trace"] = {
                 "expected": expected_injection_trace,
                 "actual": injection["trace"],
             }
     replica_prefix = "%s." % replica["instance"]
-    if not str(replica["noise_trace"]).lower().startswith(
-        replica_prefix.lower()
+    if not str(replica["noise_trace"]).startswith(
+        replica_prefix
     ):
         semantic["replica_noise_trace"] = {
             "expected_prefix": replica_prefix,
@@ -405,25 +399,25 @@ def validate_physical_profile(profile):
         }
     if traces.get("dc_noise"):
         dc_prefix = "%s." % replica.get("dc_instance", "M1")
-        dc_trace_valid = (str(traces["dc_noise"]).lower() == dc_prefix[:-1].lower()
-                          if inline_alias else str(traces["dc_noise"]).lower().startswith(dc_prefix.lower()))
+        dc_trace_valid = (str(traces["dc_noise"]) == dc_prefix[:-1]
+                          if inline_alias or intrinsic.get("direct_primitive") else str(traces["dc_noise"]).startswith(dc_prefix))
         if not dc_trace_valid:
             semantic["dc_noise_trace"] = {
                 "expected_prefix": dc_prefix,
                 "actual": traces["dc_noise"],
             }
-    if str(replica["original_subckt"]).lower() != str(
+    if str(replica["original_subckt"]) != str(
         main["device_subckt"]
-    ).lower():
+    ):
         semantic["replica_subckt"] = {
             "main": main["device_subckt"],
             "replica": replica["original_subckt"],
         }
-    if len(set(str(item).lower() for item in intrinsic_terminals)) != 4:
+    if len(set(str(item) for item in intrinsic_terminals)) != 4:
         semantic["intrinsic_terminals"] = "intrinsic terminals must be unique"
-    if str(intrinsic["injection_source"]).lower() == str(
+    if str(intrinsic["injection_source"]) == str(
         replica["sense_source"]
-    ).lower():
+    ):
         semantic["replica_sources"] = (
             "deterministic injection and drain sense sources must differ"
         )
@@ -448,6 +442,12 @@ def main_instance_path(profile):
 
     main = profile["main"]
     return main.get("instance_path", main["target_instance"])
+
+
+def replica_current_phase_sign(profile):
+    """Orient the replica AM reference along the selected MOS conduction current."""
+    main = profile['main']
+    return -1 if main.get('thermal_scope') == 'selected_device' and main.get('polarity') == 'pmos' else 1
 
 
 def drain_probe_trace(profile):
@@ -484,214 +484,75 @@ def dc_noise_trace(profile):
 
 
 def _include_paths(path):
-    """Resolve literal Spectre include targets without changing PDK files."""
-
-    text = _read_text(path)
-    parent = os.path.dirname(path)
-    output = []
-    for match in re.finditer(
-        r'(?im)^\s*include\s+["\']([^"\']+)["\']', text
-    ):
-        value = os.path.expandvars(os.path.expanduser(match.group(1)))
-        if not os.path.isabs(value):
-            value = os.path.join(parent, value)
-        value = os.path.realpath(os.path.abspath(value))
-        if value not in output:
-            output.append(value)
-    return output
-
-
-def _contains_subckt(path, name):
-    return bool(
-        re.search(
-            r"(?im)^\s*(?:inline\s+)?subckt\s+{}\b".format(re.escape(name)),
-            _read_text(path),
-        )
-    )
+    from .spectre_topology import SpectreTopology
+    tree = SpectreTopology(path, includes=False)
+    return [i.include_path for i in tree.includes if i.kind == 'include']
 
 
 def resolve_device_subckt_file(model_file, profile, configured=None):
-    """Find the file that owns the replica MOS subckt.
-
-    Many PDKs keep corner sections in one ``.lib`` and include the device
-    subcircuits from another file.  A manual ``device_subckt_file`` remains an
-    escape hatch, but the normal path follows literal include directives
-    automatically (bounded to keep preflight lightweight).
-    """
-
-    if configured not in (None, ""):
+    from .spectre_topology import SpectreTopology, Definition
+    from .errors import ValidationError
+    if configured not in (None, ''):
         return _real_path(configured)
     model_file = _real_path(model_file)
-    if not model_file or not os.path.isfile(model_file):
-        return None
-    target = profile["replica"]["original_subckt"]
-    pending = [(model_file, 0)]
-    visited = set()
-    while pending and len(visited) < 128:
-        path, depth = pending.pop(0)
-        if path in visited or not os.path.isfile(path):
+    if not model_file or not os.path.isfile(model_file): return None
+    replica = profile['replica']
+    found = set()
+    for section in replica.get('model_sections') or [None]:
+        try:
+            tree = SpectreTopology(model_file, section=section)
+            definition = tree.lookup(replica['original_subckt'])
+            if isinstance(definition, Definition): found.add(definition.header.source)
+            elif definition is not None: found.add(definition.source)
+        except (OSError, ValueError, ValidationError):
             continue
-        visited.add(path)
-        if _contains_subckt(path, target):
-            return path
-        if depth >= 5:
-            continue
-        pending.extend(
-            (child, depth + 1)
-            for child in _include_paths(path)
-            if child not in visited
-        )
-    return None
+    return next(iter(found)) if len(found) == 1 else None
 
 
 def _normalized_net(value):
-    value = str(value or "").strip()
-    while value.startswith("/"):
-        value = value[1:]
-    return value
+    from .spectre_topology import canonical_name
+    return canonical_name(value)
 
 
-def _netlist_semantic_errors(
-    path, profile, require_private_supplements=True, vco_mapping=None
-):
-    text = _read_text(path)
-    main = profile["main"]
-    terminals = main["terminals"]
-    instance = main["target_instance"]
-    subckt = main["device_subckt"]
-    injection = main["injection"]["source"]
-    terminal_pattern = r"\s+".join(
-        re.escape(terminals[name])
-        for name in ("drain", "gate", "source", "bulk")
-    )
-    checks = [
-        (
-            "target_instance",
-            r"(?im)^\s*{}\s*\(\s*{}\s*\)\s+{}\b".format(
-                re.escape(instance),
-                terminal_pattern,
-                re.escape(subckt),
-            ),
-            "target instance/terminal/subckt signature is absent",
-        ),
-        ("hb", r"(?im)^\s*{}\s*(?:\(|\b)".format(re.escape(str((vco_mapping or {}).get("periodic_analysis") or "hb"))), "HB analysis is absent"),
-        (
-            "hbnoise",
-            r"(?im)^\s*{}\s*(?:\(|\b)".format(re.escape(str((vco_mapping or {}).get("noise_analysis") or "hbnoise"))),
-            "HBNOISE analysis is absent",
-        ),
-    ]
-    if require_private_supplements:
-        checks.extend(
-            [
-                (
-                    "injection_source",
-                    r"(?im)^\s*{}\s*\(\s*[^\s()]+\s+[^\s()]+\s*\)\s+isource\b".format(
-                        re.escape(injection)
-                    ),
-                    "configured HBXF injection source is absent",
-                ),
-                (
-                    "hbxf",
-                    r"(?im)^\s*hbxf\s*(?:\(|\b)",
-                    "HBXF analysis is absent",
-                ),
-            ]
-        )
-    errors = [
-        {"field": field, "message": message, "path": path}
-        for field, pattern, message in checks
-        if not re.search(pattern, text)
-    ]
-    if main.get("resolved_terminals") is not None:
-        # A profile's alias claim alone is not proof. Re-expand the exact bound
-        # generated netlist, using the same bounded local-include reader as
-        # discovery; external PDK/install files are never traversed here.
-        from .signal_mapping import inspect_history_topology
-        topology = inspect_history_topology({"source_netlists": [{"path": path}]})
-        target_path = str(main.get("instance_path") or "")
-        matches = [record for record in topology.get("devices", [])
-                   if str(record.get("name", "")).lower() == target_path.lower()]
-        if len(matches) != 1 or matches[0].get("ambiguous"):
-            errors.append({"field": "physical_profile.main.resolved_terminals",
-                           "message": "resolved terminal evidence requires one exact expanded target instance",
-                           "instance_path": target_path, "matches": len(matches), "path": path})
+def _netlist_semantic_errors(path, profile, require_private_supplements=True, vco_mapping=None):
+    from .spectre_topology import SpectreTopology, canonical_name
+    from .errors import ValidationError
+    main, mapping, errors = profile['main'], dict(vco_mapping or {}), []
+    def error(field, message, **details):
+        errors.append(dict(field=field, message=message, path=path, **details))
+    try:
+        tree = SpectreTopology(path)
+        catalog = tree.catalog()
+        target_path = main.get('instance_path') or main['target_instance']
+        record = next((r for r in catalog['devices'] if r['name'] == canonical_name(target_path)), None)
+        if record is None:
+            error('physical_profile.main.resolved_terminals' if main.get('resolved_terminals') is not None else 'target_instance', 'target instance/terminal/subckt signature is absent', matches=0)
         else:
-            record = matches[0]
-            expected_local = [str(terminals[pin]).lower() for pin in ("drain", "gate", "source", "bulk")]
-            actual_local = [str(node).lower() for node in record.get("local_terminals", [])]
-            expected_resolved = [str(main["resolved_terminals"][pin]).lower() for pin in ("drain", "gate", "source", "bulk")]
-            actual_resolved = [str(node).lower() for node in record.get("terminals", [])]
-            if (record.get("local_name", "").lower() != str(instance).lower()
-                    or record.get("model", "").lower() != str(subckt).lower()
-                    or expected_local != actual_local
-                    or expected_resolved != actual_resolved):
-                errors.append({"field": "physical_profile.main.resolved_terminals",
-                               "message": "resolved terminal evidence disagrees with the bound target's local pins or expanded nets",
-                               "instance_path": target_path,
-                               "expected_local": expected_local, "actual_local": actual_local,
-                               "expected_resolved": expected_resolved, "actual_resolved": actual_resolved,
-                               "path": path})
-    target_pattern = checks[0][1]
-    target_count = len(re.findall(target_pattern, text))
-    if target_count > 1:
-        errors.append(
-            {
-                "field": "target_instance",
-                "message": "target instance/terminal/subckt signature is ambiguous",
-                "path": path,
-                "count": target_count,
-            }
-        )
-    mapping = dict(vco_mapping or {})
-    mapped_p = _normalized_net(mapping.get("output_p"))
-    mapped_n = _normalized_net(mapping.get("output_n"))
-    if mapped_p or mapped_n:
-        if not mapped_p or not mapped_n or mapped_p.lower() == mapped_n.lower():
-            errors.append(
-                {
-                    "field": "testbenches.vco.mapping.output",
-                    "message": "bound VCO differential output mapping is incomplete",
-                    "output_p": mapping.get("output_p"),
-                    "output_n": mapping.get("output_n"),
-                    "path": path,
-                }
-            )
-        else:
-            for label, node in (("output_p", mapped_p), ("output_n", mapped_n)):
-                if not re.search(
-                    r"(?i)(?<![A-Za-z0-9_]){}(?![A-Za-z0-9_])".format(
-                        re.escape(node)
-                    ),
-                    text,
-                ):
-                    errors.append(
-                        {
-                            "field": "testbenches.vco.mapping.%s" % label,
-                            "message": "mapped VCO output node is absent from generated netlist",
-                            "node": node,
-                            "path": path,
-                        }
-                    )
-            terminal_nodes = set(
-                _normalized_net(value).lower()
-                for value in terminals.values()
-            )
-            resolved_drain = (main.get("resolved_terminals") or terminals)["drain"]
-            if _normalized_net(mapping.get("drain") or resolved_drain).lower() not in (
-                mapped_p.lower(),
-                mapped_n.lower(),
-            ):
-                errors.append(
-                    {
-                        "field": "physical_profile.main.terminals.drain",
-                        "message": "target drain is not on either bound differential output",
-                        "drain": terminals["drain"],
-                        "output_p": mapped_p,
-                        "output_n": mapped_n,
-                        "path": path,
-                    }
-                )
+            expected = [canonical_name(main['terminals'][p]) for p in ('drain','gate','source','bulk')]
+            if record['local_name'] != main['target_instance'] or record['model'] != main['device_subckt'] or expected != record['local_terminals']:
+                error('target_instance', 'target instance/terminal/subckt signature is absent or changed')
+            resolved = main.get('resolved_terminals')
+            if resolved is not None and [canonical_name(resolved[p]) for p in ('drain','gate','source','bulk')] != record['terminals']:
+                error('physical_profile.main.resolved_terminals', "resolved terminal evidence disagrees with the bound target's local pins or expanded nets")
+        for key, kind in (('periodic_analysis','hb'),('noise_analysis','hbnoise')):
+            name = mapping.get(key) or kind
+            if not any(i['name'] == name and i['analysis_type'] == kind for i in catalog['analyses']):
+                error(kind, kind.upper() + ' analysis is absent')
+        if require_private_supplements:
+            source = main['injection'].get('trace') or main['injection']['source']
+            if not any(i['name'] == source and i['model'].lower() == 'isource' for i in catalog['devices']):
+                error('injection_source', 'configured HBXF injection source is absent')
+            if not any(i['analysis_type'] == 'hbxf' for i in catalog['analyses']):
+                error('hbxf', 'HBXF analysis is absent')
+        p, n = canonical_name(mapping.get('output_p')), canonical_name(mapping.get('output_n'))
+        if p or n:
+            if not p or not n or p == n:
+                error('testbenches.vco.mapping.output', 'bound VCO differential output mapping is incomplete')
+            for label, node in (('output_p',p),('output_n',n)):
+                if node not in catalog['nets']:
+                    error('testbenches.vco.mapping.' + label, 'mapped VCO output node is absent from generated netlist', node=node)
+    except (OSError, ValueError, ValidationError) as exc:
+        error('topology', str(exc))
     return errors
 
 
@@ -918,75 +779,27 @@ def _flicker_netlist_semantic_errors(path, profile, mapping):
 
 
 def _model_semantic_errors(path, profile, device_subckt_path=None, device_subckt_section=None):
-    text = _read_text(path)
-    replica = profile["replica"]
-    intrinsic = replica["intrinsic"]
-    original = replica["original_subckt"]
-    errors = []
-    for section in replica["model_sections"]:
-        if not re.search(
-            r"(?im)^\s*section\s+{}\b".format(re.escape(section)), text
-        ):
-            errors.append(
-                {
-                    "field": "replica.model_sections",
-                    "message": "model section is absent",
-                    "section": section,
-                    "path": path,
-                }
-            )
-    subckt_path = device_subckt_path or path
-    if profile.get("replica_source") == "generated":
-        from .generated_flicker import active_subckt
-        try:
-            _, block = active_subckt(subckt_path, device_subckt_section, original)
-        except (OSError, ValueError, ValidationError) as exc:
-            errors.append({"field": "replica.original_subckt", "message": str(exc), "path": subckt_path})
-            return errors
+    from .generated_flicker import model_definition
+    from .errors import ValidationError
+    replica, errors = profile['replica'], []
+    original, intrinsic = replica['original_subckt'], replica['intrinsic']
+    if device_subckt_section is not None:
+        includes = [('include', device_subckt_path or path, device_subckt_section)]
     else:
-        match = re.search(
-            r"(?ims)^\s*(?:inline\s+)?subckt\s+{}\b.*?^\s*ends\s+{}\s*$".format(
-                re.escape(original), re.escape(original)
-            ),
-            _read_text(subckt_path),
-        )
-        block = match.group(0) if match else None
-    if block is None:
-        errors.append(
-            {
-                "field": "replica.original_subckt",
-                "message": "device subckt is absent from the resolved model include chain",
-                "subckt": original,
-                "path": subckt_path,
-            }
-        )
-        return errors
-    actual_inline_alias = (bool(re.match(r"(?i)^\s*inline\s+subckt\b", block))
-                           and intrinsic["instance"].lower() == original.lower())
-    if bool(intrinsic.get("inline_alias", False)) != actual_inline_alias:
-        errors.append({"field": "replica.intrinsic.inline_alias",
-                       "message": "inline trace alias does not match the native model declaration",
-                       "path": subckt_path})
-    terminal_pattern = r"\s+".join(
-        re.escape(item) for item in intrinsic["terminals"]
-    )
-    if not re.search(
-        r"(?im)^\s*{}\s*\(\s*{}\s*\)\s+{}\b".format(
-            re.escape(intrinsic["instance"]),
-            terminal_pattern,
-            re.escape(intrinsic["primitive"]),
-        ),
-        block,
-    ):
-        errors.append(
-            {
-                "field": "replica.intrinsic",
-                "message": "intrinsic source location is absent from device subckt",
-                "instance": intrinsic["instance"],
-                "primitive": intrinsic["primitive"],
-                "path": subckt_path,
-            }
-        )
+        includes = [('include', path, section) for section in replica.get('model_sections') or [None]]
+    try:
+        evidence, _ = model_definition(includes, original)
+        identity = evidence['mos']
+        if bool(intrinsic.get('inline_alias')) != identity['inline_alias']:
+            errors.append({'field':'replica.intrinsic.inline_alias', 'message':'inline trace alias does not match the native model declaration', 'path':path})
+        if intrinsic.get('direct_primitive',False) != (identity['kind'] == 'primitive'):
+            errors.append({'field':'replica.intrinsic.direct_primitive','message':'primitive/model-wrapper identity does not match the model declaration','path':path})
+        expected = (intrinsic['instance'],intrinsic['primitive'],intrinsic['terminals'])
+        actual = (identity['intrinsic_path'] or 'm0',identity['primitive'],identity['intrinsic_terminals'])
+        if expected != actual:
+            errors.append({'field':'replica.intrinsic', 'message':'intrinsic source location is absent from device subckt or differs from proven model binding', 'path':path})
+    except (OSError, ValueError, ValidationError) as exc:
+        errors.append({'field':'replica.original_subckt', 'message':str(exc), 'path':path})
     return errors
 
 

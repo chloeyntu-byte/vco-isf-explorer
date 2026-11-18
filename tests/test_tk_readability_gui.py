@@ -168,7 +168,6 @@ class NativeReadabilityTests(unittest.TestCase):
         finally:
             app.queue.close()
 
-    @unittest.skipIf(os.environ.get('CI'), 'pixel layout depends on the host font set; checked on the reference desktop')
     def test_compact_setup_selects_one_mos_and_retains_manual_reference(self):
         controller = mock.Mock(workspace="/tmp/isolated-ui-layout-test")
         context = {"library": "L", "cell": "VCO", "view": "maestro", "maestro_dir": "/test/vco"}
@@ -203,7 +202,7 @@ class NativeReadabilityTests(unittest.TestCase):
             }}})
             self.root.update_idletasks()
             self.assertTrue(app.manual_reference_frame.winfo_ismapped())
-            self.assertFalse(app.generated_reference_frame.winfo_ismapped())
+            self.assertTrue(app.generated_reference_frame.winfo_ismapped())
             self.assertEqual("maestro", app._config_from_ui()["testbenches"]["replica"]["source"])
         finally:
             app.queue.close()

@@ -26,7 +26,7 @@ class LCPassiveOwnershipTests(unittest.TestCase):
         }
         self.assertEqual(["I3", "X7", "renamed_tank"], lc_passive_roots(terminals))
 
-    def test_active_or_unknown_root_excludes_all_its_resistors_and_caps(self):
+    def test_active_sibling_preserves_independent_lc_branch(self):
         for unknown in ("bsim3v3", "diode", "vsource", "bsource", "custom_unknown", ""):
             terminals = {"arbitrary.C": {"master": "capacitor"},
                          "arbitrary.R": {"master": "resistor"},
@@ -34,16 +34,17 @@ class LCPassiveOwnershipTests(unittest.TestCase):
                          "tank.cap": {"master": "capacitor"},
                          "tank.r": {"master": "resistor"}}
             with self.subTest(primitive=unknown):
-                self.assertEqual(["tank"], lc_passive_roots(terminals))
+                self.assertEqual(["arbitrary.C", "tank"], lc_passive_roots(terminals))
+                self.assertNotIn("arbitrary.R", lc_passive_roots(terminals))
 
-    def test_mixed_hierarchy_never_promotes_a_nested_passive_child(self):
+    def test_mixed_hierarchy_preserves_proven_passive_child(self):
         terminals = {"Xmain.child.cap": {"master": "capacitor"},
                      "Xmain.child.r": {"master": "resistor"},
                      "Xmain.mos": {"master": "bsim3v3"},
                      "Xind.L": {"master": "inductor"},
                      "Xind.R": {"master": "resistor"},
                      "Xind.K": {"master": "mutual_inductor"}}
-        self.assertEqual(["Xind"], lc_passive_roots(terminals))
+        self.assertEqual(["Xind", "Xmain.child"], lc_passive_roots(terminals))
         self.assertEqual([], lc_passive_roots({}))
 
 

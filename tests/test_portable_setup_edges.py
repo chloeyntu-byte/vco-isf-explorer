@@ -48,8 +48,8 @@ class PortableSetupEdgeTests(unittest.TestCase):
         self.assertIsNone(ambiguous["engine"]["physical_profile"]["replica"]["intrinsic"]["primitive"])
         config = dict(self.fixture.config, portable_setup={"overrides": {"replica.intrinsic.primitive": "modelB"}})
         chosen = self.fixture.build(config=config)
-        self.assertTrue(chosen["ok"], chosen["errors"])
-        self.assertEqual(["dx", "gx", "sx", "bx"], chosen["engine"]["physical_profile"]["replica"]["intrinsic"]["terminals"])
+        self.assertFalse(chosen["ok"], "an override cannot resolve duplicate active definitions")
+        self.assertTrue(chosen["errors"])
 
     def test_two_internal_mos_instances_are_not_selected_by_order(self):
         self.fixture.model.write_text("subckt portable_mos (d g s b)\ncoreOne (di gi si bi) modelA l=l w=w\ncoreTwo (dx gx sx bx) modelA l=l w=w\nends portable_mos\n")

@@ -14,7 +14,7 @@ import uuid
 MAX_STATE_BYTES = 4 * 1024 * 1024
 VIEW_FIELDS = frozenset(("job_id", "point", "operating_point_id", "offset_hz",
     "noise_kind", "x_scale", "cumulative_k", "theme", "selected_tab",
-    "harmonic_curve", "log_offset", "advanced_visible"))
+    "harmonic_curve", "log_offset", "advanced_visible", "result_view"))
 _AUTHORITY = frozenset(("allowexecute", "executionauthorized", "executionconsent"))
 _CONFIRMATIONS = frozenset(("bindingfingerprint", "historyfingerprint", "mainfingerprint",
     "mainhistoryfingerprint", "replicafingerprint", "replicahistoryfingerprint"))

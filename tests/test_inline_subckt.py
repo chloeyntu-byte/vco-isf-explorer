@@ -14,7 +14,7 @@ class InlineSubcircuitTests(unittest.TestCase):
         self.addCleanup(self.fixture.tearDown)
         # An inline wrapper gives its same-named MOS the wrapper's PSF name.
         self.fixture.model.write_text(
-            'section cornerA\ninline subckt portable_mos (d g s b)\n'
+            'section cornerA\nmodel mos_primitive bsim4\ninline subckt portable_mos (d g s b)\nparameters l=1u w=4u\nRD (d di) resistor r=1\nRS (s si) resistor r=1\nRB (b bi) resistor r=1\n'
             'RG (g gi) resistor r=10\n'
             'portable_mos (di gi si bi) mos_primitive l=l w=w\n'
             'ends portable_mos\nendsection cornerA\n')
@@ -26,7 +26,7 @@ class InlineSubcircuitTests(unittest.TestCase):
         engine = setup['engine']
         profile = engine['physical_profile']
         self.assertEqual('DUT', profile['main']['traces']['target_noise'])
-        self.assertEqual('PARTNER', profile['main']['traces']['peer_noise'])
+        self.assertIsNone(profile['main']['traces']['peer_noise'])
         self.assertEqual('NOISE_DUT', profile['main']['traces']['dc_noise'])
         self.assertEqual('M_ISF_REPLICA.portable_mos', profile['replica']['noise_trace'])
         checked = inspect_engine_contract(engine, require_explicit=True, check_paths=True,

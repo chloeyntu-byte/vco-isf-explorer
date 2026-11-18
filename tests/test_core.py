@@ -218,7 +218,7 @@ class RDBDiscoveryTests(unittest.TestCase):
                 [(1, 1, 0.0, 1, None), (2, 1, 0.0, 2, None)],
             )
             connection.executemany(
-                "INSERT INTO corner VALUES (?, ?)", [(1, "Fhigh"), (2, "Flow")]
+                "INSERT INTO corner VALUES (?, ?)", [(1, "band_high"), (2, "band_low")]
             )
             connection.execute("INSERT INTO test VALUES (?, ?)", (1, "vco_nominal"))
             connection.executemany(

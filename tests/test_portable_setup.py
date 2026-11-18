@@ -25,7 +25,7 @@ class PortableSetupTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.model = self.root / "portable_model.scs"
-        self.model.write_text("section cornerA\nsubckt portable_mos (d g s b)\ncoreMOS (di gi si bi) mos_primitive l=l w=w\nends portable_mos\nendsection cornerA\n")
+        self.model.write_text("section cornerA\nmodel mos_primitive bsim4\nsubckt portable_mos (d g s b)\nparameters l=1u w=4u\nRD (d di) resistor r=1\nRG (g gi) resistor r=1\nRS (s si) resistor r=1\nRB (b bi) resistor r=1\ncoreMOS (di gi si bi) mos_primitive l=l w=w\nends portable_mos\nendsection cornerA\n")
         self.vco = self.root / "main" / "netlist" / "input.scs"
         self.replica = self.root / "replica" / "netlist" / "input.scs"
         self.vco.parent.mkdir(parents=True)

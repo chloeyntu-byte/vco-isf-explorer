@@ -20,6 +20,7 @@ class PortableSignalMappingTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.vco_text = """simulator lang=spectre
+model portable_nmos bsim4
 global 0
 parameters supply_bias=1
 Mleft (VOUT_P gate_left tail tail) portable_nmos l=1u w=2u
@@ -30,6 +31,7 @@ pn_measure (VOUT_P VOUT_N) hbnoise start=1k stop=1M
 save VOUT_P VOUT_N Mleft:d
 """
         self.replica_text = """simulator lang=spectre
+model portable_nmos bsim4
 parameters drive_alpha=0.6 drive_beta=1
 Mcandidate (drain gate 0 0) portable_nmos l=1u w=2u
 current_meter (drain_bias drain) vsource dc=0
@@ -73,7 +75,7 @@ noise_custom (i_out VSS) noise start=1k stop=1M
         self.assertEqual("alpha_wave", vco["mapping"]["vgs_output"])
         self.assertEqual("beta_wave", vco["mapping"]["vds_output"])
         self.assertEqual("Mleft", vco["mapping"]["target_instance"])
-        self.assertEqual("Mright", vco["mapping"]["peer_instance"])
+        self.assertIsNone(vco["mapping"]["peer_instance"], "non-cross-coupled gate biases do not prove symmetry")
         self.assertEqual("drive_alpha", replica["mapping"]["vgs_variable"])
         self.assertEqual("drive_beta", replica["mapping"]["vds_variable"])
         self.assertEqual("current_meter", replica["mapping"]["dc_sense_source"])
@@ -197,13 +199,13 @@ custom_hb (P N) hb
         report = discover_signal_mapping(self.vco_test, "vco", history)
         self.assertFalse(report["topology"]["devices"])
 
-    def test_local_includes_are_discovered_but_external_models_are_not_read(self):
+    def test_local_includes_are_discovered_with_model_type_evidence(self):
         local = self.root / "local_cells.scs"
-        local.write_text("subckt branch P N S\nMportable (P N S S) custom_nmos l=1u w=2u\nends branch\n", encoding="utf-8")
-        text = 'include "local_cells.scs"\ninclude "/external/pdk/models.scs"\nXbranch (P N S) branch\n'
+        local.write_text("model custom_nmos bsim4\nsubckt branch P N S\nMportable (P N S S) custom_nmos l=1u w=2u\nends branch\n", encoding="utf-8")
+        text = 'include "local_cells.scs"\nXbranch (P N S) branch\n'
         report = self._report("vco", text=text, test=dict(self.vco_test, outputs=[]))
         self.assertIn("Xbranch.Mportable", [item["name"] for item in report["topology"]["devices"]])
-        self.assertIn("/external/pdk/models.scs", [item["name"] for item in report["topology"]["includes"]])
+        self.assertIn(str(local), [item["name"] for item in report["topology"]["includes"]])
         self.assertFalse(report["topology"]["warnings"])
 
     def test_ground_alias_is_evidenced_without_changing_display_name(self):

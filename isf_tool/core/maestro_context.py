@@ -106,6 +106,23 @@ def _normalize_context(context):
             "name": name, "rdb_file": rdb,
             "results_dir": _absolute(record.get("results_dir"), "results_dir", work_dir, optional=True),
         })
+    if context.get('session_add'):
+        native=copy.deepcopy(context['session_add'])
+        if not {'session','window_id','setup_handle','dirty','generation','bridge_dir'}.issubset(native) or set(native)-{'session','window_id','setup_handle','dirty','generation','bridge_dir','lcv','revision'}:
+            raise ValidationError('Invalid Maestro session bridge fields')
+        for key in ('session','generation'):native[key]=_text(native[key],key)
+        for key in ('window_id','setup_handle'):
+            value=native[key]
+            if isinstance(value,bool) or not str(value).isdecimal():raise ValidationError('Invalid native '+key)
+            native[key]=int(value)
+        if native['dirty'] not in ('true','false',True,False):raise ValidationError('Unknown native dirty state')
+        native['dirty']=native['dirty'] in ('true',True)
+        native['bridge_dir']=_absolute(native['bridge_dir'],'bridge_dir')
+        native['lcv']={k:result[v] for k,v in [('lib','library'),('cell','cell'),('view','view')]}
+        from .testbench import digest
+        from pathlib import Path
+        native.setdefault('revision',digest({n:(Path(view_dir)/n).read_bytes().hex() for n in ['maestro.sdb','active.state']}))
+        result['session_add']=native
     result["launch_id"] = _text(context.get("launch_id") or uuid.uuid4().hex, "launch_id")
     return result
 
@@ -138,6 +155,8 @@ def load_maestro_context(path, consume=True):
         if kind == "C" and len(values) == 7 and not have_context:
             context.update(zip(("library", "cell", "view", "work_dir", "maestro_dir", "selected_history", "ocean"), values))
             have_context = True
+        elif kind == 'S' and len(values)==6 and 'session_add' not in context:
+            context['session_add']=dict(zip(('session','window_id','setup_handle','dirty','generation','bridge_dir'),values))
         elif kind == "H" and len(values) == 3:
             context["histories"].append(dict(zip(("name", "results_dir", "rdb_file"), values)))
         elif kind == "R" and len(values) == 1 and "LD_LIBRARY_PATH" not in context["runtime_env"]:

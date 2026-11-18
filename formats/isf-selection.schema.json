@@ -1,0 +1,355 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "ComponentCatalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "spec_hash",
+        "catalog_hash",
+        "nets",
+        "ports",
+        "devices"
+      ],
+      "properties": {
+        "schema": {
+          "const": "isf.component-catalog.v1"
+        },
+        "spec_hash": {
+          "$ref": "#/definitions/Sha256"
+        },
+        "catalog_hash": {
+          "$ref": "#/definitions/Sha256"
+        },
+        "nets": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Port"
+          }
+        },
+        "devices": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "GmSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_instance",
+        "peer_instances",
+        "terminals",
+        "noise_scope"
+      ],
+      "properties": {
+        "target_instance": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "peer_instances": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "local_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owner_definition": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "definition_file": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "terminals": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "D": {
+              "$ref": "#/definitions/Terminal"
+            },
+            "G": {
+              "$ref": "#/definitions/Terminal"
+            },
+            "S": {
+              "$ref": "#/definitions/Terminal"
+            },
+            "B": {
+              "$ref": "#/definitions/Terminal"
+            }
+          }
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Value"
+          }
+        },
+        "terminal_evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "noise_scope": {
+          "enum": [
+            "selected_device",
+            "confirmed_symmetric_pair",
+            "manual_reference"
+          ]
+        },
+        "symmetric_pair_confirmed": {
+          "type": "boolean"
+        },
+        "parameter_sources": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object"
+          }
+        },
+        "polarity": {
+          "enum": [
+            "nmos",
+            "pmos"
+          ]
+        }
+      }
+    },
+    "Name": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\r\\n\\u0000]+$"
+    },
+    "Port": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "direction",
+        "members"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/Name"
+        },
+        "direction": {
+          "enum": [
+            "input",
+            "output",
+            "inputOutput",
+            "unknown"
+          ]
+        },
+        "members": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/Name"
+          }
+        },
+        "role": {
+          "enum": [
+            "supply",
+            "ground",
+            "differential",
+            "bias",
+            "control",
+            "register",
+            "other",
+            "unknown"
+          ]
+        },
+        "domain": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "SelectionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "spec_hash",
+        "catalog_hash",
+        "roles",
+        "candidates"
+      ],
+      "properties": {
+        "core_mode": {"const": "asymmetric_pair"},
+        "schema": {
+          "const": "isf.selection-request.v1"
+        },
+        "spec_hash": {
+          "$ref": "#/definitions/Sha256"
+        },
+        "catalog_hash": {
+          "$ref": "#/definitions/Sha256"
+        },
+        "roles": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "gm.target",
+              "output.p",
+              "output.n",
+              "gm.complementary"
+            ]
+          }
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "evidence"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "net",
+                  "port",
+                  "device"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "details": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "SelectionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "spec_hash",
+        "catalog_hash",
+        "choices"
+      ],
+      "properties": {
+        "schema": {
+          "const": "isf.selection.v1"
+        },
+        "spec_hash": {
+          "$ref": "#/definitions/Sha256"
+        },
+        "catalog_hash": {
+          "$ref": "#/definitions/Sha256"
+        },
+        "choices": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "gm.target": {
+              "type": "string"
+            },
+            "output.p": {
+              "type": "string"
+            },
+            "output.n": {
+              "type": "string"
+            },
+            "gm.complementary": {
+              "type": "string"
+            }
+          },
+          "minProperties": 1
+        },
+        "gm": {
+          "$ref": "#/definitions/GmSelection"
+        },
+        "complementary_gm": {
+          "$ref": "#/definitions/GmSelection"
+        }
+      }
+    },
+    "Sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "Terminal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formal",
+        "local_net",
+        "resolved_net"
+      ],
+      "properties": {
+        "formal": {
+          "$ref": "#/definitions/Name"
+        },
+        "local_net": {
+          "$ref": "#/definitions/Name"
+        },
+        "resolved_net": {
+          "$ref": "#/definitions/Name"
+        }
+      }
+    },
+    "Value": {
+      "type": [
+        "number",
+        "string",
+        "boolean"
+      ]
+    }
+  }
+}

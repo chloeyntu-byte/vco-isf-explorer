@@ -248,9 +248,14 @@ class MaestroPairContractTests(unittest.TestCase):
         hierarchical = self.root / "hierarchical.scs"
         hierarchical.write_text(
             """simulator lang=spectre
+model generic_nmos_wrapper bsim4
 subckt generic_stage VOUTN VOUTP VCOMMON
   XDEV (VOUTP VOUTN VCOMMON VCOMMON) generic_nmos_wrapper l=1u w=2u nf=4 m=1
 ends generic_stage
+subckt top P N S
+XGM (P N S) generic_stage
+ends top
+XTOP (VOUTN VOUTP VCOMMON) top
 hb (VOUTN VOUTP) hb annotate=status
 hbnoise (VOUTN VOUTP) hbnoise values=[10k] annotate=status
 """,
@@ -259,6 +264,7 @@ hbnoise (VOUTN VOUTP) hbnoise values=[10k] annotate=status
         flat = self.root / "flat.scs"
         flat.write_text(
             """simulator lang=spectre
+model generic_nmos bsim4
 M1 (VOUTP VOUTN VCOMMON VCOMMON) generic_nmos l=1u w=2u m=1
 hb (VOUTP VOUTN) hb annotate=status
 hbnoise (VOUTN VOUTP) hbnoise values=[10k] annotate=status
@@ -516,10 +522,15 @@ class MaestroMaterializationTests(unittest.TestCase):
             target = root / "private" / "input.scs"
             source.write_text(
                 """simulator lang=spectre
+model generic_nmos_wrapper bsim4
 subckt generic_stage VOUTN VOUTP VCOMMON
   XDEV (VOUTP VOUTN VCOMMON VCOMMON) generic_nmos_wrapper l=1u w=2u nf=4 m=1
   XPEER (VOUTN VOUTP VCOMMON VCOMMON) generic_nmos_wrapper l=1u w=2u nf=4 m=1
 ends generic_stage
+subckt top P N S
+XGM (P N S) generic_stage
+ends top
+XTOP (VOUTN VOUTP VCOMMON) top
 hb (VOUTN VOUTP) hb annotate=status
 hbnoise (VOUTN VOUTP) hbnoise start=100k stop=10M annotate=status
 modelParameter info what=models where=rawfile
@@ -540,8 +551,8 @@ modelParameter info what=models where=rawfile
             engine.prepare_main_netlist(config, source, target)
             text = target.read_text(encoding="utf-8")
             stage_block = text[
-                text.index("subckt generic_stage"):text.index(
-                    "ends generic_stage"
+                text.index("subckt generic_stage__isf_"):text.index(
+                    "ends generic_stage__isf_"
                 )
             ]
             self.assertIn(
@@ -551,8 +562,8 @@ modelParameter info what=models where=rawfile
                 "V_XDEV_D (VOUTP XDEV_D) vsource", stage_block
             )
             self.assertIn("hbnoise (VOUTP VOUTN)", text)
-            self.assertLess(text.index("hbnoise"), text.index("hbxf"))
-            self.assertLess(text.index("hbxf"), text.index("modelParameter"))
+            self.assertLess(text.index("hbnoise"), text.index("hbxf ("))
+            self.assertLess(text.index("hbxf ("), text.index("modelParameter"))
 
     def test_dc_samples_patch_the_bound_flicker_tb_instead_of_rebuilding_it(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -563,9 +574,10 @@ modelParameter info what=models where=rawfile
             template.parent.mkdir(parents=True)
             template.write_text(
                 "simulator lang=spectre\n"
-                "parameters VGS=0.1 VDS=0.2\n"
+                "parameters VGS=0.1 VDS=0.2 BIAS_WAVE=\"legacy.pwl\"\n"
                 'include "{}"\n'.format(model)
                 + "XDEV (d g 0 0) generic_nmos_wrapper l=1u w=2u nf=4 m=1\n"
+                "VG (g 0) vsource type=pwl file=BIAS_WAVE dc=VGS\n"
                 "i_sense (x d) vsource dc=0 type=dc\n"
                 "HKEEP (noise_out 0) ccvs rm=1 type=ccvs probe=i_sense\n"
                 "noise (noise_out 0) noise start=1k stop=1G annotate=status\n",
@@ -582,6 +594,7 @@ modelParameter info what=models where=rawfile
             config["flicker_mapping"] = {
                 "noise_analysis": "noise",
                 "vgs_variable": "VGS",
+                "vgs_source": "VG",
                 "vds_variable": "VDS",
             }
             target = root / "sample" / "netlist" / "input.scs"
@@ -601,6 +614,9 @@ modelParameter info what=models where=rawfile
             text = target.read_text(encoding="utf-8")
             self.assertIn("VGS=5.5000000000000004e-01", text)
             self.assertIn("VDS=1.0500000000000000e+00", text)
+            self.assertIn("VG (g 0) vsource dc=VGS type=dc", text)
+            self.assertNotIn("file=BIAS_WAVE", text)
+            self.assertIn("file=BIAS_WAVE", template.read_text())
             self.assertIn("HKEEP", text)
             self.assertIn("probe=i_sense", text)
             self.assertIn("values=[1.0000000000000000e+04]", text)

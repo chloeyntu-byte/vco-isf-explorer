@@ -58,7 +58,7 @@ class ThemeSmokeTests(unittest.TestCase):
                         found.extend(primaries(child))
                     return found
 
-                for tab in (instance.setup_tab, instance.run_tab, instance.result_tab, instance.error_tab):
+                for tab in (instance.testbench_page, instance.setup_tab, instance.run_tab, instance.result_tab, instance.error_tab):
                     self.assertLessEqual(len(primaries(tab)), 1)
                 instance.queue.close()
         finally:
@@ -78,6 +78,9 @@ class ExampleBundleTests(unittest.TestCase):
             result = service.get_result(job["job_id"])
             self.assertEqual("replay", result["run_kind"])
             self.assertFalse(result["signoff"])
+            from isf_tool.metrics import compute_metrics
+            metrics = compute_metrics(result, point="lc_mild_asym", offset_hz=10_000)
+            self.assertEqual("measured", metrics["metric_info"]["waveform.max_slope_ratio"]["status"])
             from isf_tool.core.result_presentation import input_band_noise_series, harmonic_projection_fractions
             from isf_tool.tk.viewmodel import build_result_view, contribution_projection
             self.assertEqual(21, len(result["summary"]))

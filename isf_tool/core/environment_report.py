@@ -37,7 +37,7 @@ try:
 except Exception as error:
     target = 'tk' if stage == 'tk_init' else 'tcl'
     rows[target] = {'status': 'fail', 'detail': stage + ' / ' + type(error).__name__}
-    rows.setdefault('tk', {'status': 'not_tested', 'detail': 'dependencies Tcl initialization'})
+    rows.setdefault('tk', {'status': 'not_tested', 'detail': 'Tcl initialization required'})
 print(json.dumps(rows))
 """
 
@@ -81,10 +81,18 @@ def inspect_environment(config=None, workspace=None, maestro_context=None):
         or detected["cadence_env_details"]["status"] == "invalid"
         or any(item["status"] == "invalid" for item in tools.values())
         or any(item["status"] == "fail" for item in python_checks.values())
+        or python_checks.get("tk", {}).get("status") != "pass"
         or python_checks.get("analysis", {}).get("status") == "not_tested"
         or (target and not target["ok"])
     )
+    desktop = python_checks.get("tk", {}).get("status", "not_tested")
+    readiness = {
+        "offline": "ready" if detected["python"]["supported"] else "unavailable",
+        "desktop": {"pass": "ready", "fail": "unavailable"}.get(desktop, "not_tested"),
+        "native": "tools_found_execution_not_tested" if required_tools_found else "tools_missing",
+    }
     return {
+        "readiness": readiness,
         "schema": "isf.environment.v1",
         "status": "attention" if needs_attention else "ready",
         "duration_seconds": round(time.monotonic() - started, 3),
@@ -110,6 +118,7 @@ def format_environment_report(report):
         "Environment ready" if report["status"] == "ready" else "Environment check found items needing attention",
         f"{platform['system']} · {platform['machine']} · {platform['libc']} {platform['libc_version']}",
         f"Python {python['version']} · {python['executable']}",
+        "Readiness · " + " / ".join(f"{name}: {status.replace(chr(95), chr(32))}" for name, status in report["readiness"].items()),
     ]
     labels = {"numpy": "NumPy", "tcl": "Tcl", "tk": "Tk", "analysis": "Analysis interpreter", "runtime": "Python dependencies"}
     for key, item in report["python_checks"].items():

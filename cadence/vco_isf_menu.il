@@ -1,3 +1,70 @@
+; Session bridge registry is per Virtuoso process and per invoking window.
+unless(boundp('isfMaestroSessionBridges) isfMaestroSessionBridges=makeTable('isfMaestroSessionBridges nil))
+
+procedure(isfMaestroConfirmSessionAdd(review)
+  hiDisplayAppDBox(?name 'isfSessionConfirm ?dboxBanner "Add ISF test"
+    ?dboxText strcat("Review all inherited and added settings in:\n" review "\n\nSave the current setup if requested, add the ISF test, verify preservation, and continue in a private execution copy?")
+    ?dialogType hicQuestionDialog ?buttonLayout 'YesNo)
+)
+
+procedure(isfMaestroRegisterBridge(session window bridge generation)
+  isfMaestroSessionBridges[bridge]=list(session window generation nil)
+  unless(boundp('isfMaestroPrivateBatch) && isfMaestroPrivateBatch
+    hiRegTimer(sprintf(nil "isfMaestroPollSessionAdd(%L)" bridge) 10))
+)
+
+procedure(isfMaestroSessionStatus(bridge status)
+  let((o)
+    o=outfile(strcat(bridge "/native-status.txt"))
+    unless(o error("Cannot write ISF session status"))
+    fprintf(o "%s\n" status) close(o)
+  )
+)
+
+procedure(isfMaestroPollSessionAdd(bridge)
+  let((entry result)
+    entry=isfMaestroSessionBridges[bridge]
+    when(entry && !cadddr(entry)
+      if(!maeIsValidMaestroSession(car(entry)) then
+        isfMaestroSessionBridges[bridge]=nil
+      else
+        if(isFile(strcat(bridge "/request.il")) then
+          isfMaestroSessionBridges[bridge]=list(car(entry) cadr(entry) caddr(entry) t)
+          result=errset(load(strcat(bridge "/request.il")) t)
+          unless(result isfMaestroSessionStatus(bridge "failed"))
+        else
+          unless(boundp('isfMaestroPrivateBatch) && isfMaestroPrivateBatch
+            hiRegTimer(sprintf(nil "isfMaestroPollSessionAdd(%L)" bridge) 10))
+        )
+      )
+    )
+  )
+)
+
+procedure(isfMaestroApplySessionAdd(bridge session generation script receipt review)
+  let((entry result)
+    entry=isfMaestroSessionBridges[bridge]
+    unless(entry && equal(car(entry) session) && equal(caddr(entry) generation)
+      error("ISF session bridge identity mismatch"))
+    unless(maeIsValidMaestroSession(session) error("ISF caller session closed"))
+    when(cadr(entry)
+      unless(equal(axlGetWindowSession(cadr(entry)) session) error("ISF window changed")))
+    if(isFile(strcat(bridge "/cancelled")) then
+      isfMaestroSessionStatus(bridge "cancelled")
+    else
+      if(isfMaestroConfirmSessionAdd(review) then
+        ; The dependency-generated transaction rechecks LCV, setup, library,
+        ; dirty state and revision, performs native rollback and writes receipt.
+        when(isFile(strcat(bridge "/cancelled")) error("ISF transaction expired while awaiting confirmation"))
+        result=errset(load(script) t)
+        isfMaestroSessionStatus(bridge if(result && isFile(receipt) then "executed" else "failed"))
+      else
+        isfMaestroSessionStatus(bridge "rejected")
+      )
+    )
+  )
+)
+
 ; VCO ISF: independent ADE menu. Only the launcher path needs relocating.
 ; Context is captured at click time from the invoking ADE window.
 ; Point the menu at your checkout either by exporting VCO_ISF_HOME (the
@@ -10,7 +77,7 @@ unless(boundp('isfMaestroLauncher)
 )
 
 procedure(isfMaestroWriteContext(session context)
-  let((setup selected history lib cell view viewObj port entry name variable)
+  let((setup selected history lib cell view viewObj port entry name variable window bridge generation)
     setup = axlGetMainSetupDB(session)
     lib = axlGetSessionLibName(session)
     cell = axlGetSessionCellName(session)
@@ -37,7 +104,15 @@ procedure(isfMaestroWriteContext(session context)
           axlGetHistoryResultsDir(entry) axlGetHistoryResults(entry))
       )
     )
+    window=hiGetCurrentWindow()
+    bridge=strcat(context ".bridge")
+    generation=context
+    fprintf(port "S\t%L\t%L\t%L\t%L\t%L\t%L\n"
+      session if(window then sprintf(nil "%d" window->windowNum) else nil)
+      sprintf(nil "%d" setup) if(maeIsSetupModified(?session session) then "true" else "false")
+      generation bridge)
     close(port)
+    isfMaestroRegisterBridge(session if(window then window->windowNum else nil) bridge generation)
     context
   )
 )

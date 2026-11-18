@@ -284,11 +284,11 @@ class MetricGlossaryTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("presentation_exporter_test", ROOT / "scripts" / "export_audited_bundle.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        config = {"offset_hz": 1e4, "points": [{"name": "A", "corner": "Fhigh", "operating_point": {"params": {"SW": 0}}}]}
+        config = {"offset_hz": 1e4, "points": [{"name": "A", "corner": "band_high", "operating_point": {"params": {"SW": 0}}}]}
         original = copy.deepcopy(config)
         result = module.operating_point_metadata(config, lambda point: point["name"])
         self.assertEqual({"SW": 0}, result["A"]["params"])
-        self.assertEqual("Fhigh", result["A"]["corner"])
+        self.assertEqual("band_high", result["A"]["corner"])
         self.assertNotIn("offset_hz", result["A"])
         result["A"]["params"]["SW"] = 1
         self.assertEqual(original, config)

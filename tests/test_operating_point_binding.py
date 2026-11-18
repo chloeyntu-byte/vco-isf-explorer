@@ -199,7 +199,7 @@ class OperatingMaterializationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root_text:
             root = Path(root_text)
             model = root / 'model.scs'
-            model.write_text('// model\n')
+            model.write_text('section tt\n// model\nendsection tt\n')
             vpath = root / 'vco/input.scs'
             vpath.parent.mkdir()
             vpath.write_text('parameters SW=0\ninclude "%s" section=tt\nopts options temp=27\n' % model)
@@ -207,7 +207,7 @@ class OperatingMaterializationTests(unittest.TestCase):
             fpath.parent.mkdir()
             fpath.write_text('parameters VGS=0.5 VDS=1\ninclude "%s" section=tt\nopts options temp=27\n' % model)
             original = vpath.read_bytes()
-            sources = [source(vpath, {'SW': 0}, 'Fhigh', 1), source(vpath, {'SW': 1}, 'Flow', 2)]
+            sources = [source(vpath, {'SW': 0}, 'band_high', 1), source(vpath, {'SW': 1}, 'band_low', 2)]
             current = [source(fpath, {'VGS': .5, 'VDS': 1}, '', 1), source(fpath, {'VGS': .8, 'VDS': 1}, '', 2)]
             report = {'ok': True, 'bindings': {}, 'roles': {
                 role: {'selected_test': {'models': [{'path': str(model)}]},

@@ -1,4 +1,4 @@
-"""Synthetic ideal-LC replay bundle used by the examples and the "Load example" button.
+"""Synthetic ideal-LC replay bundle used by the examples and the "Load synthetic example" button.
 
 Everything here is an analytic or fictional model, not simulator output:
 
@@ -137,9 +137,12 @@ def _point(name, op_id, second, shift_db, offset):
         isf_i, isf_q = _periodic(gamma["i"], ph), _periodic(gamma["q"], ph)
         dyn = _periodic(mdyn, ph)
         cur = _periodic(id_h, ph)
+        differential = CARRIER_V.real * math.cos(ph)
+        common_mode = 0.9 + second * 0.2 * math.sin(2 * ph)
         work.append({
             "point": name, "operating_point_id": op_id, "offset_Hz": offset, "sample": s, "time_s": ph / (2.0 * math.pi * F0_HZ), "wt_rad": ph,
-            "VG_V": 0.60 + 0.30 * math.cos(ph), "VD_V": 0.90 + 0.30 * math.sin(ph), "VS_V": 0.0, "VB_V": 0.0,
+            "VG_V": 0.60 + 0.30 * math.cos(ph), "VD_V": common_mode + differential / 2,
+            "VDN_V": common_mode - differential / 2, "Vdiff_V": differential, "VS_V": 0.0, "VB_V": 0.0,
             "ID_main_A": cur * 0.98, "ID_replica_A": cur,
             "m_DC_A_rtHz": _periodic(mdc, ph), "m_dyn_A_rtHz": dyn,
             "isf": isf_i, "product": isf_i * dyn, "isf_i": isf_i, "isf_q": isf_q,

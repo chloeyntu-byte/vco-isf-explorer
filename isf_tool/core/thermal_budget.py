@@ -41,9 +41,12 @@ def thermal_evidence(row):
     if output.get("scope") in {"gm_pair_and_passive_network", "gm_pair_passives_and_selected_objects"}:
         return {"schema_version": 1, "status": "unavailable", "previous_scope": output.get("scope"),
                 "reason": "legacy thermal results may include capacitor-bank internal noise; rerun gm + LC measurement (rerun required)"}
-    if output.get("scope") != "gm_pair_and_lc_network" or output.get("pair_model") != "symmetric_independent":
+    selected_only = output.get("scope") == "selected_device"
+    pair_model = output.get("pair_model")
+    if ((not selected_only and (output.get("scope") != "gm_pair_and_lc_network" or pair_model != "symmetric_independent"))
+            or (selected_only and pair_model not in {"single_device_only", "symmetric_independent"})):
         raise ValueError("unsupported thermal source scope")
-    if output.get("passive_scope") != "passive_only_lc_roots_v1":
+    if not selected_only and output.get("passive_scope") not in {"passive_only_lc_roots_v1", "passive_lc_branches_v2"}:
         return {"schema_version": 1, "status": "unavailable",
                 "reason": "LC ownership was not verified; rerun gm + LC measurements"}
     seen = set()
@@ -63,12 +66,20 @@ def thermal_evidence(row):
         if not all(isinstance(x, str) and x for x in key) or key in seen:
             raise ValueError("invalid/duplicate thermal source")
         seen.add(key)
+        if selected_only:
+            members = (output.get("target_instance"), output.get("peer_instance"))
+            if not any(root and (key[0] == root or key[0].startswith(root + ".")) for root in members):
+                raise ValueError("thermal source is outside the selected device budget")
+            if (source.get('source_basis') == 'symmetric_independent_peer'
+                    and (pair_model != 'symmetric_independent' or (output.get('pair_policy') or {}).get('proven') is not True)):
+                raise ValueError('Thermal peer requires measured symmetry evidence')
         if source.get("object_id") or source.get("source_basis") == "paired_noise_TB_transient_state_white_PSD":
             return {"schema_version": 1, "status": "unavailable",
                     "reason": "retired additional-object sources found; rerun gm + LC measurements"}
         if source.get("source_basis") == "VCO_static_intrinsic_PSD_at_actual_input_bands":
             roots = output.get("passive_roots")
-            if not isinstance(roots, list) or source["device"].split(".", 1)[0] not in roots:
+            if not isinstance(roots, list) or not any(
+                    source["device"] == root or source["device"].startswith(root + ".") for root in roots):
                 raise ValueError("thermal passive source has no verified LC root owner")
         power = _power(source.get("psd_V2_Hz"), "source")
         source["psd_V2_Hz"] = power
@@ -145,12 +156,22 @@ def calculated_noise_dbc(row, *, noise_kind="both", scope="pair"):
     thermal = thermal_evidence(row)
     if not thermal or thermal.get("status") != "available":
         return None
+    selected_only = thermal.get("scope") == "selected_device"
     if scope != "pair":
-        return None  # No fictitious single-device LC/pair-total view.
+        if not selected_only:
+            return None
+        power = math.fsum(s['psd_V2_Hz'] for s in thermal['sources']
+                          if s.get('source_basis') != 'symmetric_independent_peer')
+        if noise_kind == "thermal":
+            return dBc_from_pm_asd(math.sqrt(power), thermal['carrier_peak_V'])
+    else:
+        power = thermal["predicted_psd_V2_Hz"]
     if noise_kind == "thermal":
         return thermal["phase_noise_dBc_Hz"]
     flicker = row.get("predicted_pair_pm_asd_V_rtHz", row.get("predicted_pair_fn_pm_asd_V_rtHz"))
+    if selected_only and (scope != 'pair' or flicker is None):
+        flicker = row.get("dynamic_pm_asd_V_rtHz")
     if flicker is None:
         return None
-    power = _power(flicker, "pair flicker ASD") ** 2 + thermal["predicted_psd_V2_Hz"]
+    power += _power(flicker, "flicker ASD") ** 2
     return dBc_from_pm_asd(math.sqrt(power), thermal["carrier_peak_V"])

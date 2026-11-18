@@ -90,7 +90,7 @@ test("setup starts from exactly two Maestro bindings and keeps overrides advance
   assert.match(app, /\/api\/maestro\/discover/);
   assert.match(app, /mode === "maestro_pair" \? "dual TB primary workflow"/);
   assert.doesNotMatch(setup, /name="sourceRoot"/);
-  assert.doesNotMatch(setup + app, /\/project\/isf_runs|createDemoResults/i);
+  assert.doesNotMatch(setup + app, /\/project\/isf_runs|VCO Class-F · band_upper|createDemoResults/i);
 });
 
 test("Web API calls carry the per-process launch token", () => {

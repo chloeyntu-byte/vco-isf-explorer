@@ -351,6 +351,10 @@ class TkLaunchTests(unittest.TestCase):
         instance.current_job_id = "job-a"
         instance.current_result_job_id = "job-a"
         instance.current_result = {"job_id": "job-a", "value": {"n": 1}}
+        instance.current_result_view = {"selected_summary": {"operating_point_id": "p1", "offset_Hz": 1e5}}
+        instance.point_var = mock.Mock(get=lambda: "p1@100000Hz")
+        instance.noise_kind_var = mock.Mock(get=lambda: "flicker")
+        instance.results_view = mock.Mock(view_id=8)
         captured = {}
 
         def submit(_label, function, _success, **_kwargs):
@@ -363,7 +367,10 @@ class TkLaunchTests(unittest.TestCase):
                 instance._export_result_json()
             instance.current_result = {"job_id": "job-b", "value": {"n": 2}}
             captured["function"]()
-            self.assertEqual("job-a", json.loads(output.read_text(encoding="utf-8"))["job_id"])
+            saved = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual("job-a", saved["job_id"])
+            self.assertEqual("p1@100000Hz", saved["export_selection"]["point"])
+            self.assertEqual("Hz", saved["export_selection"]["units"]["offset_Hz"])
 
     def test_atomic_exports_replace_complete_files(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -11,13 +11,18 @@ def _diagnose(arguments):
     from .core.environment_report import format_environment_report, inspect_environment
     from .core.errors import ValidationError
 
-    parser = argparse.ArgumentParser(description="VCO ISF Explorer read-only environment diagnostics")
+    from .cli_errors import Parser, report_error
+
+    parser = Parser(description="VCO ISF Explorer read-only environment diagnostics")
     parser.add_argument("--diagnose", action="store_true", help="inspect the local environment")
     parser.add_argument("--workspace", type=Path)
     parser.add_argument("--config", type=Path, help="explicit application config JSON")
     parser.add_argument("--maestro-context-file", type=Path)
     parser.add_argument("--json", action="store_true", help="print a machine-readable report")
-    args = parser.parse_args(arguments)
+    try:
+        args = parser.parse_args(arguments)
+    except ValueError as exc:
+        return report_error(exc)
     workspace = (args.workspace or Path(os.environ.get("ISF_WORKSPACE", Path.home() / ".vco_isf_explorer"))).expanduser().resolve()
     config_path = args.config or workspace / "config.json"
     try:
@@ -30,13 +35,33 @@ def _diagnose(arguments):
             context = load_maestro_context(args.maestro_context_file, consume=False)
         report = inspect_environment(config, workspace, context)
     except (OSError, ValueError, ValidationError) as error:
-        parser.error(str(error))
+        return report_error(error)
     print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else format_environment_report(report))
     return 0 if report["status"] == "ready" else 1
 
 
 def main(argv=None):
     arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] == "metrics":
+        from .metrics_cli import main as metrics_main
+        return metrics_main(arguments[1:])
+    if arguments and arguments[0] == "optim":
+        from .optim.cli import main as optim_main
+        return optim_main(arguments[1:])
+    from .commands import COMMAND_HELP, COMMANDS
+    if arguments in (["--help"], ["-h"]):
+        print("Usage: vco-isf [desktop options] or vco-isf COMMAND [options]")
+        print("Desktop options: --workspace, --spec, --diagnose, --web")
+        print("Commands:")
+        for name, (description, _) in sorted(COMMAND_HELP.items()):
+            print(f"  {name:<15} {description}")
+        print("  metrics         Inspect one sample or compare simulated results")
+        print("  optim           Evaluate, calibrate or qualify saved metrics")
+        print("Use COMMAND --help for command-specific options.")
+        return 0
+    if arguments and arguments[0] in COMMANDS:
+        from .commands import main as command_main
+        return command_main(arguments)
     if "--diagnose" in arguments:
         return _diagnose(arguments)
     if "--web" in arguments:

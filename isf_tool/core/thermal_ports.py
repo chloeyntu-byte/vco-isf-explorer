@@ -10,7 +10,7 @@ def parse_terminal_map(text):
     records = {}
     current = None
     for line in text.splitlines():
-        match = re.match(r"^([A-Za-z0-9_]+):\s+(\S+)(?:\s+of\s+(\S+))?\s*$", line)
+        match = re.match(r"^([^:\s]+):\s+(\S+)(?:\s+of\s+(\S+))?\s*$", line)
         if match:
             master, device, parent = match.groups()
             if device in records:
@@ -29,7 +29,7 @@ def parse_terminal_map(text):
     return records
 
 
-def physical_noise_port(device, mechanism, terminal_map, available_traces):
+def physical_noise_port(device, mechanism, terminal_map, available_traces, *, model_evidence=None):
     """Resolve supported independent primitive sources; never merge ports.
 
     Intrinsic channel noise is between the *intrinsic* d/s nodes, whereas
@@ -52,9 +52,15 @@ def physical_noise_port(device, mechanism, terminal_map, available_traces):
                 "unit_contract": "spectre18_inductor_series_rn_v1"}
     elif master in ("bsim3v3", "bsim4") and mechanism in ("id", "rd", "rs"):
         internal_d, internal_s = device + ":int_d", device + ":int_s"
-        # Spectre eliminates a zero access resistance and its internal node.
-        internal_d = internal_d if internal_d in available else terminals["d"]
-        internal_s = internal_s if internal_s in available else terminals["s"]
+        def intrinsic(trace, role):
+            if trace in available: return trace
+            evidence = (model_evidence or {}).get(device, row.get('access_resistance', {}))
+            resistance = evidence.get('r' + role)
+            if isinstance(resistance, (int, float)) and not isinstance(resistance, bool) and resistance == 0:
+                return terminals[role]
+            raise ValueError('missing intrinsic node transfer without proven zero access resistance: ' + trace)
+        internal_d = intrinsic(internal_d, 'd') if mechanism in ('id', 'rd') else internal_d
+        internal_s = intrinsic(internal_s, 's') if mechanism in ('id', 'rs') else internal_s
         positive, negative = {"id": (internal_d, internal_s),
                               "rd": (terminals["d"], internal_d),
                               "rs": (terminals["s"], internal_s)}[mechanism]

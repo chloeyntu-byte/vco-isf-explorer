@@ -6,16 +6,18 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, font as tkfont
 
+from . import fieldwork_tk as fw
+from ..core.offsets import offset_label
 from .charts import LineChart, PhasorChart, ContributionBars
 from .process_charts import ProcessChart
 from .viewmodel import (engineering, finite_number, process_projection, harmonic_projection,
                         offset_projection, contribution_projection, noise_scope_note, load_thermal_coefficients, stored_thermal_diagnostic, thermal_workpoint_series, stored_thermal_series, offset_table_projection, band_noise_projection, thermal_band_projection, isf_overlay_projection, HARMONIC_NOTE)
 
-VIEWS = ('Overview', 'ISF process', 'Harmonic decomposition', 'Phase noise vs simulation', 'Noise contributions', 'Metrics & quality', 'Input noise band → phase noise', 'Thermal bands')
+VIEWS = ('Overview', 'ISF process', 'Harmonic decomposition', 'Phase noise vs simulation', 'Noise contributions', 'Metrics and quality', 'Bands to phase noise', 'Thermal bands', 'Optimization metrics')
 
 
 def maximize(root):
-    root.minsize(1100, 700)
+    root.minsize(1280, 800)
     width, height = root.winfo_screenwidth(), root.winfo_screenheight()
     # Respect EWMH workarea when available. Xvnc without a WM uses geometry.
     root.geometry(f'{width}x{height}+0+0')
@@ -75,7 +77,7 @@ class LinkedTable(ttk.Frame):
         font = tkfont.nametofont('TkDefaultFont')
         for field, label in specs:
             values = [engineering(r.get(field)) for r in rows]
-            # Full compact values fit their column; long content is scrollable.
+            # Full compact values fit their column; overflow is scrollable.
             text_limit=240 if field=='label' else 180 if field=='value' else 100 if field=='unit' else 280
             raw_widths = [font.measure(v) if finite_number(r.get(field)) is not None else min(text_limit,font.measure(v)) for r,v in zip(rows,values)]
             width = max([font.measure(label)] + raw_widths) + 24
@@ -83,7 +85,15 @@ class LinkedTable(ttk.Frame):
             self.tree.column(field, width=width, minwidth=width, stretch=False)
         self._fit_columns()
         for key, row in self.rows.items():
-            self.tree.insert('', 'end', iid=key, values=[engineering(row.get(f)) for f, _ in specs], tags=('chosen',) if row.get('chosen') else ())
+            self.tree.insert('', 'end', iid=key, values=[self.display_value(row, f, label) for f, label in specs], tags=('chosen',) if row.get('chosen') else ())
+
+    @staticmethod
+    def display_value(row, field, label):
+        value = row.get(field)
+        if field in ('offset', 'offset_hz', 'offset_Hz') and finite_number(value) is not None:
+            return offset_label(value)
+        unit = 'dB' if '(dB)' in label or (field == 'value' and row.get('unit') == 'dB') else ''
+        return engineering(value, unit or '')
 
     def _fit_columns(self, _event=None):
         if not self.specs:
@@ -153,7 +163,7 @@ class LinkedTable(ttk.Frame):
         self._tip = tk.Toplevel(self)
         self._tip.overrideredirect(True)
         text = label + '\n' + full
-        ttk.Label(self._tip, text=text, padding=8, wraplength=650).pack()
+        ttk.Label(self._tip, text=text, padding=7, wraplength=650).pack()
         self._tip.update_idletasks()
         x = min(event.x_root + 14, self.winfo_screenwidth() - self._tip.winfo_reqwidth() - 8)
         y = min(event.y_root + 18, self.winfo_screenheight() - self._tip.winfo_reqheight() - 8)
@@ -178,7 +188,7 @@ class ResultsView(ttk.Frame):
         self.rowconfigure(3, weight=1)
         toolbar = ttk.Frame(self)
         toolbar.grid(row=0, column=0, sticky='ew', pady=(0, 4))
-        ttk.Button(toolbar, text='☰ Workflow', command=self.toggle_nav).pack(side='left', padx=(0, 8))
+        ttk.Button(toolbar, text='Views', command=self.toggle_nav).pack(side='left', padx=(0, 8))
         ttk.Label(toolbar, text='Operating point').pack(side='left')
         app.operating_point_box = ttk.Combobox(toolbar, textvariable=app.operating_point_var, state='readonly', width=24)
         app.operating_point_box.pack(side='left', padx=(4, 8))
@@ -194,25 +204,28 @@ class ResultsView(ttk.Frame):
         exports = ttk.Menubutton(toolbar, text='Export…')
         menu = tk.Menu(exports, tearoff=False)
         exports.configure(menu=menu)
-        for label, command in (('Result JSON…', app._export_result_json), ('Summary CSV…', app._export_summary_csv),
+        for label, command in (('Result JSON…', app._export_result_json), ('Summary CSV…', app._export_summary_csv), ('Optimization metrics JSON…', self.export_metrics),
                                ('Current harmonics CSV…', app._export_harmonics_csv), ('Current chart EPS…', self.export_eps), ('Current chart PNG…', self.export_png)):
             menu.add_command(label=label, command=command)
         exports.pack(side='right')
+        self.compare_button = ttk.Button(toolbar, text='Compare with…', command=self.compare_result,
+                                         state='disabled')
+        self.compare_button.pack(side='right', padx=5)
         self.chips = []
         chiprow = ttk.Frame(self)
         chiprow.grid(row=1, column=0, sticky='ew', pady=(0, 4))
         for i in range(6):
             chiprow.columnconfigure(i, weight=1, uniform='chip')
             var = tk.StringVar(value='—')
-            label = ttk.Label(chiprow, textvariable=var, style='Chip.TLabel', padding=(8, 4), anchor='w')
+            label = ttk.Label(chiprow, textvariable=var, style='Chip.TLabel', padding=(8, 5), anchor='w')
             label.grid(row=0, column=i, sticky='ew', padx=(0, 4))
             self.chips.append(var)
         self.controls = ttk.Frame(self)
-        self.controls.grid(row=2, column=0, sticky='ew', pady=(0, 4))
+        self.controls.grid(row=2, column=0, sticky='ew', pady=(0, 3))
         self.title = tk.StringVar(value='00 / Overview')
-        ttk.Label(self.controls, textvariable=self.title, font=app.heading_font).pack(side='left', padx=(0, 8))
+        ttk.Label(self.controls, textvariable=self.title, font=app.heading_font).pack(side='left', padx=(0, 10))
         ttk.Button(self.controls, text='Reset', command=lambda: self.chart.reset()).pack(side='right')
-        ttk.Button(self.controls, text='Table ▾', command=self.toggle_drawer).pack(side='right', padx=4)
+        ttk.Button(self.controls, text='Table', command=self.toggle_drawer).pack(side='right', padx=4)
         ttk.Button(self.controls, text='All columns / Adaptive', command=lambda: self.table.show_all_columns()).pack(side='right', padx=4)
         self.overlay = tk.BooleanVar(value=False)
         self.overlay_check = ttk.Checkbutton(self.controls, text='Overlay · Fig.14', variable=self.overlay, command=self.refresh)
@@ -228,18 +241,18 @@ class ResultsView(ttk.Frame):
         body.grid(row=3, column=0, sticky='nsew')
         body.rowconfigure(0, weight=1)
         body.columnconfigure(1, weight=1)
-        self.nav = ttk.Frame(body, width=154)
+        self.nav = ttk.Frame(body, width=154, style="Panel.TFrame")
         self.nav.grid(row=0, column=0, sticky='ns', padx=(0, 8))
-        ttk.Label(self.nav, text='Analysis workflow', style='Help.TLabel').pack(anchor='w', pady=(4, 8))
+        fw.section(self.nav, 'Analysis views').pack(anchor='w', pady=(2, 10))
         self.nav_buttons = []
         for i, name in enumerate(VIEWS):
-            button = ttk.Button(self.nav, text=f'{i:02}  {name}', width=0, command=lambda v=i: self.show(v))
-            button.pack(fill='x', pady=(0, 8))
+            button = ttk.Button(self.nav, text=f'{i:02}  {name}', command=lambda v=i: self.show(v))
+            button.pack(fill='x', pady=(0, 7))
             self.nav_buttons.append(button)
         helpbox = ttk.Frame(self.nav)
-        helpbox.pack(anchor='w',pady=16)
+        helpbox.pack(anchor='w',pady=14)
         for line in ('Ctrl+wheel: zoom','Middle-drag: pan','Click legend: Selected / toggle visibility','Hover/click: link','Ctrl+C: copy table row'):
-            ttk.Label(helpbox,text=line,style='Help.TLabel').pack(anchor='w',pady=4)
+            ttk.Label(helpbox,text=line,style='Help.TLabel').pack(anchor='w',pady=3)
         self.pane = ttk.Panedwindow(body, orient='vertical')
         self.pane.grid(row=0, column=1, sticky='nsew')
         self.plot_frame = ttk.Frame(self.pane)
@@ -250,16 +263,22 @@ class ResultsView(ttk.Frame):
         self.note_label.grid(row=0, column=0, sticky='ew', pady=(0, 4))
         self.chart = ProcessChart(self.plot_frame, on_select=self.select_key, on_open=self.show)
         self.chart.grid(row=1, column=0, sticky='nsew')
+        self.diagnostic_frame = ttk.LabelFrame(self.plot_frame, text='Simulated-result attribution',
+                                               style='Card.TLabelframe')
+        self.diagnostic_frame.columnconfigure(0, weight=1)
+        self.diagnostic_text = tk.StringVar()
+        self.diagnostic_label = ttk.Label(self.diagnostic_frame, textvariable=self.diagnostic_text, style='Help.TLabel', width=1, anchor='w', padding=5)
+        self.diagnostic_label.grid(row=0, column=0, sticky='ew')
         self.quality_frame = ttk.Frame(self.plot_frame)
         self.quality_frame.rowconfigure(1, weight=1)
         self.quality_frame.columnconfigure(0, weight=3)
         self.quality_frame.columnconfigure(1, weight=2)
         self.quality_text = tk.StringVar()
         self.quality_note = ttk.Label(self.quality_frame, textvariable=self.quality_text, style='Help.TLabel', width=1, anchor='w')
-        self.quality_note.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 8))
+        self.quality_note.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 6))
         self.plot_frame.bind('<Configure>', self._wrap_notes, add='+')
         self.quality_table = LinkedTable(self.quality_frame, self._quality_selected)
-        self.quality_table.grid(row=1, column=0, sticky='nsew', padx=(0, 4))
+        self.quality_table.grid(row=1, column=0, sticky='nsew', padx=(0, 5))
         candidate_box = ttk.LabelFrame(self.quality_frame, text='AM/PM phase_candidates · chosen highlighted')
         candidate_box.grid(row=1, column=1, sticky='nsew')
         candidate_box.rowconfigure(0, weight=1)
@@ -271,8 +290,8 @@ class ResultsView(ttk.Frame):
         self.pane.add(self.plot_frame, weight=5)
         self.pane.add(self.table, weight=1)
         self.readout = tk.StringVar(value='Table and chart share sample key; hover over a cell for full precision')
-        self.footer = ttk.Label(self, textvariable=self.readout, style='Help.TLabel', anchor='w')
-        self.footer.grid(row=4, column=0, sticky='ew', pady=(4, 0))
+        self.footer = ttk.Label(self, textvariable=self.readout, style='Help.TLabel', anchor='w', width=1)
+        self.footer.grid(row=4, column=0, sticky='ew', pady=(2, 0))
         self.bind('<Map>', self._initial_sash, add='+')
         self._sash_initialized = False
         self._sash_after = None
@@ -286,7 +305,7 @@ class ResultsView(ttk.Frame):
         # width=1 keeps long text out of horizontal geometry negotiation; a
         # wrap change may alter height but cannot feed back into requested width.
         width = max(100, event.width - 5)
-        for label in (self.note_label, self.quality_note):
+        for label in (self.note_label, self.quality_note, self.diagnostic_label):
             if int(label.cget('wraplength') or 0) != width:
                 label.configure(wraplength=width)
 
@@ -365,7 +384,7 @@ class ResultsView(ttk.Frame):
         def compact(widget):
             for child in widget.winfo_children():
                 kind = child.winfo_class()
-                if kind == 'TLabel' and child.cget('style') != 'Chip.TLabel':
+                if kind == 'TLabel' and child.cget('style') not in ('Chip.TLabel', 'Section.TLabel'):
                     child.configure(style='ResultHelp.TLabel' if 'Help' in child.cget('style') else 'Result.TLabel')
                 elif kind in ('TButton', 'TCheckbutton', 'TMenubutton'):
                     child.configure(style='Result.' + kind)
@@ -395,11 +414,14 @@ class ResultsView(ttk.Frame):
         self._drawer_visible = not self._drawer_visible
 
     def clear(self):
+        self.diagnostic_frame.grid_remove()
+        self.optimization_metrics = None
         self.chart.set_panels([], reset=True)
         self.table.fill([], [])
         self.quality_table.fill([], [])
         self.candidates.fill([], [])
         self._identity, self._thermal_identity = None, None
+        self.compare_button.configure(state='disabled')
         self.note.set('No current job results')
         for var in self.chips:
             var.set('—')
@@ -413,7 +435,14 @@ class ResultsView(ttk.Frame):
     def _thermal_data(self, result, point):
         identity = (self.app.current_result_job_id, point)
         if identity != self._thermal_identity:
-            job_dir = Path(self.app.controller.workspace) / 'jobs' / identity[0]
+            workspace = Path(self.app.controller.workspace)
+            job_dir = workspace / 'jobs' / identity[0]
+            if self.app.current_job.get('api_state'):
+                from ..core import api_jobs
+                receipt = api_jobs.manifest(workspace, identity[0]) or {}
+                child_id = receipt.get('isf_job_id')
+                if child_id and Path(child_id).name == child_id and child_id not in ('.', '..'):
+                    job_dir = workspace / 'api-jobs' / identity[0] / 'isf-workspace' / 'jobs' / child_id
             self._thermal = load_thermal_coefficients(result, point, job_dir)
             self._thermal_identity = identity
         return self._thermal
@@ -423,6 +452,7 @@ class ResultsView(ttk.Frame):
         if not view or not app.current_result:
             return
         point, kind = app.point_var.get(), app.noise_kind_var.get()
+        self.compare_button.configure(state='normal')
         identity = (app.current_result_job_id, app.operating_point_var.get() if self.view_id in (0,3,6) else point, kind, self.view_id, app.log_offset_var.get())
         reset = identity != self._identity
         self._identity = identity
@@ -434,8 +464,7 @@ class ResultsView(ttk.Frame):
             if self.source_var.get() not in [s['id'] for s in sources]:
                 self.source_var.set(sources[0]['id'] if sources else '')
         if sources and kind in ('thermal', 'both'):
-            # View 07 selects a display name; workpoint views select a source id.
-            selected = next((s for s in sources if s['id'] == self.source_var.get()), sources[0])
+            selected = next(s for s in sources if s['id'] == self.source_var.get())
             series = thermal_workpoint_series(selected,process['rows'])
             process['panels'][1]['series'] = ([series] if kind == 'thermal' else process['panels'][1]['series'][:2] + [series])
         harmonic = harmonic_projection(view)
@@ -455,13 +484,18 @@ class ResultsView(ttk.Frame):
         bands = band_noise_projection(app.current_result, app.operating_point_var.get(), kind, self.reference_slopes.get())
         thermal_bands = thermal_band_projection(view, diagnostic)
         metrics = view.get('metrics', {})
+        from ..core.maestro_outputs import output_metrics
+        native_metrics=output_metrics(view.get('selected_summary',{}))
+        native_pn=native_metrics['pn_dbc_hz']
+        native_note=('\noutput '+format(native_pn,'.4g')+' dBc/Hz' if native_pn is not None else '')
+        if finite_number(native_metrics.get('delta_db')) is not None:native_note+='\nΔ output/HBnoise '+format(native_metrics['delta_db'],'+.3g')+' dB'
         calc, reference = finite_number(metrics.get('calculated_dbc')), finite_number(metrics.get('spectre_dbc'))
         missing_calculation = ('total missing thermal' if kind == 'both' and (view.get('selected_summary', {}).get('thermal_noise') or {}).get('status') != 'available' else 'calculation missing')
         for var, text in zip(self.chips, (
-            'f₀  ' + engineering(metrics.get('frequency_hz'), 'Hz'),
-            'offset  ' + engineering(metrics.get('offset_hz'), 'Hz'),
+            'f0  ' + engineering(native_metrics['frequency_hz'] if native_metrics['frequency_hz'] is not None else metrics.get('frequency_hz'), 'Hz'),
+            'Offset  ' + (offset_label(metrics['offset_hz']) if metrics.get('offset_hz') is not None else '—'),
             'ISF  ' + (f'{calc:.4g} dBc/Hz' if calc is not None else missing_calculation),
-            'HBnoise  ' + (f'{reference:.4g} dBc/Hz' if reference is not None else 'reference missing'),
+            'HBnoise  ' + (f'{reference:.4g} dBc/Hz' if reference is not None else 'Reference unavailable')+native_note,
             'Δ vs total  ' + (f'{calc-reference:+.3g} dB' if calc is not None and reference is not None else 'values missing at the same point'),
             'SIGNOFF' if view.get('signoff') else 'REPLAY · NON-SIGNOFF')):
             var.set(text)
@@ -472,7 +506,7 @@ class ResultsView(ttk.Frame):
         ready = [bool(contrib['rows']) and bool(harmonic['phasors']) and available(process['panels'][2]) and available(process['panels'][3]),
                  process_ready, all(available(p) for p in harmonic['panels']),
                  any(any(p is not None and finite_number(p[1]) is not None for p in s['points']) for s in offsets['error_series']),
-                 bool(contrib['rows']) and (kind=='flicker' or bool(contrib['band_rows'])), bool(view.get('selected_summary')), bool(bands['table_rows']), bool(thermal_bands['rows'])]
+                 bool(contrib['rows']) and (kind=='flicker' or bool(contrib['band_rows'])), bool(view.get('selected_summary')), bool(bands['table_rows']), bool(thermal_bands['rows']), bool(process['rows'])]
         for i, button in enumerate(self.nav_buttons):
             button.configure(text=f'{i:02}  {({3: "Phase-noise comparison",5: "Metrics & quality"}).get(i,VIEWS[i])}  {"Ready" if ready[i] else "Missing data"}', style='ResultActive.TButton' if i==self.view_id else 'Result.TButton')
         for widget in (self.decompose_check, self.log_check, self.source_box, self.overlay_check, self.slopes_check):
@@ -512,12 +546,10 @@ class ResultsView(ttk.Frame):
             panels = [dict(bands['panels'][0], layout=(0, 0, .62, .62), open=6),
                       dict(source_panel, layout=(.62, 0, 1, .62), open=4),
                       dict(phasor, layout=(0, .62, .55, 1), open=2)]
-            # Two stacked thumbnails need about 450 px of canvas; below that only
-            # the effective ISF (Γ×m_dyn) thumbnail is kept, at double height.
-            compact = ({'compact_layout': None}, {'compact_layout': (.55, .62, 1, 1)})
+            compact = (None, (.55, .62, 1, 1))
             for i, p in enumerate((process['panels'][2], process['panels'][3])):
-                panels.append(dict(p, layout=(.55, .6 + i*.2, 1, .8+i*.2), statistics={}, open=1,
-                                   compact_below=450, **compact[i]))
+                panels.append(dict(p, layout=(.55, .62 + i*.19, 1, .81+i*.19), statistics={}, open=1,
+                                   compact_below=450, compact_layout=compact[i]))
             rows, specs = self._offset_table(offsets)
             note = bands['note'] + ' · click a thumbnail to expand'
         elif self.view_id == 1:
@@ -542,7 +574,7 @@ class ResultsView(ttk.Frame):
             panels.append(dict(phasor, layout=(.66, 0, 1, 1)))
             rows = harmonic['rows']
             specs = [('k','k'), ('fraction_pct','Projection fraction (%)'), ('cancellation','destructive interference'), ('mdc_mag','|Mdc| (A/√Hz)'), ('mdyn_mag','|Mdyn| (A/√Hz)'), ('amplitude','A_k (1)'), ('delta_deg','δ_k (°)'), ('q_real','Q Re (V/√Hz)'), ('q_imag','Q Im (V/√Hz)'), ('q_mag','|Qk| (V/√Hz)'), ('harmonic_dbc','Pair single-order (dBc/Hz)'), ('cumulative_dbc','Pair cumulative (dBc/Hz)')]
-            note = HARMONIC_NOTE + ' · Selected offset '+engineering(metrics.get('offset_hz'),'Hz')
+            note = HARMONIC_NOTE + ' · Selected offset '+(offset_label(metrics['offset_hz']) if metrics.get('offset_hz') is not None else '—')
         elif self.view_id == 3:
             panels = [dict(phase_panels[0], layout=(0, 0, 1, .7)), dict(phase_panels[1], layout=(0, .7, 1, 1))]
             rows, specs = self._offset_table(offsets)
@@ -560,6 +592,23 @@ class ResultsView(ttk.Frame):
         elif self.view_id == 6:
             panels, rows, specs = bands['panels'], bands['table_rows'], bands['specs']
             note = bands['note']
+        elif self.view_id == 8:
+            try:
+                from ..metrics import compute_metrics
+                from .metrics_view import projection
+                self.optimization_metrics = compute_metrics(app.current_result, point=point)
+                opt = projection(self.optimization_metrics)
+                panels, rows, specs = opt['panels'], opt['rows'], opt['specs']
+                self._metric_panels = panels
+                gate = self.optimization_metrics['closure']
+                self.diagnostic_frame.configure(text='Closure gap G = '+engineering(gate['gap_db'], 'dB')+' · '+('Source attribution required' if gate['gate']=='attribute_sources' else 'Shape attribution'))
+                cards=self.optimization_metrics['recommendations']
+                self.diagnostic_text.set('\n'.join(c['advice']+' · Evidence: '+c['evidence'] for c in cards) or opt['note'])
+                note = 'Full-period trapezoidal integration. Γ is in phase with the carrier. Vdiff uses a half-period approximation if the peer is missing. Single-ended ψ is shown separately.'
+            except (ValueError, ImportError) as exc:
+                self.optimization_metrics = None
+                panels, rows, specs = [], [], []
+                note = 'Optimization metrics unavailable. ' + str(exc)
         elif self.view_id == 7:
             panels, rows = thermal_bands['panels'], thermal_bands['rows']
             self._thermal_band_series = list(panels[0]['series'])
@@ -592,7 +641,17 @@ class ResultsView(ttk.Frame):
             note = 'Completion does not imply validation; REPLAY does not grant SIGNOFF. double-click a metric for its definition; raw structured values support hover / Copy. '
         if self.view_id in (0,3) and len(offsets['rows'])==1:
             note += ' · This operating point has only 1 offsets, no interpolation of sweep curves'
+        if self.view_id == 4:
+            raw = view.get('selected_summary', {})
+            transfer_notice = (raw.get('flicker_transfer') or {}).get('notice')
+            notices = [message for message in (raw.get('pair_notice'), transfer_notice) if message]
+            if notices:
+                note = '\n'.join([note, *notices])
         self.note.set(note)
+        if self.view_id == 8 and getattr(self, 'optimization_metrics', None):
+            self.diagnostic_frame.grid(row=2, column=0, sticky='ew', pady=(3,0))
+        else:
+            self.diagnostic_frame.grid_remove()
         if self.view_id == 5:
             self.chart.grid_remove()
             self.quality_frame.grid(row=1, column=0, sticky='nsew')
@@ -622,15 +681,20 @@ class ResultsView(ttk.Frame):
                 if selected:
                     self.chart.panels[0]['series']=selected
                     self.source_var.set(selected[0]['name'])
+            if self.view_id==8 and getattr(self,'optimization_metrics',None):
+                from .metrics_view import linked_panels
+                self.chart.panels=linked_panels(self.optimization_metrics,self._metric_panels,key)
             self.chart.highlight(key)
-            if self.view_id in (2,6,7):
+            if self.view_id in (2,6,7,8):
                 self.chart.schedule()
             if self.view_id==4 and key in self.table.rows:
                 row=self.table.rows[key]
                 self.readout.set(key+' · '+row.get('scope','')+' · HBnoise '+engineering(row.get('simulated_dbc'),'dBc/Hz')+' / ISF '+engineering(row.get('calculated_dbc'),'dBc/Hz'))
             else:
                 row=self.table.rows.get(key,{})
-                if self.view_id==2:
+                if self.view_id==8:
+                    text=row.get('label',key)+' · '+engineering(row.get('value'),row.get('unit',''))+' · '+row.get('status','')+' · '+row.get('definition','')+' · '+row.get('reason','')
+                elif self.view_id==2:
                     text='k='+str(row.get('k'))+' · single order '+engineering(row.get('harmonic_dbc'),'dBc/Hz')+' · Projection fraction '+engineering(row.get('fraction_pct'),'%')
                     if row.get('cancellation'):text+=' · destructive interference: |Qk| > |ΣQk|'
                 elif self.view_id==6:
@@ -663,20 +727,81 @@ class ResultsView(ttk.Frame):
         if selection:
             self.app._show_metric(self.quality_table.rows[selection[0]]['field'])
 
+    def compare_result(self):
+        source = filedialog.askopenfilename(parent=self, title='Select the after result JSON',
+                                           filetypes=(('JSON', '*.json'),))
+        if not source:
+            return
+        from ..comparison import compare
+        from ..core.testbench import read
+        app = self.app
+        current = app.current_result
+        point = app.point_var.get()
+        summary = app.current_result_view.get('selected_summary', {})
+        offset = summary.get('offset_Hz')
+        device = summary.get('device_instance')
+        operating_point = summary.get('operating_point_id') or point
+
+        def render(result):
+            window = tk.Toplevel(self)
+            window.title('Before / after · explanation of simulated results')
+            window.geometry('1000x600')
+            ttk.Label(window, text=result['explanation'], wraplength=900, padding=10).pack(fill='x')
+            ttk.Label(window, text=f'{operating_point} at {offset_label(offset)}', padding=(10, 0)).pack(anchor='w')
+            columns = ('metric', 'unit', 'before', 'after', 'delta')
+            table = ttk.Treeview(window, columns=columns, show='headings')
+            for key, title in zip(columns, ('Metric', 'Units', 'Before', 'After', 'After − before')):
+                table.heading(key, text=title)
+                table.column(key, width=350 if key == 'metric' else 100)
+            scrollbar = ttk.Scrollbar(window, orient='vertical', command=table.yview)
+            table.configure(yscrollcommand=scrollbar.set)
+            scrollbar.pack(side='right', fill='y')
+            table.pack(fill='both', expand=True)
+            for row in result['changes']:
+                values = [engineering(row[key], row['unit']) for key in columns[2:]]
+                table.insert('', 'end', values=(row['metric'], row['unit'], *values))
+
+        app._submit('Compare simulated results', lambda: compare(
+            current, read(source), point=point, after_point=operating_point,
+            offset_hz=offset, device=device), render)
+
+    def export_metrics(self):
+        try:
+            from ..metrics import compute_metrics
+            metrics = compute_metrics(self.app.current_result, point=self.app.point_var.get())
+            path = filedialog.asksaveasfilename(parent=self, title='Export optimization metrics for this operating point', defaultextension='.json', filetypes=(('JSON','*.json'),))
+            if path:
+                Path(path).write_text(json.dumps(metrics,ensure_ascii=False,indent=2,allow_nan=False),encoding='utf-8')
+        except (ValueError, OSError, ImportError) as exc:
+            messagebox.showerror('Export failed',str(exc),parent=self)
+
     def export_eps(self):
         path = filedialog.asksaveasfilename(parent=self, title='Export current process chart', defaultextension='.eps', filetypes=(('EPS', '*.eps'),))
         if path:
             try:
-                self.chart.postscript(file=path, colormode='color', width=self.chart.winfo_width(), height=self.chart.winfo_height())
+                content = self.chart.postscript(colormode='color', width=self.chart.winfo_width(),
+                                                height=self.chart.winfo_height())
+                first, rest = content.split('\n', 1)
+                metadata = json.dumps(self.app._export_sample(), ensure_ascii=True)
+                Path(path).write_text(f'{first}\n%%ISFSample: {metadata}\n{rest}', encoding='utf-8')
             except (OSError, tk.TclError) as exc:
                 messagebox.showerror('Export failed', str(exc), parent=self)
 
     def export_png(self):
+        try:
+            from PIL import ImageGrab, PngImagePlugin
+        except ImportError:
+            messagebox.showinfo('PNG export requires Pillow',
+                                'Install the optional images dependency (vco-isf-explorer[images]) or export EPS.',
+                                parent=self)
+            return
         path = filedialog.asksaveasfilename(parent=self, title='Export current process chart', defaultextension='.png', filetypes=(('PNG', '*.png'),))
         if path:
             try:
-                from PIL import ImageGrab
                 x,y = self.chart.winfo_rootx(), self.chart.winfo_rooty()
-                ImageGrab.grab(bbox=(x,y,x+self.chart.winfo_width(),y+self.chart.winfo_height())).save(path)
+                info = PngImagePlugin.PngInfo()
+                info.add_itxt('ISF sample', json.dumps(self.app._export_sample(), ensure_ascii=False))
+                box = (x, y, x + self.chart.winfo_width(), y + self.chart.winfo_height())
+                ImageGrab.grab(bbox=box).save(path, pnginfo=info)
             except (OSError, tk.TclError) as exc:
                 messagebox.showerror('Export failed', str(exc), parent=self)

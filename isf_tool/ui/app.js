@@ -2730,7 +2730,7 @@
   function thermalResult(summary) {
     var result = summary && summary.thermal_noise;
     if (result && Array.isArray(result.sources) && result.sources.some(function (source) { return source && (source.object_id || source.source_basis === "paired_noise_TB_transient_state_white_PSD"); })) return null;
-    return result && result.schema_version === 1 && result.status === "available" && result.scope === "gm_pair_and_lc_network" && result.passive_scope === "passive_only_lc_roots_v1" ? result : null;
+    return result && result.schema_version === 1 && result.status === "available" && result.scope === "gm_pair_and_lc_network" && ["passive_only_lc_roots_v1", "passive_lc_branches_v2"].includes(result.passive_scope) ? result : null;
   }
 
   function addNoiseDbc(values) {

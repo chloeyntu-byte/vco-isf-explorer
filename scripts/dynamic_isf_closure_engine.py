@@ -26,6 +26,7 @@ import shutil
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 from pathlib import Path
 
 import numpy as np
@@ -173,10 +174,8 @@ def physical_profile(cfg):
 
 
 def _netlist_node(value):
-    value = str(value or "").strip()
-    while value.startswith("/"):
-        value = value[1:]
-    return value
+    from isf_tool.core.spectre_topology import canonical_name
+    return canonical_name(value)
 
 
 def main_output(cfg):
@@ -272,57 +271,44 @@ def _continued_statements(text, first_line_pattern):
     return output
 
 
-def _template_include_lines(template_path):
-    text = template_path.read_text(encoding="utf-8", errors="ignore")
-    lines = [
-        statement.rstrip("\r\n")
-        for _, _, statement in _root_statements(text)
-        if re.match(r"^\s*(?:include|ahdl_include)\s+", statement, flags=re.IGNORECASE)
-    ]
+def _template_include_lines(template_path, model_name=None):
+    from isf_tool.core.spectre_topology import SpectreTopology
+    tree = SpectreTopology(template_path, includes=False)
     output = []
-    for line in lines:
-        match = re.search(r'^\s*(?:include|ahdl_include)\s+"([^"]+)"', line, flags=re.IGNORECASE)
-        if not match:
-            raise RuntimeError("flicker Maestro include path is not a literal string")
-        include_path = Path(os.path.expanduser(match.group(1)))
-        if not include_path.is_absolute():
-            include_path = (template_path.parent / include_path).resolve()
-        if not include_path.is_file():
-            raise RuntimeError(
-                "flicker Maestro model include is absent: {}".format(include_path)
-            )
-        output.append(
-            line[: match.start(1)] + str(include_path) + line[match.end(1) :]
-        )
-    if not output:
-        raise RuntimeError("flicker Maestro template has no model include")
+    for item in tree.includes:
+        if item.scope is not tree.root: continue
+        if not Path(item.include_path).is_file():
+            raise RuntimeError('flicker Maestro model include is absent: ' + item.include_path)
+        output.append(item.kind + ' ' + json.dumps(item.include_path) +
+                      (' section=' + item.parameters['section'] if item.parameters.get('section') else ''))
+    # Direct models and local model subckts are valid without an include.
+    output.extend(tree.files[item.source][item.start:item.end].strip() for item in tree.root.models.values())
+    # Retain reachable sibling model definitions, excluding unused circuit
+    # definitions and their private includes/parameters.
+    output.extend(tree.relocated_definition_text(d) for d in tree.root_definition_closure(model_name))
+    from isf_tool.core.spectre_topology import MOS_TYPES
+    if not output and str(model_name).lower() not in MOS_TYPES:
+        raise RuntimeError('flicker Maestro template has no model include or definition')
     return output
 
 
 def _template_device_tail(cfg, template_path):
-    profile = physical_profile(cfg)
-    replica = profile["replica"]
-    instance = replica.get("dc_instance", "M1")
-    original = replica["original_subckt"]
-    text = template_path.read_text(encoding="utf-8", errors="ignore")
-    pattern = re.compile(
-        r"^\s*{}\s+\(\s*[^)]*\)\s+{}\b([\s\S]*)$".format(
-            re.escape(instance), re.escape(original)
-        ),
-        flags=re.IGNORECASE,
-    )
-    # Cadence emits both backslash and '+' continuations. Keep the complete
-    # root statement so a continued multiplicity/size is never discarded or
-    # a dangling backslash joined to the following simulatorOptions line.
-    matches = [match for _, _, statement in _root_statements(text)
-               for match in [pattern.match(statement)] if match is not None]
-    if len(matches) != 1:
-        raise RuntimeError(
-            "flicker Maestro target device {} / {} is not unique".format(
-                instance, original
-            )
-        )
-    return matches[0].group(1).strip()
+    from isf_tool.core.spectre_topology import SpectreTopology
+    replica = physical_profile(cfg)['replica']
+    text = template_path.read_text(encoding='utf-8', errors='replace')
+    source = template_path if isinstance(template_path,(str,Path)) else None
+    try:
+        tree = SpectreTopology(source, text=text, includes=False)
+        row = tree.resolve_instance(replica.get('dc_instance','M1'))
+    except Exception as exc:
+        raise RuntimeError('flicker Maestro target device is not unique: ' + str(exc)) from exc
+    if row['model'] != replica['original_subckt']:
+        raise RuntimeError('flicker Maestro target model changed')
+    item = tree.statement_for(row)
+    raw = tree.files[item.source][item.start:item.end]
+    after_pins = raw.index(')') + 1
+    tail = raw[after_pins:].lstrip()
+    return tail[len(item.model):].strip()
 
 
 def _template_parameter_statements(template_path):
@@ -495,6 +481,8 @@ def _simulation_cache_identity(cfg, netlist_dir):
         "config_sha256": config_sha256,
         "dependencies": dependencies,
     }
+    from isf_tool.core.spectre_topology import SpectreTopology
+    identity['include_closure'] = SpectreTopology(netlist_dir / 'input.scs').file_hashes
     identity["waveform_exchange"] = validate_waveform_assets(netlist_dir)
     identity["key_sha256"] = hashlib.sha256(
         json.dumps(
@@ -813,26 +801,39 @@ def read_dc_flicker(cfg, point, max_harmonic):
 
 
 def sample_periodic_wave(cfg, psf_dir, traces, samples=65):
-    f0 = fundamental(cfg, psf_dir)
+    f0 = exact_hb_fundamental(cfg, psf_dir)
+    if not math.isfinite(f0) or f0 <= 0 or samples < 2:
+        raise ValueError('invalid periodic sampling frequency/count')
     period = 1.0 / f0
     result = {"f0": f0, "period": period}
+    raw, origin = {}, None
+    tolerance = period * 1e-9
+    for trace in dict.fromkeys(traces):
+        if trace == "0": continue
+        times, values = parse_real_wave(cfg, Path(psf_dir) / "hb.td.pss_hb.tran", trace)
+        times, values = np.asarray(times), np.asarray(values)
+        if (len(times) < 2 or times.shape != values.shape or not np.all(np.isfinite(times))
+                or not np.all(np.isfinite(values)) or not np.all(np.diff(times) > 0)):
+            raise ValueError('invalid raw time axis/values for ' + trace)
+        if origin is None: origin = float(times[0])
+        if abs(float(times[0]) - origin) > tolerance:
+            raise ValueError('inconsistent raw time origin for ' + trace)
+        if times[-1] < origin + period - 16 * np.finfo(float).eps * period:
+            raise ValueError('raw waveform does not cover a complete period: ' + trace)
+        raw[trace] = (times, values)
+    origin = 0.0 if origin is None else origin
     target = np.linspace(0.0, period, samples)
     for trace in traces:
-        if trace == "0":
-            result[trace] = np.zeros_like(target)
-            continue
-        times, values = parse_real_wave(cfg, Path(psf_dir) / "hb.td.pss_hb.tran", trace)
-        times = times - times[0]
-        mask = times <= period * (1.0 + 1e-6)
-        times = times[mask]
-        values = values[mask]
-        if times[-1] < period:
-            times = np.r_[times, period]
-            values = np.r_[values, values[0]]
-        sampled = np.interp(target, times, values)
-        sampled[-1] = sampled[0]
+        if trace == '0': result[trace] = np.zeros_like(target); continue
+        times, values = raw[trace]
+        sampled = np.interp(target + origin, times, values)
+        scale = max(float(np.max(np.abs(sampled))), 1e-12)
+        if abs(float(sampled[-1] - sampled[0])) > scale * 1e-5 + 1e-12:
+            raise ValueError('raw periodic waveform endpoints do not close: ' + trace)
         result[trace] = sampled
-    result["time"] = target
+    result['timebase'] = {'t_origin_s': origin, 'period_s': period,
+                          'raw_intervals': {k: [float(t[0]), float(t[-1])] for k,(t,v) in raw.items()}}
+    result['time'] = target
     return result
 
 
@@ -863,71 +864,23 @@ def source_wave(name, p, n, times, values, period):
 
 def injected_nmos_subckt(cfg):
     """Copy the configured MOS subckt and add a unit intrinsic PAC source."""
-    replica = physical_profile(cfg)["replica"]
-    original = replica["original_subckt"]
-    generated = replica["generated_subckt"]
-    intrinsic = replica["intrinsic"]
-    intrinsic_instance = intrinsic["instance"]
-    primitive = intrinsic["primitive"]
-    terminals = intrinsic["terminals"]
-    injection_source = intrinsic["injection_source"]
-    model_path = cfg.get("_device_subckt_file") or resolve_device_subckt_file(
-        cfg.get("model_file"),
-        physical_profile(cfg),
-        configured=cfg.get("device_subckt_file"),
-    )
-    if not model_path:
-        raise RuntimeError(
-            "Could not locate {} in read-only PDK include chain".format(original)
-        )
-    if cfg.get("replica_source") == "generated":
-        from isf_tool.core.generated_flicker import active_subckt
-        _, block = active_subckt(model_path, cfg.get("device_subckt_section"), original)
+    from isf_tool.core.spectre_topology import SpectreTopology
+    from isf_tool.core.private_netlist import instrument_model
+    replica = physical_profile(cfg)['replica']
+    source = cfg.get('mos_source_netlist')
+    instance = cfg.get('mos_instance_path')
+    if source and instance:
+        tree = SpectreTopology(source)
+        row = tree.resolve_instance(instance)
     else:
-        text = Path(model_path).read_text(encoding="utf-8", errors="ignore")
-        match = re.search(
-            r"^\s*(?:inline\s+)?subckt\s+{}\s*\([^\n]+\)[\s\S]*?^\s*ends\s+{}\s*$".format(
-                re.escape(original), re.escape(original)
-            ),
-            text,
-            flags=re.MULTILINE | re.IGNORECASE,
-        )
-        block = match.group(0) if match else None
-    if not block:
-        raise RuntimeError(
-            "Could not extract {} from read-only PDK".format(original)
-        )
-    block = re.sub(
-        r"^\s*(?:inline\s+)?subckt\s+{}\b".format(re.escape(original)),
-        "subckt {}".format(generated),
-        block,
-        count=1,
-        flags=re.IGNORECASE,
-    )
-    block = re.sub(
-        r"^\s*ends\s+{}\s*$".format(re.escape(original)),
-        "ends {}".format(generated),
-        block,
-        count=1,
-        flags=re.MULTILINE | re.IGNORECASE,
-    )
-    terminal_pattern = r"\s+".join(re.escape(item) for item in terminals)
-    block, count = re.subn(
-        r"^(\s*{}\s+\(\s*{}\s*\)\s+{}\b)".format(
-            re.escape(intrinsic_instance),
-            terminal_pattern,
-            re.escape(primitive),
-        ),
-        "{} ({} {}) isource dc=0 type=dc pacmag=1 pacphase=0\n\\1".format(
-            injection_source, terminals[0], terminals[2]
-        ),
-        block,
-        count=1,
-        flags=re.MULTILINE | re.IGNORECASE,
-    )
-    if count != 1:
-        raise RuntimeError("Could not place intrinsic deterministic injection")
-    return block
+        # Older saved profiles have no occurrence binding. Reconstruct a
+        # model-only tree with the saved active section, never a name guess.
+        source = cfg.get('_device_subckt_file') or cfg.get('device_subckt_file') or cfg.get('model_file')
+        section = cfg.get('device_subckt_section')
+        includes = 'include ' + json.dumps(str(source)) + (' section=' + section if section else '')
+        tree = SpectreTopology(text=includes + '\nM_ISF_MODEL (d g s b) ' + replica['original_subckt'] + ' ' + replica.get('device_parameters',''))
+        row = tree.resolve_instance('M_ISF_MODEL')
+    return instrument_model(tree, row, replica['generated_subckt'], replica['intrinsic']['injection_source'])
 
 
 def _transfer_contract_for_reading(cfg):
@@ -941,205 +894,132 @@ def _transfer_contract_for_reading(cfg):
 
 
 def prepare_main_netlist(cfg, source_path, target_path):
+    from isf_tool.core.spectre_topology import SpectreTopology
+    from isf_tool.core.private_netlist import plan_instance_instrumentation, materialize_patch
     profile = physical_profile(cfg)
-    main = profile["main"]
-    terminals = main["terminals"]
-    output = main_output(cfg)
-    probe = main["drain_probe"]
-    injection = main["injection"]
-    instance = main["target_instance"]
-    subckt = main["device_subckt"]
-    offset = "{:.16g}".format(float(cfg["offset_hz"]))
-    text = Path(source_path).read_text(encoding="utf-8")
-    # Preserve user-selected analysis instances at the input boundary. The
-    # private copy uses the canonical result names consumed by the extractor.
-    mapping = cfg.get("vco_mapping", {})
+    main, output = profile['main'], main_output(cfg)
     transfer = _transfer_contract_for_reading(cfg)
-    if transfer.get('mode') == 'existing_source':
-        if canonical_net(main_injection_trace(profile)) == canonical_net(transfer.get('source')):
-            raise RuntimeError('The private injection may not overwrite the selected existing current source')
-        # The user owns the physical meaning of the selected current-transfer
-        # outputs. Do not requalify its MOS branch/model or the old measurement
-        # terminals here. The private HBXF below uses the chosen output pair;
-        # extraction still requires the requested raw source/bands to exist.
-    for key, canonical in (("periodic_analysis", "hb"), ("noise_analysis", "hbnoise"), ("transfer_analysis", "hbxf")):
+    if transfer.get('mode') == 'existing_source' and canonical_net(main_injection_trace(profile)) == canonical_net(transfer.get('source')):
+        raise RuntimeError('The private injection may not overwrite the selected existing current source')
+    tree = SpectreTopology(source_path)
+    instance = main.get('instance_path') or main['target_instance']
+    plan = plan_instance_instrumentation(tree, instance,
+        {'p': output['negative'], 'n': output['positive']},
+        names={'probe': main['drain_probe']['source'], 'node': main['drain_probe']['node'],
+               'injection': main['injection']['source']})
+    row = tree.resolve_instance(instance)
+    identity = tree.mos_identity(row)
+    actual = [row['local_terminals'][i] for i in identity['terminal_order']]
+    expected = [main['terminals'][k] for k in ('drain','gate','source','bulk')]
+    if (actual != expected or row['model'] != main['device_subckt']
+            or (main.get('polarity') and identity.get('polarity') != main['polarity'])):
+        raise RuntimeError('selected instance terminal/model signature changed')
+    manifest = materialize_patch(plan, tree, target_path)
+    from isf_tool.core.signal_mapping import pair_symmetry
+    by_name = {r['name']:r for r in tree.catalog()['devices']}
+    policy = pair_symmetry(by_name.get(instance), by_name.get((cfg.get('vco_mapping') or {}).get('peer_instance')))
+    manifest['pair_policy'] = policy
+    manifest['source_netlist'] = str(source_path)
+    text = Path(target_path).read_text(encoding='utf-8')
+    private = SpectreTopology(target_path, text=text)
+    mapping = cfg.get('vco_mapping') or {}
+    edits, found = [], {}
+    offset = '{:.16g}'.format(float(cfg['offset_hz']))
+    noise = 'hbnoise ({} {}) hbnoise sweeptype=relative relharmvec=[1] values=[{}] maxsideband={} noiseout=[usb lsb am pm] saveallsidebands=yes separatenoise=yes annotate=status'.format(output['negative'], output['positive'], offset, cfg['main_max_sideband'])
+    xf = 'hbxf ({} {}) hbxf sweeptype=relative relharmvec=[1] values=[{}] maxsideband={} freqaxis=out annotate=status'.format(output['negative'], output['positive'], offset, cfg['main_max_sideband'])
+    for key, canonical in (('periodic_analysis','hb'), ('noise_analysis','hbnoise'), ('transfer_analysis','hbxf')):
         selected = mapping.get(key) or canonical
-        if selected != canonical:
-            if re.search(r"(?m)^\s*" + re.escape(canonical) + r"\s*\(", text):
-                raise RuntimeError("private analysis name collision: " + canonical)
-            text, renamed = re.subn(
-                r"(?m)^([ \t]*)" + re.escape(selected) + r"(?=[ \t]*\([^\n]*\)[ \t]+" + canonical + r"\b)",
-                lambda match: match.group(1) + canonical, text,
-            )
-            if renamed != 1:
-                raise RuntimeError("selected analysis is not unique: " + selected)
-    target_pattern = (
-        r"^([ \t]*){}\s+\(\s*{}\s+{}\s+{}\s+{}\s*\)\s+({}\b[^\n]*)$"
-    ).format(
-        re.escape(instance),
-        re.escape(terminals["drain"]),
-        re.escape(terminals["gate"]),
-        re.escape(terminals["source"]),
-        re.escape(terminals["bulk"]),
-        re.escape(subckt),
-    )
-    target_matches = list(
-        re.finditer(
-            target_pattern,
-            text,
-            flags=re.MULTILINE | re.IGNORECASE,
-        )
-    )
-    if len(target_matches) != 1:
-        raise RuntimeError(
-            "Target {} terminal/subckt signature occurs {} times; refine the physical profile".format(
-                instance, len(target_matches)
-            )
-        )
-    injection_pattern = (
-        r"^([ \t]*){}\s+\(\s*[^\s()]+\s+[^\s()]+\s*\)\s+"
-        r"(isource\b[^\n]*)$"
-    ).format(re.escape(injection["source"]))
-    has_existing_injection = bool(
-        re.search(injection_pattern, text, flags=re.MULTILINE | re.IGNORECASE)
-    )
+        matches = [i for i in private.items if i.kind == 'analysis' and i.scope is private.root and i.name == selected]
+        if not matches and canonical == 'hbxf': continue
+        if len(matches) != 1 or matches[0].model.lower() != canonical:
+            raise RuntimeError('selected analysis is not unique or unsupported: ' + selected)
+        item = matches[0]
+        if selected != canonical and any(i.name == canonical for i in private.items if i.scope is private.root):
+            raise RuntimeError('private analysis name collision: ' + canonical)
+        found[canonical] = item
+        replacement = canonical + item.text[len(item.name):] if canonical == 'hb' else noise if canonical == 'hbnoise' else xf
+        edits.append((item.source, item.start, item.end, replacement + '\n'))
+    if 'hbxf' not in found:
+        noise_item = found['hbnoise']
+        edits = [(file,a,b,v + xf + '\n' if (file,a) == (noise_item.source,noise_item.start) else v)
+                 for file,a,b,v in edits]
+    text = private.relocated_text(private.source, 0, len(text), edits)
+    traces = main['traces']
+    peer = by_name.get(mapping.get('peer_instance'), {})
+    text += '\nsave ' + ' '.join(dict.fromkeys([output['positive'], output['negative'],
+        traces['gate'], traces['source'], traces['bulk'], drain_probe_trace(profile), traces['drain']]
+        + peer.get('terminals', []))) + '\n'
+    from isf_tool.core.flicker_transfer import add_flicker_analyses
+    text = add_flicker_analyses(text, output, float(offset), int(cfg['max_harmonic']))
+    from isf_tool.core.private_validation import write_private_netlist, validate_main_copy
+    def validate_final(copied):
+        validate_main_copy(tree, copied, plan)
+        for name in ('hb', 'hbnoise', 'hbxf'):
+            analyses = [i for i in copied.items if i.scope is copied.root and i.kind == 'analysis' and i.name == name]
+            if len(analyses) != 1 or analyses[0].model.lower() != name:
+                raise RuntimeError('private main analysis changed during write: ' + name)
+    write_private_netlist(target_path, text, sources=tree.files, validate=validate_final)
+    manifest['sha256'] = hashlib.sha256(text.encode('utf-8')).hexdigest()
+    Path(target_path).with_suffix('.isf-patch.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
+    return manifest
 
-    def insert_probe(match):
-        indent = match.group(1)
-        device_tail = match.group(2)
-        local_injection = ""
-        if not has_existing_injection:
-            local_injection = (
-                "{indent}{source_name} ({positive} {negative}) "
-                "isource dc=0 type=dc\n"
-            ).format(
-                indent=indent,
-                source_name=injection["source"],
-                positive=injection["positive"],
-                negative=injection["negative"],
-            )
-        return (
-            "{indent}{probe} ({drain} {node}) vsource dc=0 type=dc\n"
-            "{local_injection}"
-            "{indent}{instance} ({node} {gate} {source} {bulk}) {tail}"
-        ).format(
-            indent=indent,
-            probe=probe["source"],
-            drain=terminals["drain"],
-            node=probe["node"],
-            instance=instance,
-            gate=terminals["gate"],
-            source=terminals["source"],
-            bulk=terminals["bulk"],
-            tail=device_tail,
-            local_injection=local_injection,
-        )
 
-    text, count = re.subn(
-        target_pattern,
-        insert_probe,
-        text,
-        count=1,
-        flags=re.MULTILINE | re.IGNORECASE,
-    )
-    if count != 1:
-        raise RuntimeError(
-            "Could not insert {} drain probe using physical profile".format(
-                instance
-            )
-        )
-    text, count = re.subn(
-        injection_pattern,
-        "\\1{} ({} {}) \\2".format(
-            injection["source"],
-            injection["positive"],
-            injection["negative"],
-        ),
-        text,
-        count=1,
-        flags=re.MULTILINE | re.IGNORECASE,
-    )
-    if count == 0:
-        if has_existing_injection:
-            raise RuntimeError(
-                "Could not align {} with drain-to-source direction".format(
-                    injection["source"]
-                )
-            )
-        # The source was inserted next to the target MOS, preserving the same
-        # subcircuit scope and therefore the actual drain/source branch.
-    elif count != 1:
-        raise RuntimeError(
-            "Could not align {} with drain-to-source direction".format(
-                injection["source"]
-            )
-        )
-    text, count = re.subn(
-        r"^\s*hbnoise\s+\([^\n]*\)\s+hbnoise[\s\S]*?annotate=status\s*$",
-        "hbnoise ({} {}) hbnoise sweeptype=relative\n"
-        "+ relharmvec=[1] values=[{}] maxsideband={}\n"
-        "+ noiseout=[usb lsb am pm] saveallsidebands=yes separatenoise=yes annotate=status".format(
-            output["negative"],
-            output["positive"],
-            offset,
-            cfg["main_max_sideband"],
-        ),
-        text,
-        count=1,
-        flags=re.MULTILINE | re.IGNORECASE,
-    )
-    if count != 1:
-        raise RuntimeError("Could not patch main HBNOISE")
-    text, count = re.subn(
-        r"^\s*hbxf\s+\([^\n]*\)\s+hbxf[\s\S]*?annotate=status\s*$",
-        "hbxf ({} {}) hbxf sweeptype=relative relharmvec=[1]\n"
-        "+ values=[{}] maxsideband={} freqaxis=out annotate=status".format(
-            output["negative"],
-            output["positive"],
-            offset,
-            cfg["main_max_sideband"],
-        ),
-        text,
-        count=1,
-        flags=re.MULTILINE | re.IGNORECASE,
-    )
-    if count == 0:
-        hbxf_statement = (
-            "hbxf ({} {}) hbxf sweeptype=relative relharmvec=[1]\n"
-            "+ values=[{}] maxsideband={} freqaxis=out annotate=status"
-        ).format(
-            output["negative"],
-            output["positive"],
-            offset,
-            cfg["main_max_sideband"],
-        )
-        # Periodic small-signal analyses must remain in the HB analysis chain.
-        # Appending HBXF after info/save statements makes Spectre 18.1 report
-        # SPCRTRF-15225 even though HB completed.  Insert it immediately after
-        # the patched HBNOISE statement in the private copy.
-        text, inserted = re.subn(
-            r"(^\s*hbnoise\s+\([^\n]*\)\s+hbnoise[\s\S]*?annotate=status\s*$)",
-            r"\1\n" + hbxf_statement,
-            text,
-            count=1,
-            flags=re.MULTILINE | re.IGNORECASE,
-        )
-        if inserted != 1:
-            raise RuntimeError("Could not place private HBXF after HBNOISE")
-    elif count != 1:
-        raise RuntimeError("Could not patch main HBXF")
-    traces = main["traces"]
-    text += "\nsave {} {} {} {} {} {} {}\n".format(
-        output["positive"],
-        output["negative"],
-        traces["gate"],
-        traces["source"],
-        traces["bulk"],
-        drain_probe_trace(profile),
-        traces["drain"],
-    )
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-    target_path.write_text(text, encoding="utf-8")
+def prove_measured_pair_symmetry(cfg, case_dir):
+    """Prove equal model/geometry and half-period-shifted four-terminal bias.
+
+    This covers isolated probe aliases without assuming encrypted probe wiring.
+    The voltage bound is 1 uV + 0.1% of the measured waveform peak.
+    """
+    from isf_tool.core.spectre_topology import SpectreTopology
+    from isf_tool.core.signal_mapping import pair_symmetry
+    case_dir = Path(case_dir)
+    receipt = case_dir / 'main_vco/netlist/input.isf-patch.json'
+    manifest = json.loads(receipt.read_text())
+    # Cross-coupled gates establish connectivity, but the oscillator's
+    # solved limit cycle also depends on the surrounding loads and bias.
+    # Use the frozen source before its private drain probe splits the net.
+    tree = SpectreTopology(manifest.get('source_netlist') or next(iter(manifest['source_hashes'])))
+    rows = {row['name']: row for row in tree.catalog()['devices']}
+    mapping = cfg.get('vco_mapping') or {}
+    target = rows[main_instance_path(physical_profile(cfg))]
+    peer = rows.get(mapping.get('peer_instance'))
+    if not peer:
+        return manifest.get('pair_policy', {})
+    # Retain the complete master/geometry/shared source/bulk checks. Bias
+    # equivalence below supplies the gate/drain relation through probe aliases.
+    target_copy, peer_copy = dict(target), dict(peer)
+    target_copy['terminals'] = list(target['terminals'])
+    peer_copy['terminals'] = list(peer['terminals'])
+    target_copy['terminals'][1] = peer['terminals'][0]
+    peer_copy['terminals'][1] = target['terminals'][0]
+    policy = pair_symmetry(target_copy, peer_copy)
+    if not policy['proven']:
+        manifest['pair_policy'] = policy
+        receipt.write_text(_strict_json_dumps(manifest, indent=2) + '\n')
+        return policy
+    traces = list(dict.fromkeys(target['terminals'] + peer['terminals']))
+    try:
+        wave = sample_periodic_wave(cfg, case_dir / 'main_vco/psf', traces, samples=1025)
+    except (ValueError, RuntimeError, KeyError) as exc:
+        policy.update(proven=False, reasons=['Pair bias evidence unavailable: ' + str(exc)])
+        manifest['pair_policy'] = policy
+        receipt.write_text(_strict_json_dumps(manifest, indent=2) + '\n')
+        return policy
+    errors = {}
+    for role, a, b in zip('DGSB', target['terminals'], peer['terminals']):
+        first = np.asarray(wave[a])[:-1]
+        second = np.roll(np.asarray(wave[b])[:-1], 512)
+        peak = max(float(np.max(np.abs(first))), float(np.max(np.abs(second))))
+        maximum = float(np.max(np.abs(first - second)))
+        tolerance = 1e-6 + 1e-3 * peak
+        errors[role] = dict(max_error_V=maximum, tolerance_V=tolerance)
+    policy.update(proven=all(row['max_error_V'] <= row['tolerance_V'] for row in errors.values()),
+                  basis='master/effective geometry/shared source,bulk/measured half-period four-terminal bias',
+                  phase_shift_periods=0.5, sample_count=1024, bias_evidence=errors)
+    policy['reasons'] = [] if policy['proven'] else ['Measured half-period bias is asymmetric']
+    manifest['pair_policy'] = policy
+    receipt.write_text(_strict_json_dumps(manifest, indent=2) + '\n')
+    return policy
 
 
 def prepare_replica_netlist(cfg, wave, target_path, point=None):
@@ -1188,13 +1068,22 @@ def prepare_replica_netlist(cfg, wave, target_path, point=None):
     ]
     parts.append(parameter_text)
     if template_path:
-        parts.extend(_template_include_lines(template_path))
+        parts.extend(_template_include_lines(template_path, model_name=replica["original_subckt"]))
     elif replica["model_sections"]:
         for section in replica["model_sections"]:
             parts.append('include "{}" section={}'.format(cfg["model_file"], section))
     else:
         parts.append('include "{}"'.format(cfg["model_file"]))
-    parts.append(injected_nmos_subckt(cfg))
+    model_cfg = dict(cfg)
+    for key in ('mos_source_netlist','mos_instance_path'):
+        if point and point.get(key): model_cfg[key] = point[key]
+    legacy_instance = (cfg.get('flicker_mapping') or {}).get('dc_instance') or replica.get('dc_instance')
+    if (template_path and legacy_instance and not model_cfg.get('mos_source_netlist')
+            and not model_cfg.get('mos_instance_path')):
+        # The saved reference occurrence supplies the active include section
+        # and instance parameters for manual-replica Maestro histories.
+        model_cfg.update(mos_source_netlist=str(template_path), mos_instance_path=legacy_instance)
+    parts.append(injected_nmos_subckt(model_cfg))
     parts.extend(
         [
             exchanged_source("VG", "G", "S", "VGS"),
@@ -1202,10 +1091,10 @@ def prepare_replica_netlist(cfg, wave, target_path, point=None):
             exchanged_source("VS", "S", "0", "VS"),
             exchanged_source("VB", "B", "S", "VBS"),
             "{} (DEXT D) vsource dc=0 type=dc".format(replica["sense_source"]),
-            "{} (D G S B) {} {}".format(
+            "{} ({}) {} {}".format(
                 replica["instance"],
-                replica["generated_subckt"],
-                device_parameters,
+                " ".join(next(role for role, index in zip(('D','G','S','B'), replica.get('terminal_order',[0,1,2,3])) if index == n) for n in range(4)),
+                replica["generated_subckt"], device_parameters,
             ),
             template_options
             or "simulatorOptions options psfversion=\"1.1.0\" reltol=1e-3 vabstol=1e-6 "
@@ -1239,13 +1128,27 @@ def prepare_replica_netlist(cfg, wave, target_path, point=None):
         ]
     )
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    target_path.write_text("\n".join(parts), encoding="utf-8")
+    from isf_tool.core.spectre_topology import SpectreTopology
+    from isf_tool.core.private_validation import validate_mos_copy, write_private_netlist
+    if model_cfg.get('mos_source_netlist') and model_cfg.get('mos_instance_path'):
+        original = SpectreTopology(model_cfg['mos_source_netlist'])
+        selected = original.resolve_instance(model_cfg['mos_instance_path'])
+    else:
+        # Legacy profiles still validate against their actual model/template.
+        baseline = parameter_text + '\n' + '\n'.join(model_include_lines(cfg, point)) + '\nM_ISF_BASE ({}) {} {}'.format(
+            ' '.join(next(role for role, index in zip(('D','G','S','B'), replica.get('terminal_order',[0,1,2,3]))
+                          if index == n) for n in range(4)), replica['original_subckt'], device_parameters)
+        original = SpectreTopology(target_path, text=baseline)
+        selected = original.resolve_instance('M_ISF_BASE')
+    write_private_netlist(target_path, "\n".join(parts), sources=original.files if not original.source_override else (),
+        validate=lambda copied: validate_mos_copy(original, selected, copied, replica['instance'],
+                                                 injection=replica['intrinsic']['injection_source']))
 
 
 def model_include_lines(cfg, point=None):
     template_path = flicker_template_path(cfg, point)
     if template_path:
-        return _template_include_lines(template_path)
+        return _template_include_lines(template_path,model_name=physical_profile(cfg)["replica"]["original_subckt"])
     replica = physical_profile(cfg)["replica"]
     if replica["model_sections"]:
         return [
@@ -1277,6 +1180,8 @@ def prepare_dc_noise_netlist(cfg, biases, target_path, point=None):
         target_path = Path(target_path)
         _copy_regular_tree(template_path.parent, target_path.parent)
         text = target_path.read_text(encoding="utf-8", errors="ignore")
+        from isf_tool.core.spectre_topology import SpectreTopology
+        original = SpectreTopology(target_path, text=text)
         mapping = cfg.get("flicker_mapping", {})
         bias_roles = (
             ("vgs_variable", "VGS_V"),
@@ -1298,38 +1203,28 @@ def prepare_dc_noise_netlist(cfg, biases, target_path, point=None):
         analysis_name = (
             mapping.get("noise_analysis") if isinstance(mapping, dict) else None
         ) or "noise"
-        noise_pattern = (
-            r"^([ \t]*{}[ \t]*\([^\n)]*\)[ \t]+noise\b)"
-            r"[\s\S]*?annotate=status[ \t]*(?=\n|$)"
-        ).format(re.escape(str(analysis_name)))
-        replacement = (
-            r"\1 sweeptype=absolute values=[{:.16e}] annotate=status"
-        ).format(float(cfg["offset_hz"]))
-        text, count = re.subn(
-            noise_pattern,
-            replacement,
-            text,
-            count=1,
-            flags=re.MULTILINE | re.IGNORECASE,
-        )
-        if count != 1:
-            raise RuntimeError(
-                "could not patch mapped flicker noise analysis {}".format(
-                    analysis_name
-                )
-            )
-        if analysis_name != "noise":
-            if re.search(r"(?m)^\s*noise\s*\(", text):
-                raise RuntimeError("private analysis name collision: noise")
-            text = re.sub(
-                r"(?m)^([ \t]*)" + re.escape(str(analysis_name)) + r"(?=[ \t]*\([^\n]*\)[ \t]+noise\b)",
-                lambda match: match.group(1) + "noise", text, count=1,
-            )
+        from isf_tool.core.spectre_topology import SpectreTopology
+        tree = SpectreTopology(target_path, text=text)
+        matches = [i for i in tree.items if i.kind == 'analysis' and i.scope is tree.root and i.name == analysis_name and i.model.lower() == 'noise']
+        if len(matches) != 1:
+            raise RuntimeError('could not patch mapped flicker noise analysis ' + str(analysis_name))
+        item = matches[0]
+        if item.source != str(target_path.resolve()):
+            raise RuntimeError('noise analysis in an included file is unsupported for manual DC template')
+        if analysis_name != 'noise' and any(i.name == 'noise' for i in tree.items if i.scope is tree.root):
+            raise RuntimeError('private analysis name collision: noise')
+        replacement = 'noise ({}) noise sweeptype=absolute values=[{:.16e}] annotate=status\n'.format(' '.join(item.pins),float(cfg['offset_hz']))
+        text = text[:item.start] + replacement + text[item.end:]
         provenance = (
             "// ISF private DC sample; derived from {}\n"
             "// template={}\n"
         ).format("the selected VCO MOS" if generated else "bound flicker Maestro history", template_path)
-        target_path.write_text(provenance + text, encoding="utf-8")
+        from isf_tool.core.private_validation import assert_same_occurrences, write_private_netlist
+        # Parameter changes legitimately alter only the mapped bias sources.
+        mutable = [str(mapping.get(key) or default) for key, default in (
+            ('vgs_source', 'VG'), ('vds_source', 'VD'), ('vbs_source', 'VB'), ('vs_source', 'V_ISF_DC_S' if generated else 'VS'))]
+        write_private_netlist(target_path, provenance + text,
+            validate=lambda copied: assert_same_occurrences(original, copied, mutable=mutable))
         return
 
     # Legacy/replay compatibility only.  Pair-mode Live always takes the
@@ -1372,7 +1267,14 @@ def prepare_dc_noise_netlist(cfg, biases, target_path, point=None):
         ]
     )
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    target_path.write_text("\n".join(parts), encoding="utf-8")
+    from isf_tool.core.spectre_topology import SpectreTopology
+    from isf_tool.core.private_validation import validate_mos_copy, write_private_netlist
+    baseline = '\n'.join(model_include_lines(cfg, point)) + '\nM_ISF_BASE (D G S B) {} {}'.format(
+        replica['original_subckt'], replica['device_parameters'])
+    original = SpectreTopology(target_path, text=baseline)
+    selected = original.resolve_instance('M_ISF_BASE')
+    write_private_netlist(target_path, "\n".join(parts),
+        validate=lambda copied: validate_mos_copy(original, selected, copied, dc_instance))
 
 
 def _dc_samples_identity(cfg, point, wave, sample_count):
@@ -1656,6 +1558,7 @@ def prepare_and_run_point(cfg, point, run_root, force=False):
     main_netlist = case_dir / "main_vco" / "netlist" / "input.scs"
     prepare_main_netlist(cfg, source_netlist, main_netlist)
     main_status = run_spectre(cfg, main_netlist.parent, force=force)
+    prove_measured_pair_symmetry(cfg, case_dir)
     wave = sample_periodic_wave(
         cfg,
         case_dir / "main_vco" / "psf",
@@ -1934,6 +1837,13 @@ def fit_uniform_delay(dc_coeffs, dyn_coeffs):
     return -slope
 
 
+def analysis_flicker_transfer(cfg, psf_dir, carrier, max_harmonic):
+    from isf_tool.core.flicker_transfer import read_flicker_transfer
+
+    device = physical_profile(cfg)['main']['traces']['target_noise']
+    return read_flicker_transfer(SimpleNamespace(**globals()), cfg, psf_dir, device, max_harmonic, carrier)
+
+
 def parse_hbxf(cfg, psf_dir, source, max_harmonic):
     out = {}
     contract = _transfer_contract_for_reading(cfg)
@@ -2205,7 +2115,10 @@ def analyze_point(cfg, point, run_root, previous_selected=None):
         usb_asd[k] = math.sqrt(max(extract_hbnoise_fn(cfg, rep_psf, "hn{}".format(k), "usb", replica["noise_trace"], expected_domain="A"), 0.0))
         lsb_asd[k] = math.sqrt(max(extract_hbnoise_fn(cfg, rep_psf, "hn{}".format(k), "lsb", replica["noise_trace"], expected_domain="A"), 0.0))
 
-    candidates = candidate_sets(id_h, am_asd, pm_asd, mdc, previous_selected)
+    from isf_tool.core.physical_profile import replica_current_phase_sign
+    phase_sign = replica_current_phase_sign(profile)
+    phase_reference = {k: phase_sign * value for k, value in id_h.items()}
+    candidates = candidate_sets(phase_reference, am_asd, pm_asd, mdc, previous_selected)
     chosen = candidates[0]
     mdyn_pos = {0: complex(sqrt_sxi, 0.0)}
     mdyn_pos.update(chosen["selected"])
@@ -2228,7 +2141,10 @@ def analyze_point(cfg, point, run_root, previous_selected=None):
 
     main_f0 = fundamental(cfg, main_psf)
     carrier = carrier_phasor(cfg, main_psf, main_f0)
-    h = parse_hbxf(cfg, main_psf, main_injection_trace(profile), maxk)
+    h, transfer_evidence = analysis_flicker_transfer(cfg, main_psf, carrier, maxk)
+    if transfer_evidence.get('notice'):
+        print(f"{name}: {transfer_evidence['notice']} {transfer_evidence['absent_intrinsic_traces']}",
+              file=sys.stderr, flush=True)
     vdc = coherent_sum(h, mdc_signed)
     vdelay = coherent_sum(h, mdelay)
     vdyn = coherent_sum(h, mdyn)
@@ -2273,10 +2189,7 @@ def analyze_point(cfg, point, run_root, previous_selected=None):
     max_projection_loss_db = float(
         cfg.get("max_carrier_projection_loss_db", 0.5)
     )
-    pm_projection_valid = bool(
-        spectre_fn_asd > 0
-        and spectre_am_to_pm_db <= pm_projection_threshold_db
-    )
+    pm_projection_valid = spectre_fn_asd > 0  # Both measured sidebands explicitly remove AM.
     spectre_total_psd = noise_output_psd_at(
         cfg,
         noise_file(main_psf, "hbnoise", "pm"),
@@ -2293,13 +2206,18 @@ def analyze_point(cfg, point, run_root, previous_selected=None):
         peer_rows = [row for row in whole_vco_noise["spectre_noise_contributions"]
                      if row["device"] == peer_trace and row["mechanism"] == "fn"]
         peer_psd = peer_rows[0]["psd_V2_Hz"] if len(peer_rows) == 1 else None
-    else:
+    elif traces.get('peer_noise'):
         peer_psd = noise_output_psd_at(
             cfg, noise_file(main_psf, "hbnoise", "pm"), traces["peer_noise"],
             offset, "fn", expected_domain="V",
         )
+    else:
+        peer_psd = None
     spectre_m0_fn_asd = math.sqrt(peer_psd) if peer_psd is not None else None
-    predicted_pair_asd = math.sqrt(2.0) * pm_dyn
+    policy_path = Path(main_psf).parent / 'netlist/input.isf-patch.json'
+    policy = json.loads(policy_path.read_text()).get('pair_policy', {}) if policy_path.is_file() else {}
+    pair_proven = bool(policy.get('proven'))
+    predicted_pair_asd = math.sqrt(2.0) * pm_dyn if pair_proven else None
     spectre_pair_asd = math.sqrt(spectre_fn_psd + peer_psd) if peer_psd is not None else None
 
     h_pos = {k: h[k] for k in range(maxk + 1)}
@@ -2409,6 +2327,7 @@ def analyze_point(cfg, point, run_root, previous_selected=None):
 
     summary = {
         "point": name,
+        "flicker_transfer_json": _strict_json_dumps(transfer_evidence),
         "k": point["k"],
         "corner": point["corner"],
         "f0_Hz": main_f0,
@@ -2440,9 +2359,15 @@ def analyze_point(cfg, point, run_root, previous_selected=None):
         "spectre_noise_reference_json": _strict_json_dumps(whole_vco_noise["spectre_noise_reference"]),
         "dynamic_vs_total_device_error_dB": 20.0 * math.log10(pm_dyn / spectre_total_asd) if pm_dyn > 0 and spectre_total_asd > 0 else float("nan"),
         "spectre_m0_fn_pm_asd_V_rtHz": spectre_m0_fn_asd,
+        "pair_policy": policy,
+        "pair_model": "symmetric_independent" if pair_proven else "single_device_only",
+        "pair_notice": (
+            "Pair symmetry unproven. Select Asymmetric pair and choose both devices explicitly."
+            if not pair_proven and (cfg.get('vco_mapping') or {}).get('peer_instance') else ""
+        ),
         "predicted_pair_fn_pm_asd_V_rtHz": predicted_pair_asd,
         "spectre_pair_fn_pm_asd_V_rtHz": spectre_pair_asd,
-        "pair_error_dB": 20.0 * math.log10(predicted_pair_asd / spectre_pair_asd) if predicted_pair_asd > 0 and spectre_pair_asd else float("nan"),
+        "pair_error_dB": 20.0 * math.log10(predicted_pair_asd / spectre_pair_asd) if predicted_pair_asd and predicted_pair_asd > 0 and spectre_pair_asd else float("nan"),
         "dc_error_dB": 20.0 * math.log10(pm_dc / spectre_fn_asd) if pm_dc > 0 and spectre_fn_asd > 0 else float("nan"),
         "delay_error_dB": 20.0 * math.log10(pm_delay / spectre_fn_asd) if pm_delay > 0 and spectre_fn_asd > 0 else float("nan"),
         "dynamic_error_dB": 20.0 * math.log10(pm_dyn / spectre_fn_asd) if pm_dyn > 0 and spectre_fn_asd > 0 else float("nan"),
@@ -2486,7 +2411,7 @@ def analyze_point(cfg, point, run_root, previous_selected=None):
         "hbac_phase_warn_threshold_deg": hbac_threshold,
     }
     from isf_tool.core.thermal_budget import load_thermal_evidence
-    budget = None if generated else load_thermal_evidence(cfg, case_dir, dict(summary, offset_Hz=offset))
+    budget = load_thermal_evidence(cfg, case_dir, dict(summary, offset_Hz=offset))
     if budget is not None:
         summary["thermal_noise_json"] = _strict_json_dumps(budget)
     (case_dir / "summary.json").write_text(
@@ -2623,7 +2548,7 @@ def _selector_value_matches(actual, expected):
 def select_points(cfg, smoke=False):
     """Select all points, or one deterministic configurable smoke point.
 
-    A new PDK is not required to contain the historical k=0.6/Fhigh point.
+    Select a representative point from the available bias sweep.
     With no explicit ``smoke_point``, the first configured point is selected.
     A mapping matches point fields; a string matches ``source_dir`` or the
     generated point name.
@@ -2691,9 +2616,7 @@ def main(argv=None):
                 cfg, point, run_root, force=args.force
             )
             from isf_tool.core.thermal_execution import run_optional_thermal
-            from types import SimpleNamespace
-            if cfg.get("replica_source") != "generated":
-                run_optional_thermal(SimpleNamespace(**globals()), cfg, point, run_root / name, force=args.force)
+            run_optional_thermal(SimpleNamespace(**globals()), cfg, point, run_root / name, force=args.force)
             print(
                 "{} main={} dc={} replica={}".format(
                     name, main_status, dc_status, replica_status

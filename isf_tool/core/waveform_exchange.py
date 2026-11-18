@@ -72,7 +72,7 @@ def export_waveforms(wave, traces, netlist_dir, mapping=None, provenance=None):
         raise ValueError("Waveform directory and manifest cannot be symbolic links")
     folder.mkdir(parents=True, exist_ok=True)
     manifest = {"schema_version": 1, "f0_hz": float(wave["f0"]), "period_s": float(wave["period"]),
-                "samples": len(wave["time"]), "provenance": provenance or {}, "channels": []}
+                "samples": len(wave["time"]), "provenance": provenance or {}, "timebase": wave.get("timebase"), "channels": []}
     for semantic, terminal in CHANNELS:
         relative = "waveforms/" + semantic.lower() + ".pwl"
         content = tables[semantic].encode("ascii")

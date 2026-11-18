@@ -290,6 +290,32 @@ _SIMULATION_TIMES_RE = re.compile(
 )
 
 
+def spectre_log_status(text):
+    """Parse diagnostic severity without treating quoted VA source as a fatal."""
+    status = {}
+    completion_lines = []
+    error_records = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if _SPECTRE_COMPLETION_RE.search(line):
+            completion_lines.append(line)
+            continue
+        # VACOMP-2366 quotes legal Verilog-A $fatal source inside a warning.
+        # Match diagnostics, not a keyword appearing in quoted source/prose.
+        if re.match(r'^(?:WARNING|Warning)\s*\(', line) or re.match(r'^"[^"\n]+", line \d+:.*\$fatal function', line):
+            continue
+        if _ERROR_RECORD_RE.search(line) and not _ZERO_ERROR_RE.search(line):
+            error_records.append(line)
+
+    status["terminal_summary"] = completion_lines[-1] if completion_lines else None
+    status["error_records"] = error_records[-20:]
+    status["fatal_or_error"] = bool(error_records)
+    status["zero_errors"] = bool(completion_lines) and not error_records
+    return status
+
+
 def _spectre_terminal_status(path, max_bytes):
     status = _file_status(path)
     status.update(
@@ -317,22 +343,7 @@ def _spectre_terminal_status(path, max_bytes):
 
     status["tail_bytes"] = len(data)
     text = data.decode("utf-8", "replace")
-    completion_lines = []
-    error_records = []
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        if _SPECTRE_COMPLETION_RE.search(line):
-            completion_lines.append(line)
-            continue
-        if _ERROR_RECORD_RE.search(line) and not _ZERO_ERROR_RE.search(line):
-            error_records.append(line)
-
-    status["terminal_summary"] = completion_lines[-1] if completion_lines else None
-    status["error_records"] = error_records[-20:]
-    status["fatal_or_error"] = bool(error_records)
-    status["zero_errors"] = bool(completion_lines) and not error_records
+    status.update(spectre_log_status(text))
     intervals = list(_SIMULATION_TIMES_RE.finditer(text))
     if intervals:
         status["simulation_times"] = dict(zip(("start", "stop"), intervals[-1].groups()))

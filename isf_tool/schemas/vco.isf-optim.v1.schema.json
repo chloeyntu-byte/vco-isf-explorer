@@ -1,0 +1,431 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "vco.isf-optim.v1.schema.json",
+  "title": "Independent ISF optimization API 1.0.0",
+  "$defs": {
+    "DesignRef": {
+      "type": "object",
+      "required": [
+        "schema",
+        "kind"
+      ],
+      "properties": {
+        "schema": {
+          "const": "vco.isf-design-ref.v1"
+        },
+        "kind": {
+          "enum": [
+            "design_lab",
+            "maestro",
+            "hb_psf",
+            "native_spec",
+            "artifact"
+          ]
+        },
+        "workspace": {
+          "type": "string"
+        },
+        "generated_dir": {
+          "type": "string"
+        },
+        "project_path": {
+          "type": "string"
+        },
+        "design_lab_root": {
+          "type": "string"
+        },
+        "tbgen_root": {
+          "type": "string"
+        },
+        "backend": {
+          "enum": [
+            "native",
+            "private_netlist"
+          ]
+        },
+        "psf": {
+          "type": "string"
+        },
+        "gm": {
+          "type": "string"
+        },
+        "peer": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "maestro_dir": {
+          "type": "string"
+        },
+        "test": {
+          "type": "string"
+        },
+        "history": {
+          "type": "string"
+        },
+        "config": {
+          "type": "object"
+        },
+        "mapping_overrides": {
+          "type": "object"
+        },
+        "result_path": {
+          "type": "string"
+        },
+        "result": {
+          "type": "object"
+        },
+        "spec_path": {
+          "type": "string"
+        },
+        "point": {
+          "type": "string"
+        },
+        "offset_hz": {
+          "type": "number"
+        },
+        "identity": {
+          "type": "string"
+        },
+        "hb_waveform": {
+          "type": "object"
+        },
+        "alpha_dc": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "device_lut": {
+          "type": "object"
+        },
+        "psf_dir": {
+          "type": "string"
+        },
+        "overrides": {
+          "type": "object"
+        },
+        "max_harmonic": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "dc_noise_samples": {
+          "type": "integer",
+          "minimum": 8
+        },
+        "timeout_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "complementary": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "target_instance"
+          ],
+          "properties": {
+            "mode": {"enum": ["complementary", "asymmetric_pair"]},
+            "target_instance": {
+              "type": "string",
+              "minLength": 1
+            },
+            "peer_instance": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "Gate": {
+      "type": "object",
+      "required": [
+        "isf_shaping_allowed",
+        "reason"
+      ],
+      "properties": {
+        "isf_shaping_allowed": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "gap_db": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "pair_error_db": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "dominant_unmodeled_source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Cost": {
+      "type": "object",
+      "required": [
+        "spectre_calls",
+        "elapsed_s",
+        "acquisition_spectre_calls",
+        "reused",
+        "accounting"
+      ],
+      "properties": {
+        "spectre_calls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "elapsed_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "acquisition_spectre_calls": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "reused": {
+          "type": "boolean"
+        },
+        "accounting": {
+          "type": "string"
+        },
+        "worker_elapsed_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "receipt_dir": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Evaluation": {
+      "type": "object",
+      "required": [
+        "schema",
+        "api_version",
+        "status",
+        "level",
+        "offsets_hz",
+        "metrics",
+        "cost",
+        "reference",
+        "signoff",
+        "gate"
+      ],
+      "properties": {
+        "schema": {
+          "const": "vco.isf-optim-evaluation.v1"
+        },
+        "api_version": {
+          "const": "1.0.0"
+        },
+        "status": {
+          "const": "completed"
+        },
+        "level": {
+          "enum": [
+            "L0",
+            "L1",
+            "L2"
+          ]
+        },
+        "offsets_hz": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "metrics": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object"
+          }
+        },
+        "cost": {
+          "$ref": "#/$defs/Cost"
+        },
+        "reference": {
+          "type": "object"
+        },
+        "signoff": {
+          "const": false
+        },
+        "gate": {
+          "$ref": "#/$defs/Gate"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Calibration": {
+      "type": "object",
+      "required": [
+        "schema",
+        "api_version",
+        "source",
+        "delta_k_deg",
+        "A_k",
+        "gamma_scale",
+        "gamma_sign",
+        "limits"
+      ],
+      "properties": {
+        "schema": {
+          "const": "vco.isf-calibration.v1"
+        },
+        "api_version": {
+          "const": "1.0.0"
+        },
+        "source": {
+          "type": "object"
+        },
+        "delta_k_deg": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "A_k": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "gamma_scale": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "gamma_sign": {
+          "enum": [
+            -1,
+            1,
+            null
+          ]
+        },
+        "limits": {
+          "type": "string"
+        },
+        "identity": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "waveform": {
+          "type": "object"
+        },
+        "applicability": {
+          "type": "string"
+        },
+        "device_lut": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Ranking": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "param",
+          "kind",
+          "direction",
+          "potential_gain_db",
+          "basis",
+          "evidence",
+          "requires_l1"
+        ],
+        "properties": {
+          "param": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "potential_gain_db": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "basis": {
+            "type": [
+              "string",
+              "array"
+            ]
+          },
+          "evidence": {
+            "type": [
+              "object",
+              "array"
+            ]
+          },
+          "requires_l1": {
+            "const": true
+          },
+          "requires_loopgain": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Evaluation"
+    },
+    {
+      "$ref": "#/$defs/Calibration"
+    },
+    {
+      "$ref": "#/$defs/DesignRef"
+    },
+    {
+      "$ref": "#/$defs/Gate"
+    },
+    {
+      "$ref": "#/$defs/Ranking"
+    }
+  ]
+}

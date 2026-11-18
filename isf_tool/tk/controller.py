@@ -30,12 +30,18 @@ class BackgroundTaskQueue:
         )
         self.worker.start()
         self._schedule()
+        if hasattr(root, "bind"):
+            root.bind("<Destroy>", self._root_destroyed, add="+")
+
+    def _root_destroyed(self, event) -> None:
+        if event.widget is self.root:
+            self.close()
 
     def _schedule(self) -> None:
         if self.closed:
             return
         try:
-            self.root.after(self.interval_ms, self._drain)
+            self._after_id = self.root.after(self.interval_ms, self._drain)
         except Exception:
             self.close()
 
@@ -78,6 +84,13 @@ class BackgroundTaskQueue:
         if self.closed:
             return
         self.closed = True
+        after_id = getattr(self, "_after_id", None)
+        if after_id is not None and hasattr(self.root, "after_cancel"):
+            try:
+                self.root.after_cancel(after_id)
+            except Exception:
+                pass  # The owning Tk interpreter may already be destroyed.
+            self._after_id = None
         self.tasks.put(None)
 
 

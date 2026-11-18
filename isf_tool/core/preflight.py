@@ -116,7 +116,7 @@ def _runtime_identity(engine_config_path, inline_engine=None):
     for module in ("discovery", "offsets", "offset_sweep", "result_presentation",
                    "maestro_pair", "psf_extract", "service", "preflight", "waveform_exchange",
                    "transfer_family", "noise_sources", "thermal_ports", "thermal_execution", "thermal_budget",
-                   "generated_flicker", "limits"):
+                   "generated_flicker", "flicker_transfer", "limits"):
         add(module + "_module", os.path.join(CORE_ROOT, module + ".py"))
     add("orchestrator", ORCHESTRATOR_PATH)
 

@@ -17,14 +17,14 @@ from synthetic_fixture import make_canonical, write_canonical_bundle
 
 def scalar(hz, modern=True):
     row = {"point": "same-point", "operating_point_id": "same-point",
-           "corner": "Fhigh", "offset_Hz": hz, "f0_Hz": 5.89073e9,
+           "corner": "band_high", "offset_Hz": hz, "f0_Hz": 2e9,
            "operating_parameters": {"SW": 0}}
     tables = empty_point_result()
     tables["summary"] = [copy.deepcopy(row)]
     result = {"summary": [row], "points": {"same-point": tables}, "run_kind": "replay"}
     if modern:
         result["dual_tb"] = {"metadata": {"operating_points": {"same-point": {
-            "params": {"SW": 0}, "corner": "Fhigh", "test": "vco_nominal",
+            "params": {"SW": 0}, "corner": "band_high", "test": "vco_nominal",
             "environment": {"settings": {"temp": "27"}, "model_sections": {"model.scs": ["tt"]}},
             "effective_netlist_sha256": "same-fixed-netlist", "sha256": "runtime-one",
             "rdb": "/old/location/history.rdb"}}}}
@@ -61,7 +61,7 @@ class FixedOperatingContractTests(unittest.TestCase):
     def test_same_name_different_corner_is_rejected_without_modern_metadata(self):
         second = scalar(10000, modern=False)
         for row in rows(second):
-            row["corner"] = "Flow"
+            row["corner"] = "band_low"
         with self.assertRaises(ValidationError):
             combine(scalar(1000, modern=False), second)
 
@@ -116,7 +116,7 @@ class FixedOperatingContractTests(unittest.TestCase):
 
     def test_global_and_per_point_summary_must_agree(self):
         second = scalar(10000)
-        second["points"]["same-point"]["summary"][0]["corner"] = "Flow"
+        second["points"]["same-point"]["summary"][0]["corner"] = "band_low"
         with self.assertRaises(ValidationError):
             combine(scalar(1000), second)
 

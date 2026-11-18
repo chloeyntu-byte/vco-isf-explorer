@@ -1,4 +1,4 @@
-"""Native Tk front end for the portable VCO ISF analysis procedure.
+"""Native Tk front end for the portable VCO ISF workflow.
 
 The desktop UI talks to :class:`~isf_tool.core.service.ToolService` through
 ``IsfController`` directly.  No HTTP server is created.  Service calls that
@@ -24,14 +24,17 @@ from typing import Any, Callable
 import tkinter as tk
 from tkinter import filedialog, font as tkfont, messagebox, simpledialog, ttk
 
+from ..core.errors import CoreError
+from ..core.offsets import offset_label
+from ..core.storage import projected_bytes
 from ..core.limits import MAX_PHASE_CANDIDATE_HARMONICS
 from ..core.metrics import metric_catalog, metric_definition
 from ..core.result_presentation import (
     is_generated_flicker, operating_points, phase_noise_comparison_series, phase_noise_series,
 )
 from ..core.ui_state import strip_retired_noise_objects
-from .charts import ContributionBars, LineChart, PhasorChart, contribution_bars
 from . import fieldwork_tk as fw
+from .charts import ContributionBars, LineChart, PhasorChart, contribution_bars
 from .controller import ACTIVE_JOB_STATES, BackgroundTaskQueue, IsfController
 from .preferences import FIELDS as PREFERENCE_FIELDS, mapping_key, preference_path, read_preferences, write_preferences
 from .viewmodel import (
@@ -95,7 +98,7 @@ THEME_PALETTES = {
         "danger": "#C0443A",
         "grid": "#E4EAE0",
         "plot_bg": "#FFFFFF",
-        "series": None,
+        "series": tuple(fw._mix("#1A241C", color, .60) for color in fw.SERIES),
     },
     "dark": {
         "bg": fw.BG,
@@ -119,9 +122,9 @@ THEME_PALETTES = {
 
 
 def _ui_font_family(families: Sequence[str], fallback: str) -> str:
-    """Prefer a Latin sans-serif family with consistent display metrics."""
+    """Choose an installed Latin sans-serif face."""
     available = {name.casefold(): name for name in families}
-    for family in ("Inter", "Noto Sans", "Liberation Sans", "DejaVu Sans", "Helvetica"):
+    for family in ("Inter", "Noto Sans", "Liberation Sans", "DejaVu Sans"):
         if family.casefold() in available:
             return available[family.casefold()]
     return fallback
@@ -292,7 +295,7 @@ def history_provenance_rows(report: Mapping[str, Any]) -> list[dict[str, str]]:
             if isinstance(modified, (int, float)) and not isinstance(modified, bool):
                 try:
                     modified = datetime.fromtimestamp(modified).astimezone().isoformat(timespec="seconds")
-                except (ValueError, ArithmeticError, OSError):
+                except (ValueError, OverflowError, OSError):
                     modified = "Unknown"
             known = "Unknown" not in old and "Unknown" not in current
             status = "View names match; content follows History is authoritative" if known and current == old else "differs from the current design; still uses History Run" if known else "source was not fully recorded, not inferred"
@@ -303,7 +306,7 @@ def history_provenance_rows(report: Mapping[str, Any]) -> list[dict[str, str]]:
 
 
 class IsfApplication:
-    """Four-tab native desktop interface backed by one ``ToolService``."""
+    """Native desktop interface backed by one ``ToolService``."""
 
     def __init__(self, root: tk.Tk, controller: IsfController, *, maestro_context: Mapping[str, Any] | None = None,
                  preferences_directory: Path | None = None):
@@ -480,12 +483,13 @@ class IsfApplication:
             self.fixed_font.configure(size=9)
 
     def _build_ui(self) -> None:
-        self.root.geometry("1440x900")
-        self.root.minsize(1280, 800)
+        from .results_view import maximize
+
+        maximize(self.root)
         fw.apply(self.root, product="isf")
         self._configure_fonts()
         self.style = ttk.Style(self.root)
-        self._set_window_title()
+        self._set_window_title(str(self.maestro_context.get("cell") or ""))
 
         def header_actions(box: tk.Frame) -> None:
             self.theme_button = ttk.Button(box, text="Light theme", style="Ghost.TButton", command=self._toggle_theme)
@@ -495,8 +499,11 @@ class IsfApplication:
             self.load_state_button = ttk.Button(box, text="Load state…", command=self._load_state_dialog)
             self.load_state_button.pack(side="left", padx=(8, 0))
 
+            self.load_example_button = ttk.Button(box, text="Load synthetic example", command=self._load_example)
+            self.load_example_button.pack(side="left", padx=(8, 0))
+
         self.header_bar = fw.header(
-            self.root, "VCO ISF Explorer", "Oscillator phase-noise analysis · ISF and harmonic contributions",
+            self.root, "VCO ISF Explorer", "Phase noise and harmonic contributions",
             product="isf", right=header_actions)
         self.header_bar.pack(fill="x", side="top")
 
@@ -507,17 +514,22 @@ class IsfApplication:
         self.status_chip = fw.StatusChip(self.status_bar)
         self.status_chip.pack(side="left", padx=16, pady=8)
         self.status_progress = ttk.Progressbar(self.status_bar, mode="indeterminate", length=160)
+        self._status_after = None
+        self.status_progress.bind("<Destroy>", self._stop_status_animation, add="+")
         self.status_var.trace_add("write", self._sync_status_chip)
         self._sync_status_chip()
 
-        outer = ttk.Frame(self.root, style="App.TFrame", padding=(16, 12))
+        outer = ttk.Frame(self.root, style="App.TFrame", padding=(16, 8))
         outer.pack(fill="both", expand=True)
         self.notebook = ttk.Notebook(outer, style="App.TNotebook")
         self.notebook.pack(fill="both", expand=True)
         self.setup_tab = ttk.Frame(self.notebook, style="App.TFrame", padding=12)
         self.run_tab = ttk.Frame(self.notebook, style="App.TFrame", padding=12)
-        self.result_tab = ttk.Frame(self.notebook, style="App.TFrame", padding=8)
+        self.result_tab = ttk.Frame(self.notebook, style="App.TFrame", padding=5)
         self.error_tab = ttk.Frame(self.notebook, style="App.TFrame", padding=12)
+        from .testbench_page import TestbenchPage
+        self.testbench_page = TestbenchPage(self.notebook, self)
+        self.notebook.add(self.testbench_page, text="Testbench setup")
         self.notebook.add(self.setup_tab, text="Setup")
         self.notebook.add(self.run_tab, text="Jobs & preflight")
         self.notebook.add(self.result_tab, text="Results")
@@ -527,8 +539,10 @@ class IsfApplication:
         self._build_run_tab()
         self._build_result_tab()
         self._build_error_tab()
+        self.notebook.select(self.setup_tab if self.maestro_context else self.testbench_page)
         self._apply_theme()
         self._mode_changed()
+        self.root.update_idletasks()
 
     def _set_window_title(self, name: str = "") -> None:
         self.root.title("VCO ISF Explorer — " + name if name else "VCO ISF Explorer")
@@ -540,7 +554,9 @@ class IsfApplication:
             state = "running"
         elif text.endswith("failed") or "failed: " in text:
             state = "error"
-        elif text.endswith("done"):
+        elif text.endswith(("interrupted", "needs attention")):
+            state = "warn"
+        elif text.endswith(("done", "loaded")):
             state = "done"
         else:
             state = "idle"
@@ -548,10 +564,19 @@ class IsfApplication:
         if state == "running":
             if not self.status_progress.winfo_manager():
                 self.status_progress.pack(side="right", padx=16)
-            self.status_progress.start(60)
+                self._animate_status()
         elif self.status_progress.winfo_manager():
-            self.status_progress.stop()
+            self._stop_status_animation()
             self.status_progress.pack_forget()
+
+    def _animate_status(self) -> None:
+        self.status_progress.step()
+        self._status_after = self.root.after(60, self._animate_status)
+
+    def _stop_status_animation(self, _event: Any = None) -> None:
+        if self._status_after is not None:
+            self.root.after_cancel(self._status_after)
+            self._status_after = None
 
     def _toggle_theme(self) -> None:
         self.theme_var.set("dark" if self.theme_var.get() == "light" else "light")
@@ -559,15 +584,14 @@ class IsfApplication:
 
     def _apply_theme(self) -> None:
         palette = THEME_PALETTES[self.theme_var.get()]
-        # Reset to the shared RF-FIELDWORK styles (Primary/Ghost/Danger/Section ...) first;
-        # the palette-driven overrides below only adapt the app-specific styles and the
-        # optional light mode.
         fw.apply(self.root, product="isf")
         self._configure_fonts()
         style = self.style
         self.root.configure(background=palette["bg"])
         style.configure(".", font=self.body_font)
         style.configure("App.TFrame", background=palette["bg"])
+        style.configure("Panel.TFrame", background=palette["surface"])
+        style.configure("Section.TLabel", background=palette["surface"], foreground=palette["muted"])
         style.configure("TFrame", background=palette["surface"])
         style.configure("TLabel", background=palette["surface"], foreground=palette["text"])
         style.configure(
@@ -711,7 +735,7 @@ class IsfApplication:
             fieldbackground=palette["surface"],
             foreground=palette["text"],
             bordercolor=palette["border"],
-            rowheight=max(28, self.body_font.metrics("linespace") + 12),
+            rowheight=max(34, self.body_font.metrics("linespace") + 12),
         )
         style.map(
             "Treeview",
@@ -727,8 +751,7 @@ class IsfApplication:
             font=self.heading_font,
         )
         style.configure(
-            "Horizontal.TProgressbar",
-            thickness=6,
+            "TProgressbar",
             background=palette["accent"],
             troughcolor=palette["surface_alt"],
             bordercolor=palette["border"],
@@ -911,17 +934,6 @@ class IsfApplication:
         self.root.bind_all("<Button-4>", self._scroll_setup, add="+")
         self.root.bind_all("<Button-5>", self._scroll_setup, add="+")
 
-        example = ttk.Frame(content, padding=(12, 0))
-        example.pack(fill="x", pady=(0, 4))
-        self.load_example_button = ttk.Button(example, text="Load example", command=self._load_example)
-        self.load_example_button.pack(side="right")
-        example_text = ttk.Label(
-            example, text="No Cadence Environment？Load synthetic ideal-LC Example, inspect all result views offline. ",
-            style="Help.TLabel", justify="left", wraplength=360,
-        )
-        example_text.pack(side="left", fill="x", expand=True)
-        example_text.bind("<Configure>", lambda event: example_text.configure(wraplength=max(200, event.width - 8)))
-
         location = ttk.LabelFrame(
             content, text="optional: Discover project Testbench", style="Card.TLabelframe", padding=(14, 12)
         )
@@ -940,7 +952,7 @@ class IsfApplication:
         ).grid(row=0, column=2, padx=(8, 0), pady=(0, 6))
         ttk.Button(
             location,
-            text="Discover Testbench",
+            text="Discover testbench",
             command=self._discover,
         ).grid(row=0, column=3, padx=(8, 0), pady=(0, 6))
         ttk.Label(
@@ -954,7 +966,7 @@ class IsfApplication:
             style="Help.TLabel",
         ).grid(row=2, column=1, columnspan=3, sticky="w", pady=(3, 0))
 
-        pair = ttk.LabelFrame(content, text="01  VCO Source", style="Card.TLabelframe", padding=(14, 9))
+        pair = ttk.LabelFrame(content, text="01  Select a completed VCO history", style="Card.TLabelframe", padding=(14, 9))
         pair.pack(fill="x", pady=(0, 8))
         pair.columnconfigure(1, weight=1)
         if self.maestro_context:
@@ -966,7 +978,7 @@ class IsfApplication:
             ttk.Button(source_actions, text="Refresh History", command=self._refresh_context_histories).pack(side="left")
             ttk.Button(source_actions, text="Change VCO…", command=self._toggle_vco_source).pack(side="left", padx=(6, 0))
             self._update_maestro_banner()
-        ttk.Label(pair, text="Complete History").grid(row=1, column=0, sticky="w", padx=(0, 10))
+        ttk.Label(pair, text="Completed history").grid(row=1, column=0, sticky="w", padx=(0, 10))
         self._maestro_box(pair, "vco", "history").grid(row=1, column=1, sticky="ew")
         ttk.Label(pair, text="Test").grid(row=1, column=2, sticky="w", padx=10)
         self._maestro_box(pair, "vco", "test", width=18).grid(row=1, column=3, sticky="ew")
@@ -978,8 +990,8 @@ class IsfApplication:
                 side="right", padx=(6, 0)
             )
             self.vco_source_controls.grid_remove()
-        reference = ttk.LabelFrame(content, text="02  Device noise reference", style="Card.TLabelframe", padding=(14, 9))
-        reference.pack(fill="x", pady=(0, 8))
+        reference = ttk.LabelFrame(content, text="02  Device noise reference", style="Card.TLabelframe", padding=(14, 5))
+        reference.pack(fill="x", pady=(0, 4))
         reference_mode = ttk.Frame(reference)
         reference_mode.pack(fill="x", pady=(0, 6))
         for label, mode in (("Generated", "generated"), ("Manual binding Noise TB", "maestro")):
@@ -987,15 +999,54 @@ class IsfApplication:
                             command=self._replica_source_changed).pack(side="left", padx=(0, 14))
 
         self.generated_reference_frame = ttk.Frame(reference)
+        self.generated_reference_frame.pack(fill="x")
         self.generated_reference_frame.columnconfigure(1, weight=1)
         ttk.Label(self.generated_reference_frame, text="Target MOS").grid(row=0, column=0, sticky="w", padx=(0, 10))
         self.target_mos_var = tk.StringVar(value=AUTOMATIC_TARGET)
         self.target_mos_box = ttk.Combobox(self.generated_reference_frame, textvariable=self.target_mos_var,
-                                          width=23, state="disabled")
+                                          width=34, state="normal")
         self.target_mos_box.grid(row=0, column=1, sticky="w")
         self.target_mos_box.bind("<<ComboboxSelected>>", self._target_mos_chosen)
-        ttk.Label(self.generated_reference_frame, text="Single-device model · default symmetric pair +3 dB",
-                  style="Help.TLabel").grid(row=1, column=1, sticky="w", pady=(3, 0))
+        self.target_mos_box.bind("<Return>", self._target_mos_chosen)
+        ttk.Button(self.generated_reference_frame, text="Browse hierarchy…", command=self._browse_target_instance).grid(row=0, column=2, padx=(6,0))
+        self.core_enabled = tk.BooleanVar(value=False)
+        self.core_mode = tk.StringVar(value='complementary')
+        self.core_target = tk.StringVar()
+        self.core_peer = tk.StringVar()
+        self.core_check = ttk.Checkbutton(reference_mode, text='Two-device analysis', variable=self.core_enabled,
+                                          command=self._core_changed)
+        self.core_check.pack(side='left')
+        self.core_picker = ttk.Frame(self.generated_reference_frame)
+        self.core_picker.grid(row=2, column=0, columnspan=3, sticky='ew', pady=(4, 0))
+        ttk.Label(self.core_picker, text='Second device').grid(row=0, column=0, sticky='w')
+        self.core_box = ttk.Combobox(self.core_picker, textvariable=self.core_target, width=34)
+        self.core_box.grid(row=0, column=1, padx=6)
+        self.core_box.bind('<<ComboboxSelected>>', self._core_changed)
+        self.core_box.bind('<Return>', self._core_changed)
+        ttk.Label(self.core_picker, text='Symmetric peer (optional)').grid(row=1, column=0, sticky='w')
+        self.core_peer_entry = ttk.Entry(self.core_picker, textvariable=self.core_peer, width=34)
+        self.core_peer_entry.grid(row=1, column=1, padx=6, sticky='ew')
+        for column, (label, mode) in enumerate((('Complementary core', 'complementary'),
+                                               ('Asymmetric pair', 'asymmetric_pair'))):
+            ttk.Radiobutton(self.core_picker, text=label, value=mode, variable=self.core_mode,
+                            command=self._core_changed).grid(row=2, column=column, sticky='w', pady=4)
+        self.core_picker.grid_remove()
+        output_frame = ttk.Frame(reference)
+        output_frame.pack(fill="x")
+        self.output_net_vars = {key: tk.StringVar() for key in ("output_p", "output_n")}
+        self.output_net_boxes = {}
+        for index, (key, label) in enumerate((("output_p", "Output P"), ("output_n", "Output N"))):
+            ttk.Label(output_frame, text=label).grid(row=0,column=index*2,sticky="w",padx=(0,6))
+            box = ttk.Combobox(output_frame,textvariable=self.output_net_vars[key],state="normal",width=18)
+            box.grid(row=0,column=index*2+1,sticky="ew",padx=(0,8))
+            output_frame.columnconfigure(index*2+1,weight=1)
+            self.output_net_boxes[key]=box
+            box.bind("<<ComboboxSelected>>", self._output_nets_chosen)
+            box.bind("<Return>", self._output_nets_chosen)
+        self.binding_review_var = tk.StringVar(value="D/G/S/B, model, and effective parameters appear after binding.")
+        self.binding_review_card = ttk.Label(reference,textvariable=self.binding_review_var,
+                                            wraplength=500,justify="left",style="Help.TLabel")
+        # The confirmation card appears only after a proven binding.
 
         self.manual_reference_frame = ttk.Frame(reference)
         replica_path = ttk.Frame(self.manual_reference_frame)
@@ -1004,7 +1055,7 @@ class IsfApplication:
         replica_inputs = ttk.Frame(self.manual_reference_frame)
         replica_inputs.pack(fill="x")
         replica_inputs.columnconfigure(1, weight=1)
-        ttk.Label(replica_inputs, text="Complete History").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        ttk.Label(replica_inputs, text="Completed history").grid(row=0, column=0, sticky="w", padx=(0, 10))
         self._maestro_box(replica_inputs, "replica", "history").grid(row=0, column=1, sticky="ew")
         ttk.Label(replica_inputs, text="Test").grid(row=0, column=2, sticky="w", padx=10)
         self._maestro_box(replica_inputs, "replica", "test", width=15).grid(row=0, column=3, sticky="ew")
@@ -1247,8 +1298,16 @@ class IsfApplication:
             (self.generated_reference_frame, self.manual_reference_frame) if self._generated_reference()
             else (self.manual_reference_frame, self.generated_reference_frame)
         )
-        hidden.pack_forget()
-        shown.pack(fill="x")
+        self.generated_reference_frame.pack(fill="x")
+        if self._generated_reference():
+            self.manual_reference_frame.pack_forget()
+            self.core_check.state(['!disabled'])
+            if self.core_enabled.get():
+                self.core_picker.grid()
+        else:
+            self.core_check.state(['disabled'])
+            self.core_picker.grid_remove()
+            self.manual_reference_frame.pack(fill="x")
 
     def _replica_source_changed(self) -> None:
         self._render_reference_controls()
@@ -1265,24 +1324,142 @@ class IsfApplication:
         elif not generated and self.vars["replica_path"].get():
             self._schedule_role_inspection("replica")
 
+    def _core_changed(self, _event=None) -> None:
+        self.core_peer_entry.state(['disabled' if self.core_mode.get() == 'asymmetric_pair' else '!disabled'])
+        if self.core_enabled.get() and self._generated_reference():
+            self.core_picker.grid()
+        else:
+            self.core_picker.grid_remove()
+        self._render_target_mos(self._signal_report)
+        self.last_preflight = None
+
     def _render_target_mos(self, report: Mapping[str, Any]) -> None:
         row = next((row for row in mapping_review_rows(report)
                     if row["role"] == "vco" and row["key"] == "target_instance"), {})
         override = str(self._mapping_overrides["vco"].get("target_instance") or "")
         candidates = mapping_candidate_names(row, override or None)
-        self.target_mos_box.configure(values=(AUTOMATIC_TARGET, *candidates),
-                                      state="readonly" if candidates else "disabled")
-        self.target_mos_var.set(override or str(row.get("value") or row.get("detected") or AUTOMATIC_TARGET))
+        core = self.core_enabled.get() and self._generated_reference()
+        self.target_mos_box.configure(values=candidates if core else (AUTOMATIC_TARGET, *candidates),
+                                      state="normal")
+        fallback = '' if core else str(row.get("value") or row.get("detected") or AUTOMATIC_TARGET)
+        self.target_mos_var.set(override or fallback)
+        role = _mapping(_mapping(report.get("roles")).get("vco"))
+        topology = _mapping(role.get("topology"))
+        mapping = _mapping(role.get("mapping"))
+        for key in ("output_p", "output_n"):
+            self.output_net_boxes[key].configure(values=topology.get("nets", []))
+            self.output_net_vars[key].set(self._mapping_overrides["vco"].get(key) or mapping.get(key) or "")
+        devices = {d['name']: d for d in topology.get('devices', []) if d.get('mos')}
+        if core:
+            first = devices.get(override, {})
+            polarity = first.get('mos', {}).get('polarity')
+            same_type = self.core_mode.get() == 'asymmetric_pair'
+            self.core_box.configure(values=[name for name, device in devices.items() if name != override
+                                            and device['mos'].get('polarity')
+                                            and (not polarity or (device['mos']['polarity'] == polarity) == same_type)])
+            evidence = []
+            for name in (override, self.core_target.get()):
+                device = devices.get(name)
+                if device:
+                    pins = '  '.join(role + '=' + str(net) for role, net in zip('DGSB', device['terminals']))
+                    evidence.append(f"{name} · {device['model']} · {device['mos'].get('polarity') or 'polarity unresolved'}\n{pins}")
+            if evidence:
+                self.binding_review_var.set('\n'.join(evidence))
+                self.binding_review_card.pack(fill='x', pady=(6, 0))
+            else:
+                self.binding_review_card.pack_forget()
+            return
+        selected = devices.get(mapping.get('target_instance'), {})
+        identity = selected.get("mos") or {}
+        if selected and identity:
+            self.binding_review_card.pack(fill="x",pady=(6,0))
+            pins = "  ".join(role + "=" + str(net) for role, net in zip("DGSB",selected.get("terminals",[])))
+            origins = {"instance": "Instance parameter", "default": "Default", "parent_expression": "Parent expression"}
+            params = " ".join(k + "=" + str(v) + " (" + origins.get(
+                selected.get("mos_parameter_sources", {}).get(k, {}).get("kind"), "Unconfirmed source") + ")"
+                for k, v in selected.get("effective_mos_parameters", {}).items())
+            policy = mapping.get('pair_policy') or {}
+            self.binding_review_var.set("Target gm: " + selected["name"] + "\n" + pins +
+                "\nModel chain: " + " → ".join(identity.get("model_chain",[])) +
+                "\nPrimitive: " + identity.get("primitive","") + "  " + params +
+                "\nOutput: " + str(mapping.get("output_p") or "Pending selection") + " − " + str(mapping.get("output_n") or "Pending selection") +
+                ("\nSymmetry verified. An independent pair estimate is available." if policy.get('proven') else "\nSingle device retained. Pair symmetry is unverified."))
+        else:
+            self.binding_review_card.pack_forget()
+            self.binding_review_var.set("Select and verify the target gm. Output P/N is independent of the gm drain.")
+
 
     def _target_mos_chosen(self, _event: Any = None) -> None:
-        target = self.target_mos_var.get()
+        target = self.target_mos_var.get().strip()
+        role = _mapping(_mapping(self._signal_report.get("roles")).get("vco"))
+        request = role.get('selection_request')
+        if request and target != AUTOMATIC_TARGET:
+            from ..core.component_selection import resolve_selection
+            from ..core.errors import ValidationError
+            try:
+                selected = resolve_selection(request, {'gm.target': target})
+                target = selected['gm']['target_instance']
+            except ValidationError:
+                # A complete manually entered primitive path is resolved by
+                # the backend tree before discovery filters, then catalogued.
+                pass
         overrides = self._mapping_overrides["vco"]
-        if target == AUTOMATIC_TARGET:
+        if not target or target == AUTOMATIC_TARGET:
             overrides.pop("target_instance", None)
         else:
             overrides["target_instance"] = target
         self._mapping_changed()
         self._inspect_pair()
+
+    def _output_nets_chosen(self, _event: Any = None) -> None:
+        for key, variable in self.output_net_vars.items():
+            value = variable.get().strip()
+            if value:
+                self._mapping_overrides["vco"][key] = value
+            else:
+                self._mapping_overrides["vco"].pop(key, None)
+        self._mapping_changed()
+        self._inspect_pair()
+
+    def _browse_target_instance(self) -> None:
+        """Browse occurrence paths from the same catalog used by raw mapping."""
+        role = _mapping(_mapping(self._signal_report.get("roles")).get("vco"))
+        devices = [d for d in _mapping(role.get("topology")).get("devices",[]) if d.get("mos")]
+        window = tk.Toplevel(self.root)
+        window.title("Select the target gm instance")
+        window.geometry("640x440")
+        tree = ttk.Treeview(window, columns=("model",), show="tree headings")
+        tree.heading("#0", text="Full instance hierarchy")
+        tree.heading("model", text="Model / primitive")
+        tree.pack(fill="both",expand=True,padx=10,pady=10)
+        by_path = {}
+        for device in devices:
+            parts = device["name"].split(".")
+            for count in range(1,len(parts)+1):
+                path = ".".join(parts[:count])
+                parent = ".".join(parts[:count-1])
+                if not tree.exists(path): tree.insert(parent,"end",iid=path,text=parts[count-1],open=True)
+            tree.set(device["name"],"model",device["model"] + " / " + device["mos"]["primitive"])
+            by_path[device["name"]]=device
+        detail = tk.StringVar(value="Select a leaf device to inspect terminals and model evidence.")
+        ttk.Label(window,textvariable=detail,wraplength=600,justify="left").pack(fill="x",padx=10)
+        def preview(_event=None):
+            selected = tree.selection()
+            device = by_path.get(selected[0]) if selected else None
+            if device:
+                detail.set(device['name'] + "\n" + "  ".join(k+"="+v for k,v in zip("DGSB",device['terminals'])) +
+                           "\n" + " → ".join(device['mos']['model_chain']))
+        def choose():
+            selected=tree.selection()
+            if selected and selected[0] in by_path:
+                self.target_mos_var.set(selected[0])
+                window.destroy()
+                self._target_mos_chosen()
+        tree.bind("<<TreeviewSelect>>",preview)
+        tree.bind("<Double-1>",lambda _event:choose())
+        ttk.Button(window,text="Select this gm",command=choose).pack(anchor="e",padx=10,pady=10)
+        self.target_browser = window
+        self.target_browser_tree = tree
 
     def _start_from_setup(self) -> None:
         if self._generated_reference() and not self.vars["vco_history"].get():
@@ -1397,10 +1574,15 @@ class IsfApplication:
         try:
             preview = self._offset_preview()
             values = preview["values_hz"]
-            shown = ", ".join(f"{value:.7g}" for value in values[:8]) + (", …" if len(values) > 8 else "")
-            workload = (f"{preview['operating_point_count']} Operating point × {len(values)} Offset = {preview['total_samples']} operating points/offset results" if preview["total_samples"] else f"{len(values)} offsets; Binding TB then operating-point count and total workload are shown")
-            endpoint = "; step does not divide the range exactly, endpoint appended" if preview["endpoint_appended"] else ""
-            self.offset_preview_var.set(f"{workload}{endpoint}\nActual offsets (Hz): {shown}. curves show only completed points, no inferred or interpolated results. ")
+            shown = ", ".join(offset_label(value) for value in values[:8]) + (", …" if len(values) > 8 else "")
+            point_count = preview["operating_point_count"]
+            workload = f"{point_count} operating points × {len(values)} offsets" if point_count else f"{len(values)} offsets"
+            size = projected_bytes(len(values), point_count or 1) // (1024 ** 2)
+            per_point = "" if point_count else " per operating point"
+            endpoint = " · Endpoint appended" if preview["endpoint_appended"] else ""
+            self.offset_preview_var.set(
+                f"{workload} · projected {size:,} MiB{per_point} at 65 MiB/sample{endpoint}\n{shown}"
+            )
         except Exception as exc:
             self.offset_preview_var.set("Offset input needs correction: " + str(exc))
 
@@ -1815,7 +1997,7 @@ class IsfApplication:
         if hasattr(self, "formal_signoff_check"):
             self.formal_signoff_check.configure(state="normal")
         if hasattr(self, "start_button"):
-            self.start_button.configure(text="2  Start live run")
+            self.start_button.configure(text="Start live run")
         if hasattr(self, "setup_start_button"):
             self.setup_start_button.configure(text="Start signoff analysis" if self._formal_signoff_enabled() else "Start analysis")
         if hasattr(self, "execution_summary_var"):
@@ -2005,6 +2187,9 @@ class IsfApplication:
         self.vars[f"{role}_history_fingerprint"].set("")
         self._selection_revision += 1
         self._mapping_overrides[role] = {}
+        if role == 'vco' and hasattr(self, 'core_target'):
+            self.core_target.set('')
+            self.core_peer.set('')
         self._portable_overrides = {}
         if self._auto_engine_path and str(self.vars["engine_config"].get()) == self._auto_engine_path:
             self.vars["engine_config"].set("")
@@ -2055,6 +2240,18 @@ class IsfApplication:
 
     def _config_from_ui(self) -> dict[str, Any]:
         config = merge_config(self._raw_from_editor(), self._collect_fields())
+        if hasattr(self, 'core_enabled'):
+            analysis = config.setdefault('analysis', {})
+            if self.core_enabled.get() and self._generated_reference():
+                analysis['complementary'] = dict(target_instance=self.core_target.get().strip() or None,
+                                                 peer_instance=self.core_peer.get().strip() or None)
+                if self.core_mode.get() == 'asymmetric_pair':
+                    analysis['complementary'].update(mode='asymmetric_pair', peer_instance=None)
+                    config['testbenches']['vco'].get('mapping_overrides', {}).pop('peer_instance', None)
+                if config.get('config_path') == self._auto_engine_path:
+                    config.pop('config_path', None)
+            else:
+                analysis.pop('complementary', None)
         config["run_kind"] = "signoff" if self._formal_signoff_enabled() else "replay"
         execution = config.setdefault("execution", {})
         if isinstance(execution, dict):
@@ -2125,6 +2322,13 @@ class IsfApplication:
                 if value == N_A or value is None:
                     value = ""
                 self.vars[key].set(value)
+            if hasattr(self, 'core_enabled'):
+                complementary = _mapping(config.get('analysis')).get('complementary')
+                self.core_enabled.set(complementary is not None)
+                self.core_mode.set((complementary or {}).get('mode', 'complementary'))
+                self.core_target.set((complementary or {}).get('target_instance') or '')
+                self.core_peer.set((complementary or {}).get('peer_instance') or '')
+                self._core_changed()
             self.mode_var.set("live")
             if hasattr(self, "formal_signoff_var"):
                 self.formal_signoff_var.set(
@@ -2171,7 +2375,7 @@ class IsfApplication:
         persisted = self.controller.workspace / "config.json"
         if initial and not persisted.is_file():
             # Keep the backend fail-safe dry default for API/CLI callers, while
-            # making the desktop's ordinary analysis procedure an explicitly authorised
+            # making the desktop's ordinary workflow an explicitly authorised
             # real run. Formal signoff remains a separate advanced choice.
             config = deep_merge(
                 config,
@@ -2309,7 +2513,8 @@ class IsfApplication:
                 "x_scale": "log" if self.log_offset_var.get() else "linear",
                 "log_offset": self.log_offset_var.get(),
                 "theme": self.theme_var.get(), "selected_tab": selected_tab,
-                "advanced_visible": self.advanced_visible_var.get()}
+                "advanced_visible": self.advanced_visible_var.get(),
+                "result_view": self.results_view.view_id}
 
     def _save_state_dialog(self) -> None:
         if self._state_load_pending:
@@ -2445,6 +2650,9 @@ class IsfApplication:
             elif choice:
                 self.result_offset_var.set(choice)
                 self._result_offset_changed()
+            result_view = view.get("result_view")
+            if type(result_view) is int and 0 <= result_view < len(self.results_view.nav_buttons):
+                self.results_view.show(result_view)
         tabs = {"setup": self.setup_tab, "run": self.run_tab, "results": self.result_tab, "errors": self.error_tab}
         self.notebook.select(tabs.get(str(view.get("selected_tab")), self.setup_tab))
         for canvas in self._page_canvases.values():
@@ -2669,10 +2877,10 @@ class IsfApplication:
         actions = ttk.Frame(readiness)
         actions.grid(row=2, column=0, columnspan=2, sticky="ew")
         ttk.Button(
-            actions, text="1  Run static preflight", command=self._preflight
+            actions, text="Run preflight", command=self._preflight
         ).pack(side="left")
         self.start_button = ttk.Button(
-            actions, text="2  Start live run", style="Primary.TButton", command=self._start_run
+            actions, text="Start live run", style="Primary.TButton", command=self._start_run
         )
         self.start_button.pack(side="left", padx=8)
         ttk.Button(actions, text="Refresh jobs", command=self._refresh_jobs).pack(side="left", padx=(10, 4))
@@ -2683,6 +2891,11 @@ class IsfApplication:
         self.stop_offset_button = ttk.Button(stop_actions, text="Stop after current offset", command=self._stop_after_current_offset, state="disabled")
         self.partial_result_button = ttk.Button(stop_actions, text="View completed results", command=self._load_available_result, state="disabled")
         self.partial_result_button.pack(side="left", padx=8)
+        self.job_error_button = ttk.Button(stop_actions, text="Troubleshoot job",
+                                           command=lambda: self._open_troubleshooting(
+                                               _mapping(self.current_job.get("error")).get("code")), state="disabled")
+        self.job_error_button.pack(side="left")
+        ttk.Button(stop_actions, text="Storage preview", command=self._storage_preview).pack(side="left", padx=5)
         self.preflight_help = self._help(readiness, textvariable=self.preflight_detail_var)
         self.preflight_help.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(7, 0))
         self.preflight_issue_actions = ttk.Frame(readiness)
@@ -2721,6 +2934,9 @@ class IsfApplication:
             (("status", "State", 65), ("id", "Check", 140), ("detail", "Details", 360), ("code", "Code", 90)),
         )
         self._with_scroll(checks_frame, self.preflight_tree).pack(fill="both", expand=True)
+        self.preflight_tree.bind("<Double-1>", self._preflight_troubleshooting)
+        ttk.Button(checks_frame, text="Troubleshoot selected check",
+                   command=self._preflight_troubleshooting).pack(anchor="w")
 
         ttk.Label(lower, textvariable=self.job_status_var).pack(anchor="w")
         self.job_progress = ttk.Progressbar(lower, mode="determinate", maximum=100)
@@ -2766,6 +2982,7 @@ class IsfApplication:
         if portable:
             self._render_portable_report(portable)
         self._preflight_issues = portable_issue_rows(portable, pair_report or self._signal_report)
+        missing_history = not self.vars["vco_history"].get().strip()
         self._clear_tree(self.preflight_tree)
         for index, item in enumerate(_sequence(report.get("checks"))):
             if not isinstance(item, Mapping):
@@ -2805,7 +3022,8 @@ class IsfApplication:
             self.preflight_issue_actions.grid_remove()
         else:
             self.preflight_status_var.set(f"Static preflight failed · {failures} failed items")
-            details = [row["message"] for row in self._preflight_issues]
+            details = ["Select a completed VCO history in Setup."] if missing_history else []
+            details.extend(row["message"] for row in self._preflight_issues)
             for item in _sequence(report.get("checks")):
                 if not isinstance(item, Mapping) or item.get("status") != "fail":
                     continue
@@ -3041,6 +3259,8 @@ class IsfApplication:
                     message=event.get("message") or "",
                 )
             )
+        if hasattr(self, "job_error_button"):
+            self.job_error_button.configure(state="normal" if job.get("error") else "disabled")
         if job.get("error"):
             lines.append("ERROR " + json.dumps(job["error"], ensure_ascii=False, indent=2))
         self.job_log.configure(state="normal")
@@ -3075,6 +3295,51 @@ class IsfApplication:
                 quiet=True,
                 on_failure=failed,
             )
+
+    def _storage_preview(self) -> None:
+        from ..core.storage import preview
+        from ..core.offsets import expand_offsets
+
+        job_id = self.current_job_id
+        if not job_id:
+            try:
+                config = self._config_from_ui()
+                offsets = len(expand_offsets(config["analysis"]))
+                size = projected_bytes(offsets, 1) // (1024 ** 2)
+            except (ValueError, KeyError, CoreError) as exc:
+                self._show_error(exc, "Storage estimate unavailable")
+                return
+            messagebox.showinfo("Projected storage",
+                                f"{offsets} offsets × 65 MiB = {size:,} MiB per operating point. "
+                                "Actual size depends on the simulator outputs and retained files.", parent=self.root)
+            return
+        job = self.current_job
+
+        def show(report):
+            window = tk.Toplevel(self.root)
+            window.title("Archive and prune preview")
+            window.geometry("840x440")
+            text = tk.Text(window, wrap="word", padx=10, pady=10)
+            scroll = ttk.Scrollbar(window, orient="vertical", command=text.yview)
+            text.configure(yscrollcommand=scroll.set)
+            scroll.pack(side="right", fill="y")
+            text.pack(fill="both", expand=True)
+            lines = [f"Job {job_id}",
+                     f"Archive size before compression: {report['archive_bytes'] / (1024 ** 2):,.1f} MiB",
+                     report["note"], ""]
+            lines.append(f"Prunable without affecting replay or resume: {report['prune_bytes']:,} bytes.")
+            if report["candidates"]:
+                lines.append("Portable sweep exports require all their child bundles. Archive and restore them together.")
+            for item in report["candidates"]:
+                lines.extend((f"Verified duplicate within portable export: {item['path']}",
+                              f"Source required for resume: {item['keep']}",
+                              f"Duplicate size: {item['bytes']:,} bytes", ""))
+            text.insert("1.0", "\n".join(lines))
+            text.configure(state="disabled")
+
+        self._submit("Inspect job storage", lambda: preview(
+            self.controller.workspace, job_id, api=bool(job.get("api_state")),
+            terminal=job.get("status") in TERMINAL_STATES), show)
 
     def _stop_after_current_offset(self) -> None:
         if not self.current_job_id:
@@ -3145,31 +3410,43 @@ class IsfApplication:
 
     def _import_bundle(self) -> None:
         path = filedialog.askdirectory(parent=self.root, title="Select canonical replay bundle Directory")
-        if path:
-            self._import_bundle_path(path)
+        if not path:
+            return
+
+        self._import_bundle_path(path)
 
     def _load_example(self) -> None:
-        """Import the bundled synthetic ideal-LC bundle (generated on demand when not shipped)."""
-        shipped = Path(__file__).resolve().parents[2] / "examples" / "ideal_lc"
-        if (shipped / "vco_results.csv").is_file():
-            path = shipped
-        else:
-            from ..example_data import build
-            path = Path(build(str(Path(self.controller.workspace) / "examples" / "ideal_lc")))
-        self.noise_kind_var.set("both")
-        self._import_bundle_path(str(path), label="Example ideal-LC")
+        from ..example_data import build
 
-    def _import_bundle_path(self, path: str, label: str = "") -> None:
-        def imported(value: Any) -> None:
-            report = _mapping(value)
-            self._clear_loaded_result()
-            self.current_job_id = str(report.get("job_id") or "")
-            self.job_status_var.set(f"Replay Imported: {self.current_job_id}")
-            self._set_window_title(label or Path(path).name)
-            self._refresh_jobs(silent=True)
-            self._schedule_poll(0)
+        def loaded(value: Any) -> None:
+            self.noise_kind_var.set("both")
+            self._replay_imported(value)
+            self._set_window_title("Synthetic ideal LC")
 
-        self._submit("Import canonical replay", lambda: self.controller.import_bundle(path, "canonical"), imported)
+        def generate_and_import() -> dict[str, Any]:
+            shipped = Path(__file__).resolve().parents[2] / "examples" / "ideal_lc"
+            if (shipped / "vco_results.csv").is_file():
+                path = shipped
+            else:
+                path = build(str(self.controller.workspace / "examples" / "ideal_lc"))
+            return self.controller.import_bundle(str(path), "canonical")
+
+        self._submit("Load synthetic example", generate_and_import, loaded)
+
+    def _import_bundle_path(self, path: str) -> None:
+        def loaded(value: Any) -> None:
+            self._replay_imported(value)
+            self._set_window_title(Path(path).name)
+
+        self._submit("Import canonical replay", lambda: self.controller.import_bundle(path, "canonical"), loaded)
+
+    def _replay_imported(self, value: Any) -> None:
+        report = _mapping(value)
+        self._clear_loaded_result()
+        self.current_job_id = str(report.get("job_id") or "")
+        self.job_status_var.set(f"Replay imported: {self.current_job_id}")
+        self._refresh_jobs(silent=True)
+        self._schedule_poll(0)
 
     # ---- results ----------------------------------------------------
 
@@ -3390,7 +3667,7 @@ class IsfApplication:
         for item in comparison:
             if item["id"] != "matched_error" and any(point[1] is not None for point in item["points"]):
                 curves.append(dict(item, dash=item["id"] == "matched_reference"))
-        if any(item["id"] == "matched_prediction" for item in curves):
+        if any(item["id"] == "matched_prediction" for item in curves) and _mapping(self.current_result_view.get('selected_summary')).get('pair_model') != 'single_device_only':
             for item in curves:
                 if item["id"] == "calculated":
                     item["name"] = "ISF · symmetric estimate +3.01 dB"
@@ -3432,6 +3709,7 @@ class IsfApplication:
         if self.current_result is None or self.current_result_job_id != self.current_job_id:
             return
         identity, scope, noise_kind = self.operating_point_var.get(), "pair", self.noise_kind_var.get()
+        if _mapping(self.current_result_view.get('selected_summary')).get('pair_model') == 'single_device_only': scope = 'single'
         try:
             cache_key = (identity, "phase:" + scope + ":" + noise_kind)
             if cache_key not in self._curve_cache:
@@ -3475,8 +3753,11 @@ class IsfApplication:
             return
         self.current_result_view = view
         kind_label = {"flicker": "two-device flicker", "thermal": "thermal", "both": "flicker + thermal"}.get(self.noise_kind_var.get(), "flicker + thermal")
+        single_only = _mapping(view.get('selected_summary')).get('pair_model') == 'single_device_only'
         if generated:
-            kind_label = "symmetric pair estimate"
+            kind_label = "Single-device flicker" if single_only else "Symmetric pair estimate"
+        elif single_only:
+            kind_label = "Single-device flicker"
         self.summary_tree.heading("calculated", text=f"ISF {kind_label} (dBc/Hz)")
         self.summary_tree.heading("pair", text="Single-device matched-scope error (dB)" if generated else "gm pair flicker matched-scope error (dB)")
         self._bind_metric_columns(self.summary_tree, ("point", "offset_Hz", "f0_Hz", "predicted_pair_dBc_Hz" if self.noise_kind_var.get() == "flicker" else "thermal_noise", "spectre_total_dBc_Hz", "calculated_vs_total_db", "dynamic_error_dB" if generated else "pair_error_dB"))
@@ -3554,10 +3835,13 @@ class IsfApplication:
         if operating.get("parameters"):
             quality = "Operating parameters: " + _display(operating["parameters"]) + "\n" + quality
         quality += " two-device flicker Model: " + _display(sample.get("pair_model"))
+        if single_only:
+            quality += " Pair symmetry is unverified. The single-device prediction is retained without a 3.01 dB increase."
         if generated:
             single = _display(sample.get("dynamic_dBc_Hz"))
             reference = _display(sample.get("spectre_fn_dBc_Hz"))
-            self.metrics_var.set(self.metrics_var.get() + f"\nsingle device fn · ISF {single} / HBnoise {reference} dBc/Hz; two-device values assume independent symmetric devices and add 3.01 dB. ")
+            note = "Pair symmetry is unverified. Showing the single-device prediction." if single_only else "The verified independent symmetric pair adds 3.01 dB."
+            self.metrics_var.set(self.metrics_var.get() + f"\nSingle-device fn · ISF {single} / HBnoise {reference} dBc/Hz." + note)
         if self.noise_kind_var.get() != "flicker" and _mapping(sample.get("thermal_noise")).get("status") != "available":
             quality += " Current results do not contain available independent thermal Calculated, thermal and combined totals both show N/A; select flicker view existing calculations. "
         elif self.noise_kind_var.get() != "flicker":
@@ -3588,12 +3872,22 @@ class IsfApplication:
             if hasattr(self, "metric_values_tree"):
                 self._render_metric_values(values[0])
 
+    def _export_sample(self) -> dict[str, Any]:
+        summary = _mapping(_mapping(self.current_result_view).get("selected_summary"))
+        return {"job_id": self.current_result_job_id, "point": self.point_var.get(),
+                "operating_point_id": summary.get("operating_point_id"),
+                "offset_Hz": summary.get("offset_Hz"), "f0_Hz": summary.get("f0_Hz"),
+                "noise_kind": self.noise_kind_var.get(), "result_view": self.results_view.view_id,
+                "units": {"offset_Hz": "Hz", "f0_Hz": "Hz", "phase_noise": "dBc/Hz",
+                          "PSD": "V²/Hz", "ASD": "V/√Hz", "phase": "deg"}}
+
     def _export_result_json(self) -> None:
         if self.current_result is None or self.current_result_job_id != self.current_job_id:
             messagebox.showwarning("No results", "Complete a job or import canonical replay. ", parent=self.root)
             return
         result = deep_merge({}, self.current_result)
         owner = self.current_result_job_id
+        result["export_selection"] = self._export_sample()
         path = filedialog.asksaveasfilename(parent=self.root, title="Export results JSON", defaultextension=".json", filetypes=(("JSON", "*.json"),))
         if path:
             self._submit(
@@ -3606,7 +3900,8 @@ class IsfApplication:
         if self.current_result is None or self.current_result_job_id != self.current_job_id:
             messagebox.showwarning("No results", "Complete a job or import canonical replay. ", parent=self.root)
             return
-        rows = [deep_merge({}, item) for item in _sequence(self.current_result.get("summary")) if isinstance(item, Mapping)]
+        rows = [dict(item, job_id=self.current_result_job_id, offset_unit="Hz", phase_noise_unit="dBc/Hz")
+                for item in _sequence(self.current_result.get("summary")) if isinstance(item, Mapping)]
         path = filedialog.asksaveasfilename(parent=self.root, title="Export Summary CSV", defaultextension=".csv", filetypes=(("CSV", "*.csv"),))
         if path:
             self._submit("Export Summary CSV", lambda: _write_csv(path, rows), lambda _value: messagebox.showinfo("Export complete", path, parent=self.root))
@@ -3617,7 +3912,11 @@ class IsfApplication:
             return
         point = str(self.point_var.get() or "")
         point_data = _mapping(_mapping(self.current_result.get("points")).get(point))
-        rows = [deep_merge({}, item) for item in _sequence(point_data.get("harmonics")) if isinstance(item, Mapping)]
+        sample = self._export_sample()
+        rows = [dict(item, job_id=sample["job_id"], point=sample["point"],
+                     operating_point_id=sample["operating_point_id"], offset_Hz=sample["offset_Hz"],
+                     f0_Hz=sample["f0_Hz"], Q_unit="V/√Hz", phase_unit="deg")
+                for item in _sequence(point_data.get("harmonics")) if isinstance(item, Mapping)]
         path = filedialog.asksaveasfilename(parent=self.root, title="Export Harmonics CSV", defaultextension=".csv", filetypes=(("CSV", "*.csv"),))
         if path:
             self._submit("Export Harmonics CSV", lambda: _write_csv(path, rows), lambda _value: messagebox.showinfo("Export complete", path, parent=self.root))
@@ -3636,8 +3935,15 @@ class IsfApplication:
             list_frame,
             (("code", "Code", 95), ("severity", "Severity", 65), ("title", "Title", 240)),
         )
-        self._with_scroll(list_frame, self.error_tree).pack(fill="both", expand=True)
+        error_list = self._with_scroll(list_frame, self.error_tree)
+        error_list.pack(fill="both", expand=True)
         self.error_tree.bind("<<TreeviewSelect>>", self._error_selected)
+        search = ttk.Frame(list_frame)
+        search.pack(fill="x", before=error_list, pady=(0, 6))
+        ttk.Label(search, text="Search code or text").pack(side="left", padx=(0, 6))
+        self.error_search = tk.StringVar()
+        ttk.Entry(search, textvariable=self.error_search).pack(side="left", fill="x", expand=True)
+        self.error_search.trace_add("write", lambda *_: self._filter_errors())
         self.error_detail = tk.Text(detail_frame, wrap="word", state="disabled")
         self.error_detail.pack(fill="both", expand=True)
 
@@ -3653,7 +3959,35 @@ class IsfApplication:
             if not code:
                 continue
             self._error_entries[code] = item
-            self.error_tree.insert("", "end", iid=code, values=(code, item.get("severity") or "", item.get("title") or ""))
+        self._filter_errors()
+
+    def _filter_errors(self) -> None:
+        terms = self.error_search.get().casefold().split()
+        self._clear_tree(self.error_tree)
+        for code, item in self._error_entries.items():
+            text = json.dumps(item, ensure_ascii=False).casefold()
+            if all(term in text for term in terms):
+                self.error_tree.insert("", "end", iid=code,
+                                       values=(code, item.get("severity") or "", item.get("title") or ""))
+        self.error_detail.configure(state="normal")
+        self.error_detail.delete("1.0", "end")
+        self.error_detail.configure(state="disabled")
+
+    def _open_troubleshooting(self, code) -> None:
+        self.error_search.set(str(code or "") if code in self._error_entries else "")
+        self.notebook.select(self.error_tab)
+        if code and self.error_tree.exists(code):
+            self.error_tree.selection_set(code)
+            self.error_tree.see(code)
+            self._error_selected()
+
+    def _preflight_troubleshooting(self, _event=None) -> None:
+        selected = self.preflight_tree.selection()
+        if selected:
+            values = self.preflight_tree.item(selected[0], "values")
+            if values and values[-1]:
+                self._open_troubleshooting(values[-1])
+
 
     def _error_selected(self, _event: tk.Event[Any] | None = None) -> None:
         selection = self.error_tree.selection()
@@ -3729,6 +4063,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="workspace for config and job state",
     )
+    parser.add_argument("--ready-file", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--spec", type=Path, help="prepared ISF testbench specification")
     parser.add_argument("--maestro-context-file", type=Path,
                         help="private context captured by the invoking Maestro window")
     return parser
@@ -3764,7 +4100,10 @@ def main(argv: list[str] | None = None) -> int:
         workspace.mkdir(parents=True, exist_ok=True)
         controller = IsfController(workspace) if context is None else IsfController(workspace, maestro_context=context)
         if context is None:
-            IsfApplication(root, controller)
+            app = IsfApplication(root, controller)
+            if args.spec:
+                app.testbench_page.load_spec(args.spec)
+                app.notebook.select(app.testbench_page)
         else:
             IsfApplication(root, controller, maestro_context=context, preferences_directory=preferences_directory)
     except Exception as exc:
@@ -3774,6 +4113,9 @@ def main(argv: list[str] | None = None) -> int:
             pass
         print("Tk UI Initialization failed: %s" % exc, file=sys.stderr)
         return 2
+    if args.ready_file:
+        from ..core.testbench import write
+        root.after_idle(lambda: write(args.ready_file, {"schema": "isf.ui-ready.v1", "pid": os.getpid()}))
     root.mainloop()
     return 0
 

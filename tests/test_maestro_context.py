@@ -69,6 +69,18 @@ class MaestroContextTests(unittest.TestCase):
                     load_maestro_context(self.path)
                 self.assertTrue(self.path.exists())
 
+    def test_session_record_binds_live_identity_and_disk_revision(self):
+        setup=self.root/'library/VCO/maestro';setup.mkdir(parents=True)
+        for name in ('maestro.sdb','active.state'):(setup/name).write_text(name)
+        values=['session1','3','123','false','generation1',str(self.root/'private-bridge')]
+        c=self.load(self.protocol()+ 'S\t'+'\t'.join(json.dumps(v) for v in values)+'\n')
+        self.assertEqual(c['session_add']['window_id'],3)
+        self.assertEqual(c['session_add']['setup_handle'],123)
+        self.assertFalse(c['session_add']['dirty'])
+        self.assertEqual(c['session_add']['lcv'],dict(lib='LIB',cell='VCO with spaces',view='maestro'))
+        self.assertEqual(len(c['session_add']['revision']),64)
+        with self.assertRaises(Exception):self.load(self.protocol()+'S\t'+ '\t'.join(json.dumps(v) for v in values[:1]+['wrong']+values[2:])+'\n')
+
     def fake_refresh(self, context, changed_library=None):
         def run(args, **kwargs):
             script = Path(args[-1]).read_text()
@@ -123,7 +135,7 @@ class NativeHistoryCatalogTests(unittest.TestCase):
                 CREATE TABLE corner(cornerID INTEGER, name TEXT);
                 CREATE TABLE testStatus(pointID INTEGER, testID INTEGER, statusCode INTEGER);
                 INSERT INTO point VALUES(1,1,1); INSERT INTO test VALUES(1,'VCO');
-                INSERT INTO corner VALUES(1,'Fhigh'); INSERT INTO testStatus VALUES(1,1,3);''')
+                INSERT INTO corner VALUES(1,'band_high'); INSERT INTO testStatus VALUES(1,1,3);''')
             con.execute('INSERT INTO psfTable VALUES(?,?,?)', ('one', str(raw), str(raw)))
         case=raw/'1/VCO'; psf=case/'psf'; netlist=case/'netlist'
         psf.mkdir(parents=True);netlist.mkdir()

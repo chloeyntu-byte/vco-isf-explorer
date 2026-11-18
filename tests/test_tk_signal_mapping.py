@@ -47,7 +47,7 @@ class PortableMappingTests(unittest.TestCase):
         self.assertEqual("vco:vgs_output", rows[2]["mapping_iid"])
         self.assertEqual(original, setup)
 
-    def test_latin_sans_is_preferred_and_missing_faces_use_default(self):
+    def test_installed_latin_font_is_selected_without_installing_or_forcing_missing_faces(self):
         self.assertEqual("DejaVu Sans", _ui_font_family(["DejaVu Sans", "WenQuanYi Micro Hei"], "DejaVu Sans"))
         self.assertEqual("DejaVu Sans", _ui_font_family(["Noto Sans CJK SC", "WenQuanYi Micro Hei"], "DejaVu Sans"))
         self.assertEqual("DejaVu Sans", _ui_font_family(["DejaVu Sans"], "DejaVu Sans"))

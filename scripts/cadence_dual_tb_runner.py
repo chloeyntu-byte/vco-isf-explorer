@@ -285,7 +285,8 @@ def _restore_private_operating_point(target, source):
     if expected and actual != expected:
         raise RuntimeError('Maestro operating-point preview changed before private materialization')
     if after != before:
-        target.write_text(after, encoding='utf-8')
+        from isf_tool.core.private_validation import write_private_netlist
+        write_private_netlist(target, after)
     return {'contract': contract, 'restored_values': changes,
             'before_sha256': hashlib.sha256(before.encode('utf-8')).hexdigest(),
             'effective_netlist_sha256': actual}
@@ -425,17 +426,17 @@ def materialize_maestro_engine(engine, engine_template_path, run_root, app_confi
         template['operating_point'] = operating_point['contract']
         if generated:
             instance = vco_report.get("mapping", {}).get("target_instance")
+            flicker_target = source_root / source_dir / "flicker" / "netlist" / "input.scs"
             fixture, evidence, _ = generated_fixture(
                 source_path, instance, offset_hz,
-                text=target.read_text(encoding="utf-8"), read_cache=model_cache,
+                text=target.read_text(encoding="utf-8"), read_cache=model_cache, destination=flicker_target,
             )
             model_fields = ("model_file", "device_subckt_file", "device_subckt_section")
             if any(evidence[key] != engine_config.get(key) for key in model_fields):
                 raise RuntimeError("active MOS definition changed since Preflight: " + instance)
-            flicker_target = source_root / source_dir / "flicker" / "netlist" / "input.scs"
-            flicker_target.parent.mkdir(parents=True)
-            flicker_target.write_text(fixture, encoding="utf-8")
             fixture_sha256 = file_sha256(flicker_target)
+            template['mos_source_netlist'] = str(target)
+            template['mos_instance_path'] = instance
             template["flicker_template_netlist"] = str(flicker_target)
             template["flicker_template_key"] = fixture_sha256
             flicker_records.append({
@@ -684,6 +685,7 @@ def exchange_workpoint(engine, config, points, run_root, force=False):
         name = engine.point_name(point)
         main_psf = run_root / name / "main_vco" / "psf"
         engine.verify_spectre(main_psf)
+        engine.prove_measured_pair_symmetry(config, run_root / name)
         wave = engine.sample_periodic_wave(
             config,
             main_psf,
@@ -719,9 +721,8 @@ def run_replica(engine, config, points, run_root, force=False):
             raise RuntimeError("replica netlist is absent; run exchange first: {}".format(netlist))
         status = engine.run_spectre(config, netlist.parent, force=force)
         print("{} replica={}".format(name, status), flush=True)
-        if config.get("replica_source") != "generated":
-            thermal = run_optional_thermal(engine, config, point, run_root / name, force=force)
-            print("{} thermal={}".format(name, thermal["status"]), flush=True)
+        thermal = run_optional_thermal(engine, config, point, run_root / name, force=force)
+        print("{} thermal={}".format(name, thermal["status"]), flush=True)
 
 
 def analyze(engine, config_path, run_root, smoke=False):

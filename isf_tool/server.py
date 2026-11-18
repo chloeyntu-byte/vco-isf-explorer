@@ -60,7 +60,7 @@ class AppState:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "VcoIsfExplorer/1.0"
+    server_version = "VcoIsfExplorer/0.4"
 
     @property
     def app(self) -> AppState:

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:vco:isf-metrics:v1",
+  "title": "VCO optimization ISF metrics v1",
+  "type": "object",
+  "required": ["schema", "version", "level", "source", "metric_info"],
+  "properties": {
+    "schema": {"const": "vco.isf-metrics.v1"},
+    "version": {"const": 1},
+    "level": {"enum": ["L0", "L2"]},
+    "source": {"type": ["object", "null"]},
+    "metric_info": {"type": "object", "additionalProperties": {"$ref": "#/$defs/metricInfo"}},
+    "waveform": {"$ref": "#/$defs/numericMap"},
+    "single_ended": {"$ref": "#/$defs/numericMap"},
+    "gamma": {"$ref": "#/$defs/numericMap"},
+    "flicker": {"type": "object"},
+    "thermal": {"type": "object", "required": ["band_frac", "overlap"]},
+    "closure": {"type": "object", "required": ["gap_db", "gate"], "properties": {"gate": {"enum": ["attribute_sources", "shape_diagnostics"]}}},
+    "sources": {"type": "array"},
+    "potential_db": {"type": "array"},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "recommendations": {"type": "array"},
+    "curves": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "number"}}},
+    "rho_hat": {"type": ["number", "null"], "minimum": -1.000001, "maximum": 1.000001},
+    "c0_hat": {"type": ["number", "null"]}
+  },
+  "allOf": [
+    {"if": {"properties": {"level": {"const": "L2"}}}, "then": {"required": ["f0_hz", "vpk_v", "waveform", "gamma", "flicker", "thermal", "closure", "sources", "potential_db", "warnings", "recommendations", "curves"]}},
+    {"if": {"properties": {"level": {"const": "L0"}}}, "then": {"required": ["gamma_hat", "alpha_hat", "theta_rad", "rho_hat", "c0_hat"]}}
+  ],
+  "$defs": {
+    "numericMap": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+    "metricInfo": {
+      "type": "object", "required": ["unit", "definition", "source", "status", "reason"],
+      "properties": {
+        "unit": {"type": "string"}, "definition": {"type": "string"}, "source": {"type": "string"},
+        "status": {"enum": ["measured", "approximate", "N/A"]}, "reason": {"type": "string"}
+      }
+    }
+  }
+}

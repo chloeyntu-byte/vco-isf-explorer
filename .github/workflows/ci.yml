@@ -15,28 +15,78 @@ concurrency:
 jobs:
   tests:
     name: Python ${{ matrix.python }} tests
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - python: '3.11'
-            os: ubuntu-latest
-          - python: '3.12'
-            os: ubuntu-latest
-          - python: '3.13'
-            os: ubuntu-latest
+        python: ['3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: explorer
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Optional TB Generator checkout
+        id: tbgen
+        uses: actions/checkout@v6
+        continue-on-error: true
+        timeout-minutes: 2
+        with:
+          repository: chloeyntu-byte/vco-tb-generator
+          path: vco-tb-generator
+          persist-credentials: false
+      - name: Enable TB Generator integration tests
+        if: steps.tbgen.outcome == 'success'
+        run: echo "VCO_TBGEN_ROOT=${GITHUB_WORKSPACE}/vco-tb-generator" >> "${GITHUB_ENV}"
+      - name: Install a virtual display for Tk tests
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Install the package
+        working-directory: explorer
+        run: python -m pip install -e '.[test]'
+      - name: Unit and GUI tests
+        working-directory: explorer
+        env:
+          ISF_GUI_TEST: '1'
+        run: xvfb-run -a python -B -m unittest discover -s tests
+
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/*.js
+
+  distributions:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python }}
-      - name: Install a virtual display for Tk tests
-        run: sudo apt-get update && sudo apt-get install -y xvfb
-      - name: Install the package
-        run: python -m pip install --upgrade pip && python -m pip install -e '.[test]'
-      - name: Unit and GUI tests
-        env:
-          ISF_GUI_TEST: '1'
-        run: xvfb-run -a python -B -m unittest discover -s tests
+          python-version: '3.11'
+      - run: python -m pip install build
+      - run: python -m build --outdir "${RUNNER_TEMP}/isf-dist"
+      - name: Replay the synthetic example from an isolated wheel
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -m venv isf-wheel
+          isf-wheel/bin/python -m pip install isf-dist/*.whl
+          isf-wheel/bin/vco-isf --help
+          isf-wheel/bin/python - <<'PY'
+          from importlib.metadata import version
+
+          from isf_tool.core.service import ToolService
+          from isf_tool.example_data import build
+
+          assert version("vco-isf-explorer") == "1.2.0"
+          service = ToolService("example-workspace")
+          job = service.import_as_job({"path": build("ideal-lc"), "format": "canonical"})
+          result = service.get_result(job["job_id"])
+          assert result["run_kind"] == "replay"
+          assert result["signoff"] is False
+          assert len(result["summary"]) == 21
+          print("Replayed 21 synthetic samples.")
+          PY

@@ -142,6 +142,10 @@ class EngineConfigPathTests(unittest.TestCase):
 subckt generic_stage VOUTN VOUTP VSUPPLY VCOMMON
     XDEV (VOUTN VOUTP VCOMMON VCOMMON) generic_nmos_wrapper l=1u w=2u nf=4 m=1
 ends generic_stage
+subckt top P N V S
+XSTAGE (P N V S) generic_stage
+ends top
+XTOP (VOUTN VOUTP VSUPPLY VCOMMON) top
 I_HBXF_XDEV (VOUTN VCOMMON) isource dc=0 type=dc
 hb (VOUTN VOUTP) hb fundfreqs=[1G] maxharms=[12] annotate=status
 hbnoise (VOUTN VOUTP) hbnoise sweeptype=relative relharmvec=[1] values=[10k] annotate=status
@@ -157,12 +161,19 @@ hbxf (VOUTN VOUTP) hbxf sweeptype=relative relharmvec=[1] values=[10k] annotate=
             )
             device_model = model.parent / "device_model.scs"
             device_model.write_text(
-                """subckt generic_nmos_wrapper (1 2 3 4)
+                """model generic_nmos bsim4
+subckt generic_nmos_wrapper (1 2 3 4)
+parameters l=1u w=2u nf=4
+R1 (1 11) resistor r=1
+R2 (2 21) resistor r=1
+R3 (3 31) resistor r=1
+R4 (4 41) resistor r=1
 core (11 21 31 41) generic_nmos l=l w=w m=nf
 ends generic_nmos_wrapper
 """,
                 encoding="utf-8",
             )
+            netlist.write_text('include "' + str(model) + '" section=typ\n' + netlist.read_text())
             spectre = root_path / "spectre"
             psf = root_path / "psf"
             spectre.write_text("", encoding="utf-8")
@@ -256,11 +267,11 @@ ends generic_nmos_wrapper
             ENGINE.prepare_main_netlist(loaded, netlist, patched)
             patched_text = patched.read_text(encoding="utf-8")
             self.assertIn(
-                "    V_XDEV_D (VOUTN XDEV_D) vsource dc=0 type=dc",
+                "V_XDEV_D (VOUTN XDEV_D) vsource dc=0 type=dc",
                 patched_text,
             )
             self.assertIn(
-                "save VOUTP VOUTN VOUTP VCOMMON VCOMMON XTOP.XSTAGE.V_XDEV_D:p",
+                "save VOUTP VOUTN VCOMMON XTOP.XSTAGE.V_XDEV_D:p",
                 patched_text,
             )
             generated = ENGINE.injected_nmos_subckt(loaded)

@@ -100,11 +100,11 @@ class EnglishNativeTests(unittest.TestCase):
         for text in display_texts(self.root):
             self.assertIsNone(CJK.search(text), text)
 
-    def test_all_tabs_eight_views_noise_kinds_overlay_and_dialog_titles(self):
+    def test_all_tabs_nine_views_noise_kinds_overlay_and_dialog_titles(self):
         from isf_tool.example_data import result
         from isf_tool.core.metrics import metric_catalog
         from isf_tool.tk.results_view import VIEWS
-        self.assertEqual(8, len(VIEWS))
+        self.assertEqual(9, len(VIEWS))
         self.assert_english()  # Empty state, including every constructed tab.
         app = self.app
         app.current_job_id = 'synthetic'
@@ -123,7 +123,7 @@ class EnglishNativeTests(unittest.TestCase):
         for kind in ('both', 'flicker', 'thermal'):
             app.noise_kind_var.set(kind)
             app._point_changed()
-            for view in range(8):
+            for view in range(len(VIEWS)):
                 app.results_view.show(view)
                 self.root.update()
                 self.assert_english()

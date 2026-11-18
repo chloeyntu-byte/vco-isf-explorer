@@ -1,97 +1,78 @@
 # VCO ISF Explorer
 
-[中文说明](README.zh-CN.md)
+[简体中文](README.zh-CN.md)
 
-Desktop analysis procedure for LC-VCO impulse sensitivity function (ISF / PPV) and flicker-noise up-conversion analysis, with a dark instrument-style Tk interface.
+VCO ISF Explorer analyzes how oscillator waveforms and selected noise sources contribute to phase noise using the impulse sensitivity function (ISF).
 
-![VCO ISF Explorer: overview from the bundled ideal-LC example](docs/screenshots/01-overview.png)
-
-Version 1.1.0 adds eight result views (00–07), a linked table drawer, the ISF process and Fig.14 overlay, signed Qk projection fractions, input-band phase noise with slopes, and per-source thermal bands. Source details rank by reference power; the flicker pair comparison remains an aggregate, never counted twice. The analytic example includes thermal and an unmodeled source; thermal scope is the gm pair and passive LC.
+![Synthetic ideal-LC overview in the dark theme](docs/screenshots/00-overview.png)
 
 ## What it does
 
-- **Flicker-noise up-conversion** from a completed VCO HB/HBNOISE Maestro history and one selected core MOS: the tool builds a private flicker fixture and reports the single-device result plus a symmetric independent two-device estimate (+3.01 dB).
-- **ISF and harmonic closure**: carrier-referenced signed-H ISF branches (I/Q), per-harmonic contributions, and complex cumulative sums (ISF process and harmonic decomposition views).
-- **Phase-noise views**: linked phase-noise and same-scope error plots over offset, source-contribution bars on a common PSD scale, zoom/pan/hide, and EPS export.
-- **Thermal branch** for the manual noise-testbench analysis procedure (gm pair plus supported native LC loss sources); see [docs/THERMAL_NOISE.md](docs/THERMAL_NOISE.md).
-- **Offline replay**: import canonical CSV bundles ([formats/README.md](formats/README.md)) without any EDA tool. A synthetic ideal-LC example ships in [examples/ideal_lc](examples/ideal_lc).
-- **Maestro menu launcher** and a read-only environment report (`--diagnose`).
-
-The desktop and Web interfaces are in English. Data formats and export field names are unchanged.
+- Prepare a testbench from a Design Lab project export, an existing Maestro setup with a new ISF test, or a new library cell.
+- Select both devices for complementary or asymmetric cores and inspect per-device results. The symmetric shortcut requires measured half-period terminal agreement. Intrinsic drain-to-source flicker transfer uses both sidebands.
+- Run and reopen durable jobs, inspect preflight errors, and preview storage estimates or archiving.
+- Explore views 00–08 from waveform and harmonic decomposition through matched-source phase noise, thermal bands and optimization metrics. Compare matched results and export tables or plots.
+- Replay the synthetic ideal-LC example offline in light or dark mode. Use the metrics API and CLI to inspect saved results and qualify comparisons.
 
 ## Requirements
 
-- Python 3.11 or newer with Tk 8.6 (`tkinter`).
-- NumPy for live extraction (`pip install '.[live]'`); not needed to view the example.
-- **Optional, supplied by you:** a licensed Cadence Virtuoso/Maestro/Spectre environment and your own PDK. Nothing in this repository contains a PDK, model file, license information or simulator result. Features that run simulations or read Maestro histories need that environment; viewing results from the example bundle does not.
+Python 3.11 or newer. Tk is required for the desktop. NumPy is required for live analysis and optimization metrics, and Pillow enables PNG export. The synthetic replay and result viewing require no generator, Cadence installation, PDK or license.
 
-## Install / Quick start
+Testbench entries A/B/C require the separate [VCO TB Generator](https://github.com/chloeyntu-byte/vco-tb-generator), your own Cadence Virtuoso/MAESTRO and Spectre tools and licenses, and the PDK and models for your circuit. Entry A also needs a Design Lab project export. The generator is published separately.
 
-```bash
-git clone <repository-url> vco-isf-explorer
-cd vco-isf-explorer
-python3.11 -m pip install -e '.[live]'      # or run from the source tree
-python3.11 run.py --workspace ./work
+## Install and run the synthetic example
+
+```sh
+python3.11 -m venv .venv
+. .venv/bin/activate
+python -m pip install '.[analysis,images]'
+vco-isf --workspace ./isf-workspace
 ```
 
-1. On the first page click **Load example**. The bundled synthetic ideal-LC replay (three operating points x seven offsets) is imported and the **Results** page opens.
-2. Browse phase noise vs offset, the contribution tables, harmonics, and the ISF waveform. The ideal-LC ISF is a pure sine; the two "asym" points add second-harmonic content.
-3. Regenerate the example data at any time:
+Click **Load synthetic example** in the header. The result opens in **Results**. Pick an operating point and offset, then open an analysis view. The same bundle is available under [examples/ideal_lc](examples/ideal_lc). All its waveforms and source powers are generated from formulas. Use **Jobs & preflight** to reopen a replay already imported into this workspace.
 
-```bash
-python3.11 examples/generate_example.py examples/ideal_lc
+[ISF process](docs/screenshots/01-process.png) · [harmonics](docs/screenshots/02-harmonics.png) · [source contributions](docs/screenshots/04-contributions.png) · [input bands](docs/screenshots/06-bands.png) · [optimization metrics](docs/screenshots/08-metrics.png) · [light theme](docs/screenshots/00-overview-light.png)
+
+## Use with Cadence
+
+Set `VCO_TBGEN_ROOT` to the generator checkout or pass `--tbgen-root` to a preparation or capabilities command. In [Testbench setup](docs/screenshots/testbench-setup.png), select:
+
+- **A · Design Lab** for a generated project directory and exported DUT.
+- **B · Existing Maestro** to review and add an ISF test to an existing setup. Explicitly confirm the new test. Use the current-session action when working from the matching Maestro window.
+- **C · New cell** to supply the private library mapping, DUT, supplies, controls, models and output nets.
+
+Confirm the target gm device. Under **Two-device analysis**, choose **Complementary core** or **Asymmetric pair** and select both occurrences. Use **Prepare** to review settings before **Start analysis**. To analyze a completed Maestro history without creating a test, use **Setup** or the [Maestro menu](docs/MAESTRO_PLUGIN.md). See the [integration API](docs/API.md), [bindings](docs/PORTABLE_BINDING.md) and [HB analysis bundle](docs/HB_ANALYSIS_BUNDLE.md).
+
+## CLI and API
+
+```sh
+vco-isf --help
+vco-isf capabilities --tbgen-root /path/to/vco-tb-generator --json
+vco-isf --diagnose --workspace ./isf-workspace --json
+vco-isf metrics --workspace ./isf-workspace --job JOB_ID --point lc_ideal --offset-hz 10000 --json
+vco-isf metrics compare before.json after.json --point lc_ideal --offset-hz 10000 --json
+vco-isf optim evaluate result.json --level L2 --point lc_ideal --offset-hz 10000
+vco-isf optim gate metrics.json
+vco-isf optim calibrate selected-result-ref.json
 ```
 
-The example is analytic (ideal parallel LC, sinusoidal carrier, white + 1/f current-noise source with a fictional 200 kHz corner) and the "reference" phase noise is the model prediction shifted by a fixed dB offset. It is for exploring the UI, not a measurement.
-
-On a headless host provide X11/VNC for Tk. An optional loopback-only Web UI is available with `python3.11 run.py --web --workspace ./work --open`.
-
-## Using with Cadence
-
-From a Maestro window use **Plug-in → Open VCO ISF Explorer**, choose a completed VCO history, the core MOS and the frequency offsets, then **Start analysis**. Setup is described in [docs/MAESTRO_PLUGIN.md](docs/MAESTRO_PLUGIN.md); in short:
-
-- load `cadence/vco_isf_menu.il` from your `.cdsinit` after pointing it at your checkout (`export VCO_ISF_HOME=/path/to/vco-isf-explorer`, or set `isfMaestroLauncher` before loading);
-- the launcher looks for Python 3.11+ with Tk; set `VCO_ISF_PYTHON` to pick one explicitly;
-- PDK location, device names, corners and tool paths are **your configuration**: the tool detects names from the selected history and lets you override them under **Advanced settings**. `configs/` only contains fictional generic examples (`PDK_A`, `device_model.scs`, `generic_nmos`); see [configs/README.md](configs/README.md).
-
-## CLI for agents
-
-```bash
-python3.11 run.py --diagnose --workspace ./work --json     # read-only environment report (JSON)
-python3.11 run.py --workspace ./work                        # desktop UI
-python3.11 run.py --web --host 127.0.0.1 --port 8765        # optional loopback Web UI
-```
-
-`--diagnose` also accepts `--config FILE` and `--maestro-context-file FILE`; its exit status is 0 when the environment is ready and 1 otherwise. Installed wheels expose the same entry points as `vco-isf`, `vco-isf-web`.
+Use a completed job or exported result for metrics, and a result with the required closure and acquisition evidence for optimizer qualification. `vco-isf --web` opens the local browser interface for the Maestro-pair workflow. See [metrics](docs/ISF_METRICS.md) and [optimizer inputs](docs/OPTIM_API.md).
 
 ## Limitations
 
-- Testing never grants numerical signoff for a given PDK or design; imported data is always replay/non-signoff.
-- Topology detection needs a readable generated netlist in the selected history; schematic OA is not decoded.
-- The bundled runner executes the HB/HBNOISE path; PSS/PNOISE needs a separately verified adapter.
-- Thermal prediction covers MOS BSIM3v3/BSIM4 `id/rd/rs` and supported native passive loss mechanisms only; other devices show N/A, never a filled-in zero.
-- There is no safe generic Cadence cancel API: closing the window does not stop a simulator job.
-- No DRC/LVS or layout functionality.
-
-More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/PORTABLE_BINDING.md](docs/PORTABLE_BINDING.md), [SECURITY.md](SECURITY.md).
-
-## Offline checks
-
-```bash
-python3.11 -m unittest discover -s tests
-ISF_GUI_TEST=1 python3.11 -m unittest discover -s tests   # also runs the GUI tests (needs a display)
-```
+- Native compatibility was checked on one Virtuoso IC6.1.8 / Spectre 18.1 installation and a few CMOS processes. Qualify your toolchain, bindings and source evidence before relying on a result.
+- The modeled scope covers flicker and thermal noise of the selected gm devices and thermal noise from supported passive LC loss. Whole-oscillator HBnoise can include other sources. Unavailable mechanisms are reported as N/A.
+- Compare matching devices, mechanisms, operating points and offsets. The optimizer gate uses absolute flicker error below 0.5 dB for a symmetric pair, or at most 2 dB per device and mechanism for a manually selected pair. It also checks total closure and numerical quality.
+- ISF verifies and explains simulated changes. A baseline ISF cannot predict the direction of a tuning change. Use HBnoise to qualify phase noise. [Theory and validation](docs/ISF_THEORY.md)
 
 ## Not included in this repository
 
-The following are not part of this repository:
+- Your PDK, model files, device names or corners. [configs](configs) contains fictional examples.
+- Your Cadence Virtuoso, Maestro and Spectre tools or licenses.
+- A PSS/PNOISE adapter. The bundled runner uses HB, HBNOISE and HBXF.
+- Measured results from any real process. The example is synthetic ideal LC.
 
-- Your PDK, model files, device names and corners. `configs/` holds fictional generic examples only.
-- Your Cadence Virtuoso, Maestro and Spectre environment and licences, needed for live extraction.
-- A PSS/PNOISE adapter; the bundled runner uses the HB/HBNOISE path.
-- Measured results from any real process. The example bundle is a synthetic ideal LC.
-
-If you need one of these, or an example for your setup, please open a [GitHub issue](https://github.com/chloeyntu-byte/vco-isf-explorer/issues); the maintainer will reply there.
+For release checks, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## RF-FIELDWORK
 
@@ -103,19 +84,9 @@ Other open-source tools:
 - [Flux Studio](https://github.com/chloeyntu-byte/flux-studio): parametric RF passives, EMX sweeps, multi-objective search and SNPFit
 - [Tank Scan Lab](https://github.com/chloeyntu-byte/tank-scan-lab): LC tank scans (f0, Rp, gm, startup margin, loss shares), capacitor-array C/Q and resonance
 - [Layout 3D Viewer](https://github.com/chloeyntu-byte/layout-3d-viewer): read IC layouts in 3D, locate pins and trace connections
-- [Crescendo](https://github.com/chloeyntu-byte/crescendo): automatic device-size optimization inside Cadence Maestro
 - [VCO Design Studio](https://github.com/chloeyntu-byte/vco-design-studio): five literature LC VCO topology families, packaged schematics and native export
+
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
-
-Theory and synthetic examples: [ISF theory](docs/ISF_THEORY.md), [input bands](docs/input-noise-bands.md).
-
-![ISF process](docs/screenshots/02-process.png)
-
-![Harmonic decomposition](docs/screenshots/03-harmonics.png)
-
-![Input noise band → phase noise](docs/screenshots/04-bands.png)
-
-![Noise contributions](docs/screenshots/05-contributions.png)
+MIT. See [LICENSE](LICENSE).

@@ -2,120 +2,85 @@
 
 [English](README.md)
 
-LC VCO 冲激敏感函数（ISF / PPV）与闪烁噪声上变频的桌面分析工作流，界面为深色仪器风格的 Tk 窗口。
+VCO ISF Explorer 使用脉冲灵敏度函数（ISF）分析振荡器波形和所选噪声源对相位噪声的贡献。
 
-![VCO ISF Explorer：自带 ideal-LC 示例的 Overview](docs/screenshots/01-overview.png)
-
-1.1.0：结果页提供 00–07 流程导航、表格抽屉与图表双向联动；新增 ISF process 与 Fig.14 叠加、Qk 投影占比、输入频带相噪及斜率、逐源 Thermal bands。Noise contributions 恢复 pair 对比，并按参考功率排序。示例含合成 thermal 与未建模源；thermal 计算范围为 gm 对管与无源 LC。
+![深色主题中的理想 LC 合成示例](docs/screenshots/00-overview.png)
 
 ## 功能
 
-- **闪烁噪声上变频**：从已完成的 VCO HB/HBNOISE Maestro history 和选定的一颗核心 MOS 生成私有闪烁夹具，给出单管结果和对称独立双管估算（+3.01 dB）。
-- **ISF 与谐波闭合**：以载波为参考的带符号 H（I/Q）ISF 分支、逐阶谐波贡献和复数累计（“ISF process”和“Harmonic decomposition”视图）。
-- **相噪视图**：相噪与同口径误差随频偏联动，源贡献横条使用统一 PSD 分母，支持缩放、平移、显隐和 EPS 导出。
-- **热噪声支路**（手工噪声 TB 工作流）：gm 对管加受支持的原生 LC 损耗源，见 [docs/THERMAL_NOISE.md](docs/THERMAL_NOISE.md)。
-- **离线回放**：导入 canonical CSV bundle（[formats/README.md](formats/README.md)），无需任何 EDA 工具；仓库自带合成 ideal-LC 示例 [examples/ideal_lc](examples/ideal_lc)。
-- **Maestro 菜单启动器**与只读环境检测（`--diagnose`）。
-
-桌面和 Web 界面均为英文；数据格式与导出字段名保持不变。
+- 从 Design Lab 项目导出、现有 Maestro 配置或新库单元准备台架。现有 Maestro 可在审核后新增 ISF 测试。
+- 手动选择互补核心或不对称对管中的两个器件，并查看逐器件结果。对称简化需通过端子波形的半周期实测校验。本征漏源闪烁传递采用上下两个边带。
+- 运行和重开持久化作业，查看预检错误、空间估算和归档预览。
+- 在 00–08 视图中检查波形、谐波、同源相噪、热噪声频带和优化指标。可对照匹配结果并导出表格或图。
+- 用浅色或深色主题离线回放理想 LC 合成示例，也可通过 API 和命令行读取指标并校验比较条件。
 
 ## 环境要求
 
-- Python 3.11 及以上，带 Tk 8.6（`tkinter`）。
-- 实际提取需要 NumPy（`pip install '.[live]'`）；查看示例不需要。
-- **可选，由你自行提供：** 有授权的 Cadence Virtuoso/Maestro/Spectre 环境和你自己的 PDK。本仓库不含 PDK、模型文件、license 信息或仿真结果。运行仿真、读取 Maestro history 的功能需要该环境；查看示例 bundle 不需要。
+Python 3.11 或更新版本。桌面需要 Tk，实时分析和优化指标需要 NumPy，导出 PNG 需要 Pillow。合成回放和查看结果无需台架生成器、Cadence、PDK 或许可证。
 
-## 安装与快速开始
+台架入口 A/B/C 需要独立发布的 [VCO TB Generator](https://github.com/chloeyntu-byte/vco-tb-generator)、用户自己的 Cadence Virtuoso/MAESTRO、Spectre 与许可证，以及电路所用的 PDK 和模型。入口 A 还需要 Design Lab 项目导出。
 
-```bash
-git clone <repository-url> vco-isf-explorer
-cd vco-isf-explorer
-python3.11 -m pip install -e '.[live]'      # 也可直接在源码目录运行
-python3.11 run.py --workspace ./work
+## 安装并运行合成示例
+
+```sh
+python3.11 -m venv .venv
+. .venv/bin/activate
+python -m pip install '.[analysis,images]'
+vco-isf --workspace ./isf-workspace
 ```
 
-1. 在第一页点击 **Load example**。自带的合成 ideal-LC 回放（3 个工况 × 7 个频偏）会被导入，并自动切到 **Results** 页。
-2. 查看相噪随频偏曲线、贡献表、谐波和 ISF 波形。理想 LC 的 ISF 是纯正弦；两个 “asym” 工况加入了二次谐波成分。
-3. 随时可以重新生成示例数据：
+点击顶栏的 **Load synthetic example**，在 **Results** 中选择工况、频偏和视图。同一数据包位于 [examples/ideal_lc](examples/ideal_lc)，其中的波形和噪声功率均由公式生成。已导入的回放可从 **Jobs & preflight** 重新打开。
 
-```bash
-python3.11 examples/generate_example.py examples/ideal_lc
-```
-
-示例是解析模型（理想并联 LC、正弦载波、白噪声 + 1/f 电流噪声源，虚构的 200 kHz 拐角），“参考”相噪是模型预测值加固定 dB 偏移。它用于熟悉界面，不是实测数据。
-
-无显示的主机需要提供 X11/VNC。可选的仅本机回环 Web 界面：`python3.11 run.py --web --workspace ./work --open`。
+[ISF 过程](docs/screenshots/01-process.png) · [谐波](docs/screenshots/02-harmonics.png) · [噪声贡献](docs/screenshots/04-contributions.png) · [输入频带](docs/screenshots/06-bands.png) · [优化指标](docs/screenshots/08-metrics.png) · [浅色主题](docs/screenshots/00-overview-light.png)
 
 ## 在 Cadence 中使用
 
-在 Maestro 窗口选择 **Plug-in → Open VCO ISF Explorer**，选择已完成的 VCO history、核心 MOS 和频偏，然后点击 **Start analysis**。详见 [docs/MAESTRO_PLUGIN.md](docs/MAESTRO_PLUGIN.md)，要点：
+将 `VCO_TBGEN_ROOT` 设为生成器仓库路径，或在支持的命令上指定 `--tbgen-root`。在 [Testbench setup](docs/screenshots/testbench-setup.png) 中选择入口。
 
-- 在 `.cdsinit` 中加载 `cadence/vco_isf_menu.il`，先指向你的检出目录（`export VCO_ISF_HOME=/path/to/vco-isf-explorer`，或在加载前设置 `isfMaestroLauncher`）；
-- 启动器会查找带 Tk 的 Python 3.11+，也可用 `VCO_ISF_PYTHON` 明确指定；
-- PDK 位置、器件名、工艺角和工具路径都是**你的配置**：工具从所选 history 检测名称，并允许在 **Advanced settings** 中覆盖。`configs/` 只含虚构的通用示例（`PDK_A`、`device_model.scs`、`generic_nmos`），见 [configs/README.md](configs/README.md)。
+- **A · Design Lab** 选择生成目录和已导出的 DUT。
+- **B · Existing Maestro** 审核并确认新增测试。若从匹配的 Maestro 窗口启动，可使用当前会话的新增测试操作。
+- **C · New cell** 提供私有库映射、DUT、电源、控制、模型和输出节点。
 
-## 命令行（供 agent 使用）
+确认目标 gm 器件。要执行双器件分析，在 **Two-device analysis** 中选择 **Complementary core** 或 **Asymmetric pair** 并指定两只器件。先用 **Prepare** 审核，再点 **Start analysis**。已有仿真历史可从 **Setup** 或 [Maestro 菜单](docs/MAESTRO_PLUGIN.md) 直接分析。参见 [API](docs/API.md)、[端口绑定](docs/PORTABLE_BINDING.md)和 [HB 分析组合](docs/HB_ANALYSIS_BUNDLE.md)。
 
-```bash
-python3.11 run.py --diagnose --workspace ./work --json     # 只读环境报告（JSON）
-python3.11 run.py --workspace ./work                        # 桌面界面
-python3.11 run.py --web --host 127.0.0.1 --port 8765        # 可选的本机回环 Web 界面
+## 命令行与 API
+
+```sh
+vco-isf --help
+vco-isf capabilities --tbgen-root /path/to/vco-tb-generator --json
+vco-isf --diagnose --workspace ./isf-workspace --json
+vco-isf metrics --workspace ./isf-workspace --job JOB_ID --point lc_ideal --offset-hz 10000 --json
+vco-isf metrics compare before.json after.json --point lc_ideal --offset-hz 10000 --json
+vco-isf optim evaluate result.json --level L2 --point lc_ideal --offset-hz 10000
+vco-isf optim gate metrics.json
+vco-isf optim calibrate selected-result-ref.json
 ```
 
-`--diagnose` 还接受 `--config FILE` 和 `--maestro-context-file FILE`；环境就绪时退出码为 0，否则为 1。安装 wheel 后提供同样的入口 `vco-isf`、`vco-isf-web`。
+指标读取接受已完成作业或导出的结果。优化判据还需相应的采集和闭合证据。`vco-isf --web` 可打开本地浏览器中的 Maestro 双台架界面。参见[指标说明](docs/ISF_METRICS.md)和[优化接口](docs/OPTIM_API.md)。
 
 ## 限制
 
-- 测试通过不等于任何 PDK 或设计的数值签核；导入的数据一律为 replay / 非签核。
-- 拓扑识别需要所选 history 中可读的生成网表；不解码 schematic OA。
-- 自带运行器执行 HB/HBNOISE 路径；PSS/PNOISE 需要另行验证的适配器。
-- 热噪声预测只覆盖 MOS BSIM3v3/BSIM4 的 `id/rd/rs` 与受支持的原生无源损耗机制；其他器件显示 N/A，不用零补齐。
-- Cadence 没有安全的通用取消接口：关闭窗口不会停止仿真任务。
-- 不含 DRC/LVS 或版图功能。
+- 原生兼容性在一套 Virtuoso IC6.1.8 / Spectre 18.1 环境及少量 CMOS 工艺上验证过。使用结果前请验证本机工具链、绑定及证据。
+- 模型覆盖选定 gm 器件的闪烁和热噪声，以及支持的无源 LC 损耗热噪声。整振荡器的 HBnoise 可能包含其他噪声源。无法计算的机制显示 N/A。
+- 比较时须匹配器件、机制、工况和频偏。优化判据要求对称对管闪烁噪声绝对误差小于 0.5 dB，手动双器件分析每只器件的每种机制绝对误差不超过 2 dB，同时检查总量闭合与数值质量。
+- ISF 可以验证和解释已仿真的变化。单点基线无法预测调参方向，最终相噪仍由 HBnoise 验证。参见[理论与验证](docs/ISF_THEORY.md)。
 
-更多说明：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/PORTABLE_BINDING.md](docs/PORTABLE_BINDING.md)、[SECURITY.md](SECURITY.md)。
+## 仓库不包含
 
-## 离线检查
+- 用户的 PDK、模型文件、器件名和工艺角。[configs](configs) 内只有虚构示例。
+- Cadence Virtuoso、Maestro、Spectre 或许可证。
+- PSS/PNOISE 适配器。自带执行器使用 HB、HBNOISE 和 HBXF。
+- 真实工艺测量结果。示例为理想 LC 合成数据。
 
-```bash
-python3.11 -m unittest discover -s tests
-ISF_GUI_TEST=1 python3.11 -m unittest discover -s tests   # 同时运行 GUI 测试（需要显示）
-```
-
-## 未随仓库提供的内容
-
-以下内容不随本仓库提供：
-
-- 你的 PDK、模型文件、器件名和工艺角。`configs/` 里只有虚构的通用示例。
-- 你自己的 Cadence Virtuoso、Maestro、Spectre 环境和许可证，实时提取时才需要。
-- PSS/PNOISE 适配器；自带的运行器走 HB/HBNOISE 路径。
-- 任何真实工艺的实测结果。示例数据包是一个合成的理想 LC。
-
-需要其中某一项，或想为你的环境要一个示例，请在 [GitHub Issues](https://github.com/chloeyntu-byte/vco-isf-explorer/issues) 提出，维护者会在那里回复。
+发布验证见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## RF-FIELDWORK
 
-- 总站（全部工具、演示片与项目进展）：https://rf-fieldwork.pages.dev/?lang=zh
-- 本工具介绍页（含配音演示片）：https://rf-fieldwork.pages.dev/isf/?lang=zh
+- [实验室主页](https://rf-fieldwork.pages.dev/?lang=zh)
+- [本工具主页](https://rf-fieldwork.pages.dev/isf/?lang=zh)
 
-其他开源工具：
+其他工具包括 Flux Studio、Tank Scan Lab、Layout 3D Viewer 和 VCO Design Studio。
 
-- [Flux Studio](https://github.com/chloeyntu-byte/flux-studio)：参数化射频无源器件、EMX 扫参、多目标优化与 SNPFit 拟合
-- [Tank Scan Lab](https://github.com/chloeyntu-byte/tank-scan-lab)：LC 谐振腔扫描（f0、Rp、gm、起振裕量、损耗分摊）、电容阵列 C/Q 与谐振
-- [Layout 3D Viewer](https://github.com/chloeyntu-byte/layout-3d-viewer)：三维阅读版图、定位 pin、追踪连接
-- [Crescendo](https://github.com/chloeyntu-byte/crescendo)：在 Cadence Maestro 里自动优化器件尺寸
-- [VCO Design Studio](https://github.com/chloeyntu-byte/vco-design-studio)：五类文献 LC VCO 拓扑、分层原理图与原生导出
-
-## 许可
+## 许可证
 
 MIT，见 [LICENSE](LICENSE)。
-
-理论与示例: [ISF theory](docs/ISF_THEORY.md), [input bands](docs/input-noise-bands.md).
-
-![ISF process](docs/screenshots/02-process.png)
-
-![Harmonic decomposition](docs/screenshots/03-harmonics.png)
-
-![Input noise band → phase noise](docs/screenshots/04-bands.png)
-
-![Noise contributions](docs/screenshots/05-contributions.png)

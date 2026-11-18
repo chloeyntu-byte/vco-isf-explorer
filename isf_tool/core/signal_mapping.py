@@ -69,9 +69,8 @@ def _logical(name):
 
 
 def canonical_net(name):
-    value = str(name or "").strip().lstrip("/").replace("/", ".")
-    # Cadence's built-in global ground is emitted as node 0 by Spectre.
-    return "0" if value == "gnd!" else value
+    from .spectre_topology import canonical_name
+    return canonical_name(name)
 
 
 def _unique(values):
@@ -79,193 +78,42 @@ def _unique(values):
 
 
 def _parameters(text):
-    text = str(text or "")
-    result, position = {}, 0
-    while position < len(text):
-        match = re.search(r"([^\s=]+)\s*=\s*", text[position:])
-        if not match:
-            break
-        name = match.group(1)
-        start = position + match.end()
-        end, nesting, quoted, escaped = start, [], False, False
-        while end < len(text):
-            char = text[end]
-            if escaped:
-                escaped = False
-            elif char == "\\":
-                escaped = True
-            elif char == '"':
-                quoted = not quoted
-            elif not quoted:
-                if char in "([{":
-                    nesting.append(char)
-                elif char in ")]}":
-                    if nesting:
-                        nesting.pop()
-                elif char.isspace() and not nesting:
-                    break
-            end += 1
-        result[name] = text[start:end]
-        position = max(end, start + 1)
-    return result
+    from .spectre_topology import assignments
+    return assignments(str(text or ""))
 
 
 def _lines(text):
-    """Join the two Spectre continuation forms without evaluating expressions."""
-    result, pending = [], ""
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("//") or line.startswith("*"):
-            continue
-        if line.startswith("+"):
-            if pending:
-                pending += " " + line[1:].strip()
-            elif result:
-                result[-1] += " " + line[1:].strip()
-            continue
-        if pending:
-            line = pending + " " + line
-            pending = ""
-        if line.endswith("\\"):
-            pending = line[:-1].strip()
-        else:
-            result.append(line)
-    if pending:
-        result.append(pending)
-    return result
+    from .spectre_topology import logical_lines
+    return logical_lines(text)
 
 
 def parse_netlist(text, source="generated netlist", additional_texts=None):
-    """Extract names and expand only subcircuits defined in this input file.
-
-    External PDK includes are inventoried, never parsed or guessed. ``terminals``
-    contains resolved hierarchical nets; ``local_terminals`` retains definition
-    spelling so a runner can construct a checked local edit.
-    """
-    result = {"devices": [], "sources": [], "analyses": [], "parameters": [], "nets": [], "saves": [], "includes": [], "subcircuits": [], "warnings": []}
-    definitions, top, scope = {}, [], None
-    globals_ = {"0"}
-    statements = [(source, line) for line in _lines(text)]
+    from .spectre_topology import SpectreTopology
+    tree = SpectreTopology(text=text, includes=False)
     for extra_source, extra_text in additional_texts or []:
-        statements.extend((extra_source, line) for line in _lines(extra_text))
-    for source, line in statements:
-        tokens = line.split()
-        if not tokens:
-            continue
-        lower = tokens[0].lower()
-        if lower in ("subckt", "inline"):
-            parts = tokens[1:] if lower == "subckt" else tokens[2:]
-            if parts:
-                scope = parts[0]
-                definitions[scope] = {"name": scope, "ports": [p for p in parts[1:] if "=" not in p], "instances": []}
-            continue
-        if lower == "ends":
-            scope = None
-            continue
-        if lower == "global":
-            globals_.update(tokens[1:])
-        if lower == "parameters":
-            for name, expression in _parameters(line[len(tokens[0]):]).items():
-                result["parameters"].append({"name": name, "expression": expression, "scope": scope or "", "source": source})
-            continue
-        if lower == "include":
-            match = re.search(r'include\s+"([^"]+)"', line)
-            if match:
-                result["includes"].append({"name": match.group(1), "expression": line, "source": source})
-            continue
-        if lower == "save":
-            for name in tokens[1:]:
-                result["saves"].append({"name": name, "scope": scope or "", "source": source})
-            continue
-        match = re.match(r"^(\S+)\s*\(([^)]*)\)\s*(\S+)(.*)$", line)
-        if match:
-            name, nodes, model, tail = match.groups()
-            record = {"name": name, "model": model, "terminals": nodes.split(), "parameters": _parameters(tail), "parameter_text": tail.strip(), "scope": scope or "", "definition": line, "source": source}
-            if model.lower() in _ANALYSES:
-                record["analysis_type"] = model.lower()
-                result["analyses"].append(record)
-            elif scope:
-                definitions[scope]["instances"].append(record)
-            else:
-                top.append(record)
-        elif len(tokens) > 1 and tokens[1].lower() in _ANALYSES:
-            result["analyses"].append({"name": tokens[0], "analysis_type": tokens[1].lower(), "terminals": [], "parameters": _parameters(" ".join(tokens[2:])), "source": source})
-
-    def expand(records, prefix="", port_map=None, stack=()):
-        port_map = port_map or {}
-        for item in records:
-            if len(result["devices"]) >= MAX_EXPANDED_DEVICES:
-                result["warnings"].append("Hierarchical device count exceeds read-only discovery limit; narrow TB or supply reviewed execution settings manually. ")
-                return
-            record = copy.deepcopy(item)
-            name = prefix + item["name"]
-            local = list(item["terminals"])
-            nodes = [port_map.get(n, n if n in globals_ or not prefix else prefix + n) for n in local]
-            record.update({"name": name, "local_name": item["name"], "local_terminals": local, "terminals": nodes, "hierarchy_path": prefix.rstrip(".")})
-            result["devices"].append(record)
-            if item["model"].lower() in _SOURCES:
-                result["sources"].append(record)
-            if item["model"] in definitions:
-                sub = definitions[item["model"]]
-                if item["model"] in stack or len(stack) >= 12 or len(nodes) != len(sub["ports"]):
-                    result["warnings"].append("Cannot safely expand hierarchy %s; terminal count or recursive hierarchy requires manual review. " % name)
-                    continue
-                expand(sub["instances"], name + ".", dict(zip(sub["ports"], nodes)), stack + (item["model"],))
-    expand(top)
-    result["subcircuits"] = list(definitions.values())
-    result["nets"] = _unique(list(globals_) + [node for item in result["devices"] for node in item["terminals"]] + [node for item in result["analyses"] for node in item["terminals"]])
-    return result
+        tree._load(extra_source, None, tree.root, extra_text)
+    return tree.catalog()
 
 
 def inspect_history_topology(history, selected_test=None):
+    from .spectre_topology import SpectreTopology
+    from .errors import ValidationError
     merged = parse_netlist("")
     merged["files"] = []
+    merged["dependency_hashes"] = {}
     seen = {}
+    read_cache = {}
     for entry in (history or {}).get("source_netlists", []):
-        if selected_test and entry.get("test") and entry.get("test") != selected_test:
+        if selected_test and entry.get("test") and entry["test"] != selected_test:
             continue
         path = entry.get("path")
         if not path or path in merged["files"]:
             continue
         try:
-            if os.path.getsize(path) > MAX_NETLIST_BYTES:
-                raise ValueError("Netlist exceeds read-only discovery size limit")
-            with open(path, "r", encoding="utf-8", errors="replace") as stream:
-                main_text = stream.read()
-            # Only read includes inside this bound generated-netlist tree. PDK
-            # and installation includes remain visible inventory entries.
-            root = os.path.realpath(os.path.dirname(path))
-            pending, local_texts, visited = [(path, main_text)], [], {os.path.realpath(path)}
-            total_bytes = len(main_text.encode("utf-8"))
-            local_warnings = []
-            while pending:
-                parent_path, parent_text = pending.pop(0)
-                for statement in _lines(parent_text):
-                    match = re.match(r'include\s+"([^"]+)"', statement, re.I)
-                    if not match:
-                        continue
-                    candidate = os.path.realpath(os.path.join(os.path.dirname(parent_path), match.group(1)))
-                    if candidate in visited or os.path.commonpath([root, candidate]) != root:
-                        continue
-                    visited.add(candidate)
-                    if len(visited) > 64:
-                        local_warnings.append("Local include count exceeds read-only limit; Some hierarchy remains unresolved. ")
-                        continue
-                    try:
-                        total_bytes += os.path.getsize(candidate)
-                        if total_bytes > MAX_NETLIST_BYTES:
-                            local_warnings.append("Local include total exceeds read-only limit; Some hierarchy remains unresolved. ")
-                            continue
-                        with open(candidate, "r", encoding="utf-8", errors="replace") as stream:
-                            included_text = stream.read()
-                    except OSError as exc:
-                        local_warnings.append("Local include unreadable %s: %s" % (candidate, exc))
-                        continue
-                    local_texts.append((candidate, included_text))
-                    pending.append((candidate, included_text))
-            current = parse_netlist(main_text, source=path, additional_texts=local_texts)
-            current["warnings"].extend(local_warnings)
-        except (OSError, ValueError) as exc:
+            tree = SpectreTopology(path, read_cache=read_cache)
+            current = tree.catalog()
+            merged["dependency_hashes"].update(tree.file_hashes)
+        except (OSError, ValueError, ValidationError) as exc:
             merged["warnings"].append("%s: %s" % (path, exc))
             continue
         merged["files"].append(path)
@@ -276,11 +124,14 @@ def inspect_history_topology(history, selected_test=None):
                 if old is None:
                     merged[key].append(record)
                     seen[identity] = record
-                elif key in ("devices", "sources") and (old["model"] != record["model"] or old["terminals"] != record["terminals"]):
-                    old["ambiguous"] = True
-                    merged["warnings"].append("different history point device %s topology differs; cannot share one automatic mapping. " % record["name"])
-                if old is not None and key == "sources" and old.get("parameters") != record.get("parameters"):
-                    old["voltage_constraint_ambiguous"] = True
+                elif key in ("devices", "sources"):
+                    if old["model"] != record["model"] or old["terminals"] != record["terminals"] or old.get("mos") != record.get("mos"):
+                        old["ambiguous"] = True
+                        merged["warnings"].append("Device %s changes topology across history points. A shared automatic mapping is unavailable." % record["name"])
+                    if old.get("effective_parameters") != record.get("effective_parameters"):
+                        old["parameter_variants"] = True
+                    if key == "sources" and old.get("parameters") != record.get("parameters"):
+                        old["voltage_constraint_ambiguous"] = True
         merged["nets"] = _unique(merged["nets"] + current["nets"])
         merged["warnings"].extend(current["warnings"])
     merged["warnings"] = _unique(merged["warnings"])
@@ -390,8 +241,34 @@ def _semantic_name(name):
 
 
 def _mos_devices(topology):
-    definitions = {item["name"] for item in topology.get("subcircuits", [])}
-    return [item for item in topology.get("devices", []) if len(item["terminals"]) == 4 and item["model"] not in definitions and (re.search(r"mos|fet", item["model"], re.I) or item.get("local_name", item["name"]).lower().startswith("m")) and not item.get("ambiguous")]
+    return [item for item in topology.get("devices", [])
+            if item.get("mos") and not item.get("ambiguous")]
+
+
+def pair_symmetry(target, peer):
+    """Conservative topology evidence; never infer symmetry from names."""
+    reasons = []
+    if not target or not peer:
+        return {"proven": False, "reasons": ["No independent peer selected"]}
+    if target.get("model") != peer.get("model") or target.get("mos", {}).get("model_chain") != peer.get("mos", {}).get("model_chain"):
+        reasons.append("Different master or model chain")
+    for key in ('definition_identity', 'primitive_type'):
+        if target.get('mos', {}).get(key) != peer.get('mos', {}).get(key):
+            reasons.append("Different MOS definition identity: " + key)
+    for key in ("w", "l", "m", "nf"):
+        a = target.get("effective_mos_parameters", target.get("effective_parameters", {})).get(key, 1 if key in ("m", "nf") else None)
+        b = peer.get("effective_mos_parameters", peer.get("effective_parameters", {})).get(key, 1 if key in ("m", "nf") else None)
+        if a is None or b is None or not isinstance(a, (float, int)) or not isinstance(b, (float, int)) or abs(a - b) > max(abs(a), abs(b), 1e-30) * 1e-12:
+            reasons.append("Effective %s differs or is unresolved" % key)
+    if target.get('inherited_m', 1) != peer.get('inherited_m', 1):
+        reasons.append("Inherited multiplicity differs")
+    a, b = target.get('terminals', []), peer.get('terminals', [])
+    if len(a) != 4 or len(b) != 4 or a[2:] != b[2:] or a[1] != b[0] or b[1] != a[0]:
+        reasons.append("Asymmetric source/body bias or cross-coupled connections")
+    if target.get('parameter_variants') or peer.get('parameter_variants'):
+        reasons.append("Verify dimensions at each operating point")
+    return {"proven": not reasons, "reasons": reasons,
+            "basis": "master/effective w,l,m,nf/shared source,bulk/cross-coupled gates"}
 
 
 def get_signal_catalog(test, topology):
@@ -460,9 +337,16 @@ def _noise_outputs(outputs, offset_hz):
     return _unique(candidates)
 
 
-def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=10000.0):
+def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=10000.0, *, topology=None):
     role = "vco" if role == "vco" else "replica"
-    topology = inspect_history_topology(history, test.get("name"))
+    if topology is None:
+        topology = inspect_history_topology(history, test.get("name"))
+    elif hasattr(topology, 'catalog'):
+        tree = topology
+        topology = tree.catalog()
+        topology['dependency_hashes'] = dict(tree.file_hashes)
+    else:
+        topology = copy.deepcopy(topology)
     equivalent = _voltage_equivalence(topology)
     def matches_voltage(pair, device, semantic):
         a, b = _PORTS[semantic]
@@ -475,6 +359,8 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
         issues.append({"key": "mapping_overrides", "severity": "error", "message": "Manual overrides must be a name-to-string object. "})
         overrides = {}
     valid_keys = {item[0] for item in schema}
+    if role == 'vco':
+        valid_keys.add('core_device')
     for key in overrides:
         if key not in valid_keys:
             issues.append({"key": key, "severity": "error", "message": "Unknown manual mapping field %s; Remove old overrides, then detect again. " % key})
@@ -482,6 +368,29 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
     output_names = _unique(record["name"] for record in outputs)
     variables = _unique(record["name"] for record in catalog if record["kind"] == "variable" or (record["kind"] == "parameter" and not record["details"].get("scope")))
     nets = _unique(record["name"] for record in catalog if record["kind"] == "net")
+    requested = canonical_net(overrides.get('target_instance') or overrides.get('dc_instance'))
+    if requested and not any(r['name'] == requested for r in topology['devices']):
+        from .spectre_topology import SpectreTopology
+        from .errors import ValidationError
+        for entry in (history or {}).get('source_netlists', []):
+            try:
+                tree = SpectreTopology(entry['path'])
+                row = tree.resolve_instance(requested)
+                identity = tree.mos_identity(row)
+                row['mos'] = identity
+                row['connection_terminals'], row['connection_local_terminals'] = list(row['terminals']), list(row['local_terminals'])
+                row['terminals'] = [row['terminals'][i] for i in identity['terminal_order']]
+                row['local_terminals'] = [row['local_terminals'][i] for i in identity['terminal_order']]
+                topology['devices'].append(row)
+                topology['nets'] = _unique(topology['nets'] + row['terminals'])
+                catalog = get_signal_catalog(test, topology)
+                break
+            except (OSError, KeyError, ValueError, ValidationError) as exc:
+                issues.append({'key':'target_instance', 'severity':'error', 'message':str(exc)})
+    failed_target = next((r for r in topology['devices'] if r['name'] == requested and not r.get('mos')), None)
+    if failed_target:
+        issues.append({'key':'target_instance' if role == 'vco' else 'dc_instance', 'severity':'error',
+                       'message':failed_target.get('mos_error','MOS identity or four-terminal connectivity is unverified')})
     devices = _mos_devices(topology)
     device_names = _unique(item["name"] for item in devices)
     by_device = {item["name"]: item for item in devices}
@@ -625,7 +534,16 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
         target = choose("target_instance", device_names, target_candidates, "voltage-waveform node differences and actual device terminals" if constrained else "actual netlist MOS Candidates")
         device = by_device.get(target, {})
         peer_candidates = [item["name"] for item in devices if target and item["name"] != target and item["model"] == device["model"] and canonical_net(item["terminals"][0]) in (canonical_net(mapping.get("output_p")), canonical_net(mapping.get("output_n"))) and canonical_net(item["terminals"][0]) != canonical_net(device["terminals"][0])]
-        choose("peer_instance", [name for name in device_names if name != target], peer_candidates, "same device model, other differential output branch")
+        symmetric = [name for name in peer_candidates if pair_symmetry(device, by_device.get(name))['proven']]
+        selected_only = overrides.get('core_device') is True
+        selected_peer = choose("peer_instance", [name for name in device_names if name != target], [] if selected_only else symmetric, "Peer branch with verified master, dimensions, and symmetric bias")
+        mapping['pair_policy'] = pair_symmetry(device, by_device.get(selected_peer))
+        if selected_only:
+            mapping['core_device'] = True
+        if (peer_candidates and not symmetric and not selected_only
+                or selected_peer and not mapping['pair_policy']['proven']):
+            issues.append({'key': 'peer_instance', 'severity': 'warning',
+                           'message': 'Pair symmetry is unverified. The single-device result is retained without a 3.01 dB increase.'})
         for index, key in enumerate(("drain", "gate", "source", "bulk")):
             value = device.get("terminals", [None] * 4)[index]
             choose(key, nets, value, "selected device D/G/S/B terminal", expected=value)
@@ -667,6 +585,8 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
         preferred = preferred_transfer_choices(transfer_records, transfer_errors, transfer_families, 'magnitude')
         if not preferred:
             preferred = preferred_transfer_choices(transfer_records, transfer_errors, transfer_families, 'complex')
+        if selected_only:
+            preferred = []
         selected_transfer = choose('transfer_output', transfer_candidates, preferred,
             'result read source in output family and expression (physical binding confirmed by the user)')
         if selected_transfer and selected_transfer not in transfer_records and selected_transfer not in transfer_errors:
@@ -685,7 +605,7 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
                 'notice': 'uses the new drain-to-source injection in the private copy; not used Maestro Magnitude output. '}
         anchor = mapping['transfer_contract']
         phase_candidates = preferred_transfer_choices(transfer_records, transfer_errors, transfer_families, 'phase', anchor)
-        phase_output = choose('transfer_phase_output', transfer_candidates, phase_candidates,
+        phase_output = choose('transfer_phase_output', transfer_candidates, [] if selected_only else phase_candidates,
                               'phase output family and read source (retained for reference, physical binding is not checked twice)')
         if phase_output:
             phase = transfer_records.get(phase_output, {})
@@ -895,7 +815,13 @@ def discover_signal_mapping(test, role, history=None, overrides=None, offset_hz=
             field['active'] = True  # Invalid saved overrides must remain visible.
     order = {item[0]: index for index, item in enumerate(schema)}
     fields.sort(key=lambda item: order[item["key"]])
-    return {"mapping": mapping, "mapping_fields": fields, "signal_catalog": catalog, "topology": topology, "mapping_issues": issues, "mapping_overrides": copy.deepcopy(overrides)}
+    from .component_selection import catalog_from_topology, selection_request
+    spec = {'source': {'kind':'netlist', 'cwd':'.',
+                       'files':[{'path':p} for p in topology.get('files',[])]}}
+    components = catalog_from_topology(spec, topology, dependencies=topology.get('dependency_hashes'))
+    return {"mapping": mapping, "mapping_fields": fields, "signal_catalog": catalog, "topology": topology, "mapping_issues": issues, "mapping_overrides": copy.deepcopy(overrides),
+            'selection_spec':spec, 'component_catalog':components,
+            'selection_request':selection_request(spec,catalog=components)}
 
 
 def cross_tb_mapping(vco, replica):

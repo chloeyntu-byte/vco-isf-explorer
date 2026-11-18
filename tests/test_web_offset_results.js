@@ -508,7 +508,7 @@ test("actual parallel pies contain unique independent PSD sources, not aggregate
   assert.ok(Math.abs(data.simulated.total - 22e-12) < 1e-25);
   let html = elements["noise-contribution-pies"].innerHTML;
   assert.equal((html.match(/<svg/g) || []).length, 2);
-  assert.doesNotMatch(html, /<span>aggregate(?:2)? ·/);
+  assert.doesNotMatch(html, /<title>[^<]*aggregate/);
   assert.match(html, /missing.*N\/A|N\/A.*missing/s);
   assert.match(html, /zero.*0\.00%/s);
   assert.match(html, /V²\/Hz/);

@@ -1,8 +1,8 @@
 # ISF theory, local algorithm checks, and presentation conventions
 
-This document explains how the tool relates to Hajimiri–Lee ISF theory, what the local noise-current correction changes, what each decomposition means physically, and how the UI presents it. Section 4 uses reproducible synthetic examples to demonstrate algebraic identities; it does not claim measured circuit validation. See [THERMAL_NOISE.md](THERMAL_NOISE.md) for thermal data contracts and constants, and [THERMAL_REFERENCE.md](THERMAL_REFERENCE.md) for independent reference checks.
+This guide relates the Hajimiri–Lee theory to the local algorithms, noise modulation correction, decompositions and display conventions. Section 4 reports the simulation checks. See [thermal evidence](THERMAL_NOISE.md) and the [independent reference](THERMAL_REFERENCE.md).
 
-Version 1.1.0.
+Recorded November 11, 2026.
 
 ## 1. Reference
 
@@ -36,7 +36,7 @@ Q_k = H_k·M_k + H_-k·M_k*      (k ≥ 1)
 
 H[k] is the measured complex HBXF transfer (signed, including I/Q); M contains the Fourier coefficients of noise modulation. Parseval gives ΣQ = ⟨h·m⟩, the harmonic expansion of the paper's c0_eff. Therefore:
 
-- **k pairs Γ_k with M_k; it is not an input noise band.** Every Q_k up-converts baseband flicker and therefore follows 1/f³ (−30 dB/dec per order for a pure synthetic 1/f source; see §4).
+- **Order k pairs Γ_k and M_k.** Each Q_k upconverts baseband flicker, so the individual orders follow the near-carrier 1/f³ trend. The measured slope is approximately −28.5 dB/dec in §4.1.
 - k=0 is only the Γ_dc·M_dc term. In a symmetric differential circuit, Γ_dc ≈ 0, so this term is small. The dominant term is often k=1: the f0 component of noise modulation pairs with the ISF fundamental.
 - Q_k terms add coherently and may cancel. A single-order equivalent PN can exceed the total. The projected fraction of each order is c_k = Re(Q_k·ΣQ*)/|ΣQ|², with Σc_k = 1. A negative fraction indicates cancellation.
 
@@ -106,3 +106,91 @@ These are analytic synthetic identities, not validation of any physical circuit.
 
 Current thermal scope: gm pair + passive LC. Other active devices are not modeled.
 Synthetic examples check presentation and algebraic identities; they cannot replace numerical validation of user circuits. Harmonic truncation, phase grid, and noise models still require independent checks.
+
+## 7. What ISF verified across topologies
+
+ISF verifies and explains simulated changes. A baseline ISF cannot predict the
+direction of a tuning change. A baseline captures the periodic solution at one
+setting. It lacks the parameter derivatives of the coherent Qₖ terms, bias and
+carrier swing that control the response to a change.
+
+A prospective study fixed its prediction rule and acceptance criteria before
+simulation. Baseline ISF predicted **7 of 16** flicker change directions
+(**23–67% Wilson 95% interval**). When candidate simulations were available,
+matched-source ISF explained **27 of 29** changes within **0.5 dB**, with a
+**0.04 dB median absolute error**. These are aggregate validation statistics.
+The closure comparison used the same selected gm noise mechanisms in ISF and
+HBnoise.
+
+The qualified set included examples of the Hegazi-style second-harmonic
+filter and Murphy-style topology. The qualified examples supported coherent
+Qₖ attribution for flicker and stationary tank-loss attribution through Γ RMS
+and swing. Dynamic lag was design dependent. The evidence did not establish a
+general zero-overlap tuning rule, and several evaluated configurations lacked
+matched-source closure. Compare each simulated candidate with its baseline at
+the same operating point, offset and modeled scope, and verify the closure
+before drawing a physical conclusion.
+
+
+## 8. Manual complementary cores
+
+Enable **Complementary core** and select one NMOS and one PMOS occurrence.
+Each selection has its own measured D/G/S/B waveforms, device model and
+geometry, DC flicker fixture, dynamic replica, and drain-to-source transfer.
+The PMOS replica uses its positive conduction current as the AM phase
+reference. Its exported terminal voltages and signed drain-to-source current
+retain the physical sign convention. The existing flicker and thermal kernels
+are evaluated separately for each device.
+
+For one device, the flicker Fourier terms still add coherently before conversion
+to power. Across devices, the model adds independent powers. The same rule applies
+to thermal source and input-band powers. An explicitly selected same-polarity
+peer can enter the modeled budget after the existing structural and measured
+half-period terminal-waveform checks. The selected-device comparison always
+uses the original NMOS and PMOS selections.
+
+Closure compares each selected device's predicted PM-SSB flicker and channel
+thermal contribution with that same intrinsic device's HBnoise `fn` and `id`
+contributions at the same offset. Switches, tail devices, and other unselected
+sources remain outside these comparisons. The complementary qualification
+limit is 2 dB absolute error for each device and each mechanism.
+
+## 9. Intrinsic flicker transfer and PM projection
+
+The private oscillator analysis measures the selected primitive's drain-to-source
+current port using two nodal HBXF analyses on the same periodic steady state.
+The primitive comes from the resolved device binding and Spectre's terminal map.
+The normal port is `primitive:int_d` to `primitive:int_s`, as for channel
+thermal noise. The difference of the two nodal responses gives the signed
+current-port transfer.
+
+For an input band at `k*f0 + offset`, the upper analysis uses HBXF sideband
+`k-1` at `f0 + offset`. The positive-frequency lower analysis uses sideband
+`-k-1` at `f0 - offset`. Conjugation converts its response to the signed
+output at `-f0 + offset` for the same input band. Let `r = conj(carrier) /
+abs(carrier)`. The PM transfer is `(r*upper - conj(r)*conj(lower))/(2j)`.
+The canonical export rotates this result back to the carrier's phase, which
+preserves the coherent sum's magnitude and the existing I/Q display reference.
+The output remains PM-SSB. High AM in the measured reference is recorded as a
+diagnostic because both sides participate in the PM projection.
+
+The external D/S port is a fallback when the supported primitive's intrinsic
+nodes are absent from saved HB and the missing names are absent from every
+member of both complete nodal HBXF families. The terminal map must establish the
+external port, and every signed band must contain its response. A missing
+analysis, partial trace coverage or an inconsistent trace list fails the
+transfer. The result records the fallback reason, missing traces and resolved
+port. Saved pre-release canonical bundles preserve their original calculation.
+
+## 10. Asymmetric pairs
+
+The symmetric shortcut requires both structural compatibility and measured
+half-period agreement of D/G/S/B voltages. If any terminal exceeds
+`1 µV + 0.1% of the measured peak`, the one-device calculation remains
+available on its own. Cross-coupled gates establish connectivity only.
+
+In the generated-replica setup, enable **Two-device analysis**, choose
+**Asymmetric pair**, and select both same-polarity MOS occurrences explicitly.
+Each device runs its own bias sampling, replica and intrinsic transfer.
+The pair PM-SSB PSD is the sum of the two independently calculated PSDs.
+The per-device absolute closure threshold is 2 dB for each mechanism.

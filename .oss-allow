@@ -31,3 +31,8 @@ tests/test_maestro_context.py:2700[0]@local
 # server prints for its own per-process random token (no secret is stored in the repository).
 tests/test_resources_and_web_security.py:token[=]"incorrect
 isf_tool/server.py:token[=]"\s*\+\s*urllib\.parse\.quote\(
+
+# Synthetic four-part simulator version gated on the 18.1 prefix, not a network address.
+tests/test_followup_core.py:^18\.1\.0\.001$
+# Synthetic header used by generated/manual acquisition equivalence tests, not a network address.
+tests/test_generated_thermal.py:^18\.1\.0\.001$

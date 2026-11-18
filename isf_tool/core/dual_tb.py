@@ -613,6 +613,12 @@ def recompute_dual_tb(canonical):
     replica_rows = list(canonical.get("replica_results", []))
     workpoint_rows = list(canonical.get("workpoint", []))
     metadata = dict(canonical.get("metadata", {}))
+    phase_sign = metadata.get('replica_current_phase_sign', 1)
+    if type(phase_sign) is not int or phase_sign not in (-1, 1):
+        raise BundleImportError('Invalid replica current phase sign')
+    if phase_sign == -1 and (metadata.get('device_polarity') != 'pmos'
+                             or metadata.get('replica_source') != 'generated'):
+        raise BundleImportError('Negative replica phase reference requires a bound generated PMOS')
     options = dict(canonical.get("options", {}))
     signoff = options.get("signoff", metadata.get("signoff", False))
     if not isinstance(signoff, bool):
@@ -745,7 +751,7 @@ def recompute_dual_tb(canonical):
 
         corner_key = str(vrows[0].get("corner", ""))
         candidates = _candidate_sets(
-            id_harmonics,
+            {k: phase_sign * value for k, value in id_harmonics.items()},
             am_asd,
             pm_asd,
             mdc,
@@ -949,7 +955,7 @@ def recompute_dual_tb(canonical):
             second_dynamic_asd = _finite_number(
                 first, "second_device_predicted_pm_asd_V_rtHz", point_name
             )
-        elif metadata.get("second_device_model") == "symmetric_independent":
+        elif first.get('pair_model') != 'single_device_only' and metadata.get("second_device_model") == "symmetric_independent":
             second_dynamic_asd = single_dynamic_asd
         predicted_pair_asd = None
         spectre_pair_asd = None
@@ -1036,6 +1042,7 @@ def recompute_dual_tb(canonical):
             "delay_pm_asd_V_rtHz": calculated["methods"]["delay"]["pm_asd_V_rtHz"],
             "dynamic_pm_asd_V_rtHz": calculated["methods"]["dynamic"]["pm_asd_V_rtHz"],
             "spectre_fn_pm_asd_V_rtHz": reference,
+            "pair_model": first.get('pair_model') or metadata.get('second_device_model'),
             "second_device_predicted_pm_asd_V_rtHz": second_dynamic_asd,
             "predicted_pair_pm_asd_V_rtHz": predicted_pair_asd,
             "spectre_pair_pm_asd_V_rtHz": spectre_pair_asd,
@@ -1069,6 +1076,10 @@ def recompute_dual_tb(canonical):
         }
         summary.update(quality_fields(first))
         summary.update(total_noise_evidence)
+        for field in ("flicker_transfer", "pair_notice"):
+            by_point = metadata.get(field + "_by_point")
+            if isinstance(by_point, Mapping) and point_name in by_point:
+                summary[field] = by_point[point_name]
         summary["thermal_noise"] = thermal_evidence(dict(summary, thermal_noise=thermal))
         result["summary"].append(summary)
         point_result["summary"].append(dict(summary))

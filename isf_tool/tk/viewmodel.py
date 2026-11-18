@@ -1089,6 +1089,7 @@ def _explicit_offset_hz(
 
 def _summary_view(row: Mapping[str, Any], noise_scope: str = "single", noise_kind: str = "flicker") -> dict[str, Any]:
     row = enrich_summary(row)
+    if row.get('pair_model') == 'single_device_only': noise_scope = 'single'
     calculated = calculated_noise_dbc(row, noise_kind=noise_kind, scope=noise_scope)
     reference = row.get("spectre_total_dBc_Hz")
     return {
@@ -1263,6 +1264,7 @@ def build_result_view(
         (row for row in summary if str(row.get("point") or "") == selected),
         summary[0] if point is None and summary else {},
     )
+    if selected_summary.get('pair_model') == 'single_device_only': noise_scope = 'single'
     point_data = points.get(selected, {}) if selected else {}
     if not isinstance(point_data, Mapping):
         point_data = {}
@@ -1313,6 +1315,35 @@ def build_result_view(
     if not isinstance(metadata, Mapping):
         metadata = {}
     offset_hz = _explicit_offset_hz(source, selected_summary, config)
+    contributions = noise_contribution_rows(selected_summary, scope=noise_scope, noise_kind=noise_kind)
+    if selected_summary.get('device_instance'):
+        physical = selected_summary['core_operating_point_id']
+        for row in summary:
+            if (row.get('core_operating_point_id') == physical and row.get('offset_Hz') == offset_hz
+                    and row.get('device_instance') != selected_summary['device_instance']):
+                contributions.extend(item for item in noise_contribution_rows(row, noise_kind=noise_kind)
+                                     if item.get('comparison_group') == 'complementary_device')
+        # A closure comparison and its exact primitive represent one source.
+        comparisons = {(item['source_device'], item['mechanism']): item for item in contributions
+                       if item.get('source_device') and item.get('simulated_dbc') is not None}
+        deduped = []
+        for item in contributions:
+            comparison = comparisons.get((item['device'], item['mechanism']))
+            if item['kind'] == 'source' and comparison is not None:
+                for field in ('asd_V_rtHz', 'psd_V2_Hz', 'calculated_psd_V2_Hz', 'fraction_pct'):
+                    comparison[field] = item.get(field)
+            else:
+                deduped.append(item)
+        contributions = deduped
+        for sample in source['complementary_core']['combined']:
+            if sample['operating_point_id'] == physical and sample['offset_hz'] == offset_hz:
+                for mechanism, values in sample['closure'].items():
+                    if noise_kind == ('thermal' if mechanism == 'flicker' else 'flicker'):
+                        continue
+                    contributions.append(dict(label='Selected devices · ' + mechanism, device='Selected devices',
+                                              mechanism=mechanism, kind='aggregate', comparison_group='complementary_device',
+                                              calculated_dbc=values['isf_dbc_hz'], simulated_dbc=values['hbnoise_dbc_hz'],
+                                              error_db=values['error_db']))
     return {
         "job_id": resolved_job_id,
         "point": selected or N_A,
@@ -1322,7 +1353,7 @@ def build_result_view(
         "metadata": copy.deepcopy(dict(metadata)),
         "summary_rows": [_summary_view(row, noise_scope, noise_kind) for row in summary],
         "selected_summary": copy.deepcopy(dict(selected_summary)),
-        "noise_contribution_rows": noise_contribution_rows(selected_summary, scope=noise_scope, noise_kind=noise_kind),
+        "noise_contribution_rows": contributions,
         "reference_note": ("VCO simulated total phase noise was not collected: legacy results show N/A, do not substitute device flicker as a substitute. "
                            if finite_number(selected_summary.get("spectre_total_dBc_Hz")) is None else ""),
         "contribution_note": ("No collected per-device / noise mechanism details; old results cannot reconstruct unsaved contributions. "
@@ -1378,6 +1409,9 @@ def engineering(value: Any, unit: str = '', digits: int = 4) -> str:
     number = finite_number(value)
     if number is None:
         return '—' if value in (None, '', N_A) or isinstance(value, (int, float)) else str(value)
+    if unit in ('dB', 'dBc/Hz'):
+        text = f'{number:.{digits}f}'.rstrip('0').rstrip('.').replace('-', '−')
+        return f'{text} {unit}'
     exponent = max(-24, min(24, 3 * int(math.floor(math.log10(abs(number)) / 3)))) if number else 0
     scaled = number / 10 ** exponent
     if abs(scaled) >= 10 ** 3 - .5 * 10 ** (3 - digits):
@@ -1463,9 +1497,23 @@ def load_thermal_coefficients(result, point, job_directory=None):
                 paths.append(path if path.is_absolute() else Path(job_directory or '.') / path)
     if job_directory is not None:
         identity = str(summary.get('operating_point_id') or point)
-        # Exact leaf only: result labels are not permitted to escape the job.
-        if Path(identity).name == identity:
-            paths.append(Path(job_directory) / 'simulation' / identity / 'thermal' / 'source_coefficients.json')
+        directory = Path(job_directory).resolve()
+        sweep = result.get('offset_sweep')
+        if sweep:
+            offset = finite_number(summary.get('offset_Hz', summary.get('offset_hz')))
+            matches = [child for child in sweep.get('children', [])
+                       if offset is not None and finite_number(child.get('offset_hz')) == offset
+                       and child.get('job_id') == summary.get('child_job_id')]
+            if len(matches) != 1:
+                return {'sources': [], 'reason': 'No exact sweep child matches the selected point and offset'}
+            child = matches[0]
+            child_id = str(child.get('job_id') or '')
+            child_workspace = child.get('workspace')
+            if not child_workspace or not child_id or Path(child_id).name != child_id or child_id in ('.', '..'):
+                return {'sources': [], 'reason': 'The selected sweep child has no usable evidence directory'}
+            directory = Path(child_workspace).resolve() / 'jobs' / child_id
+        if identity and Path(identity).name == identity and identity not in ('.', '..'):
+            paths.append(directory / 'simulation' / identity / 'thermal' / 'source_coefficients.json')
     errors = []
     for path in paths:
         try:
@@ -1595,6 +1643,8 @@ def noise_scope_note(view, noise_kind):
     summary = view.get('selected_summary', {})
     thermal = summary.get('thermal_noise') or {}
     sources = thermal.get('sources') or []
+    if summary.get('device_instance'):
+        return 'Complementary core · ' + summary['device_instance'] + ' · Same-device flicker and channel thermal comparison'
     note = (f'{noise_kind} · flicker two-device (+3.01 dB independent symmetric assumption); '
             f'thermal modeled {len(sources)} Source / {thermal.get("scope") or "No budget provided"}; HBnoise is VCO all sources')
     if noise_kind == 'both' and thermal.get('status') != 'available':
@@ -1625,8 +1675,9 @@ def offset_projection(result, identity, overview, errors, decomposition=False):
 def contribution_projection(view, thermal_diagnostic=None):
     rows = []
     for row in view.get('noise_contribution_rows', []):
-        comparison = row.get('kind') == 'aggregate' and row.get('comparison_group') == 'flicker_pair'
-        if row.get('kind') != 'source' and not comparison:
+        group = row.get('comparison_group')
+        comparison = row.get('kind') == 'aggregate' and group == 'flicker_pair'
+        if row.get('kind') != 'source' and not comparison and group != 'complementary_device':
             continue
         copied = dict(row)
         copied['key'] = ('comparison:flicker_pair' if comparison else
@@ -1634,8 +1685,11 @@ def contribution_projection(view, thermal_diagnostic=None):
         copied['modeled'] = finite_number(row.get('calculated_dbc')) is not None
         if comparison:
             copied['scope'] = 'Aggregate comparison · overlaps the source details below, not counted twice'
-        elif row.get('comparison_group') == 'flicker_pair':
+        elif group == 'flicker_pair':
             copied['scope'] = 'included in symmetric gm pair comparison'
+        elif group == 'complementary_device':
+            error = finite_number(copied.get('error_db'))
+            copied['scope'] = f'ISF − HBnoise {error:+.2f} dB' if error is not None else 'Comparison unavailable'
         else:
             copied['scope'] = 'modeled' if copied['modeled'] else 'not modeled · outside ISF calculation'
         rows.append(copied)
@@ -1801,18 +1855,13 @@ def isf_overlay_projection(process, summary):
         trace['points']=[(p[0],p[1]/peak if peak else 0) if p is not None else None for p in trace['points']]
         trace['unit']='peak-normalized';traces.append(trace)
     dc,dyn=means['product_dc'],means['product_overlay_dyn']
-    # A zero mean has no finite logarithmic ratio. Keep the raw means and
-    # report the ratio as unavailable, including the indeterminate 0/0 case.
-    # Subtract logarithms to preserve the numeric range without forming a quotient.
-    difference=20*(math.log10(abs(dc))-math.log10(abs(dyn))) if dc and dyn else None
+    difference=20*math.log10(abs(dc/dyn)) if dc is not None and dyn else None
     sd,sy=finite_number(summary.get('dc_dBc_Hz')),finite_number(summary.get('dynamic_dBc_Hz'))
     summary_difference=sd-sy if sd is not None and sy is not None else None
     note=('Hajimiri & Lee (1998), Fig.14 / Eq.(27); each curve is normalized by its own peak (α raw values are not normalized). '
           'c0_eff period mean: quasi-static '+engineering(dc)+' / dynamic '+engineering(dyn)+
           '; 20log10 mean ratio (trapezoidal integration of raw waveforms) '+engineering(difference,'dB')+
           '; summary dc−dynamic (read independently) '+engineering(summary_difference,'dB'))
-    if dc == 0 or dyn == 0:
-        note += '; the period mean is zero, mean ratio has no finite dB value'
     return dict(panels=[dict(title='Fig.14 · Γ / α / Γ·α overlay',xlabel='Normalized phase φ (period)',ylabel='normalized by each peak',
                 group='phase',series=traces,legend_full=True,zero=True)],note=note,ratio_db=difference,summary_delta_db=summary_difference,
                 means=means)

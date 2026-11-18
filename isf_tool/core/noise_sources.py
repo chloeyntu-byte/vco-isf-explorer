@@ -10,9 +10,26 @@ import re
 _TOKEN = re.compile(r'\s*("(?:\\.|[^"\\])*"|[()]|[^\s()]+)')
 
 
+def _psf_string(token):
+    # Spectre escapes literal bus punctuation in quoted PSF names (e.g. \[),
+    # which is valid PSF syntax but is not a JSON string escape. Preserve the
+    # named character; keep strict JSON handling for quotes/control/unicode.
+    output = []
+    index = 0
+    while index < len(token):
+        if token[index] == '\\' and index + 1 < len(token):
+            following = token[index + 1]
+            output.append(following if following in '[]<>.:!(){}' else token[index:index + 2])
+            index += 2
+        else:
+            output.append(token[index])
+            index += 1
+    return json.loads(''.join(output))
+
+
 class _Reader:
     def __init__(self, text):
-        self.tokens = [("string", json.loads(v)) if v.startswith('"') else ("atom", v)
+        self.tokens = [("string", _psf_string(v)) if v.startswith('"') else ("atom", v)
                        for v in _TOKEN.findall(text)]
         self.index = 0
 

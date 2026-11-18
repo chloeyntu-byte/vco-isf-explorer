@@ -601,7 +601,9 @@ def _validate_bundle_provenance(
             zero_errors = bool(
                 re.search(r"spectre\s+completes\s+with\s+0\s+errors?", log_text, re.I)
             )
-            fatal = bool(re.search(r"\bfatal\b|^\s*error\b", log_text, re.I | re.M))
+            from .discovery import spectre_log_status
+            completion = spectre_log_status(log_text)
+            fatal = completion["fatal_or_error"]
             if (
                 not inside
                 or not fresh

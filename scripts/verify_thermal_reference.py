@@ -114,8 +114,7 @@ def provenance(reader, psf, fixture_name, filenames):
     output = []
     for filename in filenames:
         actual = reader.record(psf.parent / "netlist" / filename)
-        # The Verilog-A source is stored with a .txt suffix in the repository;
-        # the Spectre netlist directory holds it under its real name.
+        # The source fixture ships with a text suffix. Spectre reads the copied .va file.
         stored = filename + ".txt" if filename.endswith(".va") else filename
         fixture = reader.record(REPOSITORY / "tests" / "fixtures" / "thermal_reference" / fixture_name / stored)
         output.append({"file": filename, "pass": sha256(actual) == sha256(fixture),

@@ -142,8 +142,9 @@ class ThermalFiniteBandFollowupTests(unittest.TestCase):
                 engine._copy_regular_tree.side_effect = lambda src, dst: dst.mkdir(parents=True)
                 engine.run_spectre.side_effect = StopBeforeSimulation
                 cfg = dict(offset_hz=1000, max_harmonic=limit, main_max_sideband=17)
-                with self.assertRaises(StopBeforeSimulation):
-                    thermal_execution.run_thermal_point(engine, cfg, {}, root)
+                with mock.patch.object(thermal_execution, '_read', return_value={'header': {'version': "18.1.0.001"}}):
+                    with self.assertRaises(StopBeforeSimulation):
+                        thermal_execution.run_thermal_point(engine, cfg, {}, root)
                 generated = (root / "thermal" / "main" / "netlist" / "input.scs").read_text()
                 self.assertEqual(2, generated.count("maxsideband=%d " % (limit + 1)))
                 self.assertNotIn("maxsideband=18 ", generated)
@@ -160,7 +161,7 @@ class ThermalFiniteBandFollowupTests(unittest.TestCase):
             engine.main_output.return_value = dict(negative="a", positive="b")
             engine.exact_hb_fundamental.return_value = 5e9
             engine._copy_regular_tree.side_effect = lambda src, dst: dst.mkdir(parents=True)
-            with mock.patch.object(thermal_execution, "_read", return_value={"header": {"harms": 2}}):
+            with mock.patch.object(thermal_execution, "_read", return_value={"header": {"harms": 2, "version": "18.1.0.001"}}):
                 with self.assertRaisesRegex(ValueError, "do not support requested"):
                     thermal_execution.run_thermal_point(
                         engine, dict(offset_hz=1000, max_harmonic=3), {}, root)
@@ -245,7 +246,7 @@ class StateApiFollowupTests(unittest.TestCase):
         self.token = self.server.app.api_token
         self.payload = dict(name="independent-api-fixture", config=dict(
             execution=dict(allow_execute=True),
-            testbenches=dict(vco=dict(binding_fingerprint="Stale", history_fingerprint="Stale",
+            testbenches=dict(vco=dict(binding_fingerprint="stale", history_fingerprint="stale",
                                      mapping_overrides=dict(output_p="/arbitrary")))),
             view=dict(noise_kind="both", job_id="no-auto-run", cumulative_k=2))
 

@@ -1,61 +1,35 @@
-# 独立噪声参考 TB：怎么用、能证明什么
+# Independent noise reference testbenches
 
-这组参考不替换原 VCO 和 i_flicker，也不修改 PDK。它把“软件是否正确读取相位”和“真实 MOS 的闪烁噪声是多少”分开核验。具体本机目录、命名 history、验收数值与限制见本次维护报告；迁移后需要重新验证，不能沿用旧机器的通过状态。
+These references test phase reading and actual MOS flicker separately. They can be used alongside the original VCO and noise fixture. Repeat validation after moving a reference to another host or model.
 
-## 选择哪个测试
+| Cell / Maestro test | Purpose | Use |
+|---|---|---|
+| TB_ISF_NOISE_REF_ANALYTIC / REF_ANALYTIC | Known signed modulation and phase | Run independently in Maestro and cross-check complex HBAC sidebands against flicker output |
+| TB_ISF_NOISE_REF_MOS / REF_MOS_DC | Ordinary DC/noise current measurement | Bind as the noise replica with an explicit completed test/history and review preflight |
+| TB_ISF_NOISE_REF_MOS / REF_MOS | Real MOS noise under periodic bias | Inspect HB/HBNOISE/HBAC independently in Maestro |
 
-| 新 cell / Maestro test | 用途 | 使用方式 |
-| --- | --- | --- |
-| TB_ISF_NOISE_REF_ANALYTIC / REF_ANALYTIC | 已知带符号调制和相位的解析参考 | 在 Maestro 中运行；核对同一输入路径的 HBAC 复数侧带和真正的闪烁噪声输出 |
-| TB_ISF_NOISE_REF_MOS / REF_MOS_DC | 普通 DC/noise 电流测量 | 在本工具中作为“噪声副本 TB”，明确选择这个 test 和完整 history，再确认自动识别与预检 |
-| TB_ISF_NOISE_REF_MOS / REF_MOS | 周期偏置下的真实 MOS 噪声参考 | 独立在 Maestro 中查看 HB/HBNOISE/HBAC；不要当成只有 DC/noise 的普通副本测试 |
+The standard ISF workflow binds two testbenches, the VCO and either its existing noise TB or compatible REF_MOS_DC.
 
-普通 ISF 使用仍只绑定两个 TB：原 VCO，以及原 i_flicker 或已验证兼容的 REF_MOS_DC。不是要求再填写第三份 engine/profile 配置。
+Select the completed history you intend to analyze. Cadence can retain the old result path for a renamed history. The tool verifies exact names, selected tests and points, netlists and completion logs. Conflicting evidence blocks selection.
 
-本机已用原 VCO 配合 REF_MOS_DC 跑通两个工况、10 kHz：52 份 Spectre 日志均零错误，
-ISF 计算值与原 i_flicker 链路逐值相同。这是这一对 TB 的替代兼容性验证，不自动推广为
-其他模型、任意接法或所有频偏都通过；原先的物理质量告警仍保留。
+## Current readout and source identity
 
-命名 history 要选择其对应的完整运行记录。Cadence 有时在重命名后仍保留旧运行路径；
-工具会核对同父目录下的精确 history 名、实际 test/point、网表及完成日志。
-若旧目录和命名目录同时存在或证据不符，会明确阻止运行，不会按“最新目录”猜测；
-不要为消除错误而删除旧结果，应先确认所选 history 的实际归属。
+REF_MOS_DC's VGS, VDS and VBS are DC bias variables defined by terminal differences. A zero-volt current sensor in series with the drain feeds a 1 V/A readout. Detection follows the branch to the actual VDS source. Review output, device, noise analysis and cross-TB voltages in **Advanced settings**. Pick explicit names when binding is ambiguous.
 
-## 普通测噪与名称核对
+The `noise` total may include many mechanisms. Match the selected device's `fn` mechanism, offset and readout. Convert PSD in V²/Hz to ASD in V/√Hz once. Divide ASD by transimpedance R or PSD by R² to obtain the corresponding current quantity.
 
-REF_MOS_DC 的 VGS、VDS、VBS 是直流偏置变量；周期参考中的同名电压含义对应栅源、漏源、体源，不能按名字相似程度随意配对。电流检测源串在漏极支路，后面的 1 V/A 电流—电压转换用于输出读数。自动识别必须越过 0 V 检测源找到真正的 VDS 偏置源，不能把检测源的 0 V 当作漏源偏置。
+## Analytic and MOS evidence
 
-在“Advanced settings”主要核对实际使用的器件、输出节点、噪声分析与跨 TB 电压对应。完整 net/output/variable 清单只在诊断中展开。无法唯一确定时，手动选择；不要绕过预检。
+The analytic fixture modulates a fixed flicker source with a known signed periodic function. Its deterministic injection uses the same input. It checks complex sideband sign, phase, normalization and frequency coordinates. [Flicker-noise modeling reference](https://kenkundert.com/docs/tcad20-flicker-noise.pdf)
 
-注意区分两类噪声输出：
+Ideal MOS bias sources can shunt external D/S injection. Gate injection can instead measure a transconductance path. Retain deterministic port tests and actual MOS HBNOISE.fn current as separate evidence until their equivalence is established.
 
-- 普通 `noise` 总输出可能包含多个噪声机制，不自动等于 flicker。
-- 指定器件的 `fn` 才是本流程所比较的闪烁噪声贡献；必须明确同一器件、同一频偏和同一读出方式。
+## Phase checks
 
-原始贡献可能以 PSD（V²/Hz）保存，显示的 ASD（V/√Hz）只能开一次平方根。电流换算分别除以读出跨阻 R 或 R²；即使 R=1，单位也不能混写。
+The flicker sum combines complex harmonic contributions coherently. Displayed equivalent single-order and cumulative dB values should be read as separate projections. The historical current-referenced AM±jPM selection is not a unique phase reconstruction.
 
-## 为什么同时保留解析参考和 MOS 参考
+Confirm whether HB stores positive-frequency peak amplitudes or two-sided Fourier coefficients. Confirm whether HBAC reports input frequency or output sideband frequency. Read reference passes alongside PM validity, model warnings and phase evidence for the actual VCO.
 
-解析 TB 使用一个固定的闪烁噪声源，再乘以有正有负的已知周期调制。同一个输入节点还提供确定性小信号注入。因此可以直接检查归一化复数侧带的相位、正负号与频率坐标，而不用拿最终 VCO 相噪倒推答案。带符号调制不能被绝对值替换。[相关建模依据](https://kenkundert.com/docs/tcad20-flicker-noise.pdf)
+## Move the fixtures
 
-对真实 MOS，四端理想电压源会夹持端口电压。外部漏源注入电流可能主要流过理想偏置源；栅端注入测到的是周期跨导响应。它们都不能未经等效性证明，就被当成器件内部随机闪烁噪声的相位真值。因此 MOS 的真实 HBNOISE.fn 电流噪声参考与确定性端口检查分开记录。
-
-## 相位与谐波图的边界
-
-本工具的总贡献仍是各谐波复数贡献的相干求和。可以把各阶等效相噪、累计贡献和总量画在一起，但不能把这些 dB 数字直接相加。
-
-AM、PM 的非负幅度本身不包含所有相位符号。当前工程候选主要以电流谐波为参考，在两个 AM±jPM 候选间选择；这不是一般情况下的唯一相位恢复。参考验证必须检查候选集合能否包含已知真值，不能只检查最终总量是否接近。
-
-本次解析参考的第三阶给出了明确反例：真实相位约 110°，电流参考相位为 0°，而现有候选只能给出约 ±70°。最近候选仍差 40°，却未超过默认 45° 辅助门限。因此“门限检查通过”不等于相位通过黄金参考；本次不更改原生产候选算法，也不把这个反例隐藏起来。
-
-另一个常见陷阱是：HB 的正频谐波显示可采用峰值，而双边傅里叶系数可能是其一半。归一化前必须统一定义。HBAC 的频率轴也必须确认是输入频率还是输出侧带频率，不能把两个坐标直接比较。
-
-参考自身通过，不等于原 VCO 模型告警、PM 投影前提或生产相位候选已全部通过。结果页中的质量提示要保留；解析参考、MOS 测量参考、当前生产算法的检查结论应分别阅读。
-
-## 迁移与恢复
-
-迁移时复制两个新增 cell 及其私有参考支撑目录，保留波形文件、Verilog-A 模型和测量说明；重新解析模型/波形路径并确认 test、变量、节点、输出和完整 history。不要只复制一份 JSON。
-
-重新检查生成的网表、源极性、参考地、读出比例和实际模型，再运行命名 history；同时确认 Spectre 完成、Maestro 必需输出非空和 PSF 交叉核对。周期噪声还需要谐波/侧带收敛检查。[Cadence 侧带设置说明](https://community.cadence.com/cadence_blogs_8/b/rf/posts/guidelines-for-setting-pnoise-hbnoise-sidebands-to-get-accurate-results)
-
-若不使用参考，继续绑定原来的两个 TB 即可。回滚只涉及新增参考 cell/支撑目录和本次局部代码备份，不需要修改原 TB、PDK、Cadence 安装或系统服务。
+Copy the reference cells and their waveform, Verilog-A and measurement support together. Rebind models and waveforms, check test, variables, nodes and outputs, then produce and verify a new history. Verify the netlist, polarity, ground, transimpedance, model, completion and required outputs. Retain PSF cross-checks and run sideband/order convergence checks. [Cadence sideband guidance](https://community.cadence.com/cadence_blogs_8/b/rf/posts/guidelines-for-setting-pnoise-hbnoise-sidebands-to-get-accurate-results)

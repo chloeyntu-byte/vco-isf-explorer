@@ -25,12 +25,6 @@ DC_MAPPING = {
 FLICKER_SCOPE = "selected_device_with_symmetric_power_estimate"
 _MAX_NETLIST = 32 * 1024 * 1024
 _NUMBER = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?[a-zA-Z]*")
-_INCLUDE = re.compile(
-    r'(?i)^(include|ahdl_include)\s+"([^"\r\n]+)"'
-    r'(?:\s+section\s*=\s*([^\s/]+))?\s*(?://.*)?$'
-)
-_SECTIONS = re.compile(r"(?im)^[ \t]*(endsection|section)\b[ \t]*(\S*)[^\n]*")
-_SUBCKT = re.compile(r"(?im)^[ \t]*(?:inline[ \t]+)?subckt[ \t]+([^\s(]+)\b")
 
 
 def replica_source(testbenches):
@@ -54,167 +48,99 @@ def _read(path):
 
 
 def _include(statement, parent):
-    match = _INCLUDE.fullmatch(statement.strip())
-    if not match:
-        raise ValidationError("Generated replica requires literal paths and explicit models section: " + statement[:160])
-    kind, path, section = match.groups()
-    path = (parent / Path(path).expanduser()).resolve()
+    from .spectre_topology import SpectreTopology
+    tree = SpectreTopology(Path(parent) / '__isf_include__.scs', text=statement, includes=False)
+    if len(tree.includes) != 1:
+        raise ValidationError('literal include required: ' + statement)
+    item = tree.includes[0]
+    path = Path(item.include_path)
     if not path.is_file():
-        raise ValidationError("Selected VCO operating point include unreadable: " + str(path))
-    return kind, path, section
-
-
-def _section_index(text, path):
-    spans = list(_SECTIONS.finditer(text))
-    if not spans:
-        return {None: [(0, len(text))]}
-    ranges, start, name = {None: []}, 0, None
-    for marker in spans:
-        kind, token = marker.groups()
-        if kind.lower() == "section":
-            if name is not None:
-                raise ValidationError("Model section not closed: " + str(path))
-            ranges[None].append((start, marker.start()))
-            start, name = marker.end(), token
-        else:
-            if name is None or token and token != name:
-                raise ValidationError("Model section boundary mismatch: " + str(path))
-            ranges.setdefault(name, []).append((start, marker.start()))
-            start, name = marker.end(), None
-    if name is not None:
-        raise ValidationError("Model section not closed: " + str(path))
-    ranges[None].append((start, len(text)))
-    return ranges
+        raise ValidationError('Cannot read the include for the selected VCO operating point:' + str(path))
+    return item.kind, path, item.parameters.get('section')
 
 
 def active_subckt(path, section, name, read_cache=None):
-    """Read exactly the definition that the selected include section activates."""
-    path = Path(path)
-    if read_cache is None:
-        read_cache = {}
-    if path not in read_cache:
-        read_cache[path] = _read(path)
-    index_key = (path, "sections")
-    text = read_cache[path]
-    if index_key not in read_cache:
-        read_cache[index_key] = _section_index(text, path)
-    spans = read_cache[index_key].get(section, [])
-    if section is not None and len(spans) != 1:
-        raise ValidationError("Cannot uniquely locate model section: {} in {}".format(section, path))
-    active = "\n".join(text[start:end] for start, end in spans)
-    block_pattern = r"(?ims)^[ \t]*(?:inline[ \t]+)?subckt[ \t]+" + re.escape(name)
-    block_pattern += r"(?=\s|\().*?^[ \t]*ends(?:[ \t]+" + re.escape(name) + r")?[ \t]*(?:$|\n)"
-    blocks = re.findall(block_pattern, active)
-    names = [match.group(1) for match in _SUBCKT.finditer(active)]
-    if names.count(name) > 1 or (name in names and len(blocks) != 1):
-        raise ValidationError("active model section of MOS definition is duplicated or not closed: " + name)
-    return active, blocks[0] if blocks else None
+    from .spectre_topology import SpectreTopology, Definition
+    tree = SpectreTopology(path, section=section, read_cache=read_cache)
+    definition = tree.lookup(name)
+    active = "\n".join(i.text for i in tree.items if i.source == str(Path(path).resolve()))
+    return active, tree.definition_text(definition) if isinstance(definition, Definition) else None
 
 
 def model_definition(includes, model, read_cache=None):
-    """Walk only the literal include branches activated by the bound VCO point."""
-    from .signal_mapping import _lines
-
-    if read_cache is None:
-        read_cache = {}
-    queue = [(path, section, path, 0) for kind, path, section in includes if kind == "include"]
-    visited, matches = set(), {}
-    for path, section, root, depth in queue:
-        identity = (path, section)
-        if identity in visited:
-            continue
-        if len(visited) >= 160 or depth >= 12:
-            raise ValidationError("Selected VCO Model include chain exceeds safe parsing scope")
-        visited.add(identity)
-        active, block = active_subckt(path, section, model, read_cache)
-        if block:
-            matches[identity] = (root, block)
-        for match in re.finditer(r"(?im)^[ \t]*include\b[^\n]*", active):
-            end = match.end()
-            while active[match.start():end].rstrip().endswith("\\") and end < len(active):
-                line_end = active.find("\n", end + 1)
-                end = len(active) if line_end < 0 else line_end
-            line = _lines(active[match.start():end])[0]
-            _, child, child_section = _include(line, path.parent)
-            queue.append((child, child_section, root, depth + 1))
-    if len(matches) != 1:
-        raise ValidationError("Cannot uniquely confirm the four terminals in the selected operating point’s active model MOS definition: " + model)
-    (owner, section), (root, block) = next(iter(matches.items()))
-    header = _lines(block)[0]
-    pins = re.search(r"\(([^)]*)\)", header)
-    outer_pins = pins.group(1).lower().split() if pins else []
-    if not _ordered_mos_pins(outer_pins, _lines(block)[1:]):
-        raise ValidationError("Cannot prove this PDK MOS external terminal order is D G S B: " + model)
-    return {
-        "model_file": str(root),
-        "device_subckt_file": str(owner),
-        "device_subckt_section": section,
-    }, block
+    from .spectre_topology import SpectreTopology, Definition, MOS_TYPES
+    text = "\n".join(kind + " " + json.dumps(str(path)) + (" section=" + section if section else "")
+                     for kind, path, section in includes)
+    tree = SpectreTopology(text=text, read_cache=read_cache)
+    definition = tree.lookup(model)
+    if definition is None and model.lower() not in MOS_TYPES:
+        raise ValidationError("unproven MOS definition: " + model)
+    pins = definition.ports if isinstance(definition, Definition) else ['d', 'g', 's', 'b']
+    # Resolve through the same tree instead of an independent model regex.
+    probe_text = "ISF_MODEL_PROBE (" + " ".join(pins) + ") " + model
+    from .spectre_topology import statements
+    item = statements(probe_text)[0]
+    item.kind, item.name, item.model, item.pins, item.scope = 'instance', 'ISF_MODEL_PROBE', model, pins, tree.root
+    tree.items.append(item)
+    tree._items_by_span[(item.source,item.start)] = item
+    tree.root.instances.append(item)
+    row = tree.resolve_instance('ISF_MODEL_PROBE')
+    identity = tree.mos_identity(row)
+    owner = identity['definition_file']
+    root = next((str(path) for _, path, _ in includes), owner)
+    return dict(model_file=root, device_subckt_file=owner,
+                device_subckt_section=identity['definition_section'], mos=identity), (tree.definition_text(definition) if isinstance(definition, Definition) else '')
 
 
 def _ordered_mos_pins(outer_pins, body):
-    if outer_pins == ["d", "g", "s", "b"]:
-        return True
-    if len(outer_pins) != 4 or len(set(outer_pins)) != 4:
+    # Compatibility helper: without model TYPE evidence no order is proven.
+    from .spectre_topology import SpectreTopology
+    text = 'subckt ISF_CHECK (' + ' '.join(outer_pins) + ')\n' + '\n'.join(body) + '\nends ISF_CHECK\nX (' + ' '.join(outer_pins) + ') ISF_CHECK\n'
+    try:
+        tree = SpectreTopology(text=text)
+        return tree.mos_identity(tree.resolve_instance('X'))['terminal_order'] == [0, 1, 2, 3]
+    except ValidationError:
         return False
-    edges, intrinsic = {}, []
-    for line in body:
-        match = re.match(r"^\S+\s*\(([^)]*)\)\s+(\S+)(.*)", line.lower())
-        if not match:
-            continue
-        pin_text, model, tail = match.groups()
-        pins = pin_text.split()
-        if len(pins) == 2 and model in ("resistor", "inductor"):
-            a, b = pins
-            edges.setdefault(a, set()).add(b)
-            edges.setdefault(b, set()).add(a)
-        elif len(pins) == 4 and re.search(r"\bl\s*=", tail):
-            intrinsic.append(pins)
-    if len(intrinsic) != 1:
-        return False
-    for outer, inner in zip(outer_pins, intrinsic[0]):
-        pending, connected = [inner], set()
-        while pending:
-            node = pending.pop()
-            if node not in connected:
-                connected.add(node)
-                pending.extend(edges.get(node, ()))
-        if connected.intersection(outer_pins) != {outer}:
-            return False
-    return True
 
 
-def generated_fixture(source, target_instance, offset_hz, *, text=None, read_cache=None):
-    """Prepare the exact DC template and model identity without writing files."""
+def generated_fixture(source, target_instance, offset_hz, *, text=None, read_cache=None, topology=None, destination=None):
+    """Derive a fixture from the exact effective tree and proven MOS binding."""
     from .maestro_pair import _assignment_spans, _root_statements
-    from .signal_mapping import _lines, inspect_history_topology
+    from .signal_mapping import _lines
+    from .spectre_topology import SpectreTopology, Definition, evaluate
 
     source = Path(source).resolve()
     text = _read(source) if text is None else text
-    topology = inspect_history_topology({"source_netlists": [{"path": str(source)}]})
-    devices = [item for item in topology["devices"] if item["name"] == target_instance]
-    if len(devices) != 1 or len(devices[0]["terminals"]) != 4:
-        raise ValidationError("Selected VCO No unique four-terminal device in the operating point MOS instance: " + str(target_instance))
-    target = devices[0]
-    model, tail = target["model"], target["parameter_text"]
-    if not tail or not list(_assignment_spans(tail)):
-        raise ValidationError("Selected MOS no verifiable instance parameters provided: " + target_instance)
-    if target["scope"]:
-        values = [tail[begin:end] for _, begin, end in _assignment_spans(tail)]
-        if any(not _NUMBER.fullmatch(value) for value in values):
-            raise ValidationError("hierarchy MOS contains unevaluated parameter expressions, use existing Maestro noise TB: " + target_instance)
-        ancestor_names = [".".join(target_instance.split(".")[:index])
-                          for index in range(1, target_instance.count(".") + 1)]
-        parents = [item for item in topology["devices"] if item["name"] in ancestor_names]
-        if len(parents) != len(ancestor_names) or any(
-            any(name.lower() == "m" and value not in ("1", "1.0")
-                for name, value in parent["parameters"].items())
-            for parent in parents
-        ) or any(
-            parameter["scope"] in {parent["model"] for parent in parents}
-            and parameter["name"].lower() == "m" for parameter in topology["parameters"]
-        ):
-            raise ValidationError("Cannot preserve hierarchy MOS inherited instance multiplier parameters: " + target_instance)
+    tree = topology or SpectreTopology(source, text=text, read_cache=read_cache)
+    target = tree.resolve_instance(target_instance)
+    identity = tree.mos_identity(target)
+    extra_globals = (tree.globals - {'0'}) & set(identity.get('occupied_names', []))
+    if extra_globals:
+        raise ValidationError('unsupported model global bias nodes: ' + ', '.join(sorted(extra_globals)))
+    model = target['model']
+    params = dict(target['effective_parameters'])
+    unresolved = [key + '=' + str(value) for key, value in params.items()
+                  if not isinstance(value, (float, int))]
+    inherited = target.get('inherited_m', 1)
+    if not isinstance(inherited, (float, int)):
+        unresolved.append(str(inherited))
+    if unresolved:
+        context = [key + '=' + str(value) for key, value in target.get('scope_parameters', {}).items()
+                   if not isinstance(value, (float, int))]
+        raise ValidationError('unresolved effective parameters for {}: {}{}'.format(
+            target_instance, ', '.join(unresolved),
+            '; enclosing parameters: ' + ', '.join(context) if context else ''))
+    if inherited != 1:
+        params['m'] = params.get('m', 1) * inherited
+    parts = []
+    for key, value in params.items():
+        original = target['parameters'].get(key, '')
+        literal = bool(_NUMBER.fullmatch(original)) and (key != 'm' or inherited == 1)
+        parts.append(key + '=' + (original if literal else format(value, '.16g')))
+    tail = ' '.join(parts)
+    if not tail:
+        # A primitive can legitimately rely on its model defaults.
+        tail = ''
 
     statements = list(_root_statements(text))
     parameters, options, includes, include_lines = [], [], [], []
@@ -245,8 +171,34 @@ def generated_fixture(source, target_instance, offset_hz, *, text=None, read_cac
     if parameter_names & reserved:
         raise ValidationError("VCO parameter conflicts with a reserved generated-replica name: " + ", ".join(sorted(parameter_names & reserved)))
 
-    evidence, model_block = model_definition(includes, model, read_cache=read_cache)
-    evidence.update({"target_instance": target_instance, "model": model, "device_parameters": tail})
+    definition = tree.lookup(model, tree.statement_for(target).scope)
+    model_block = tree.exported_model_text(target)
+    owner = identity['definition_file']
+    # Keep the first active include entry as the model root (legacy field).
+    # Full include closure/hashes are retained independently.
+    model_root = str(includes[0][1]) if includes else owner
+    evidence = dict(model_file=model_root, device_subckt_file=owner,
+                    device_subckt_section=identity['definition_section'],
+                    target_instance=target['name'], model=model, device_parameters=tail,
+                    mos=identity, effective_parameters=params,
+                    dependency_hashes=tree.file_hashes)
+    local_definitions = []
+    if definition is not None and not isinstance(definition, Definition) and definition.scope is not tree.root:
+        raise ValidationError('unsupported scoped primitive model {}: select its four-terminal model wrapper to retain lexical model parameters'.format(model))
+    if owner == str(source):
+        # Local model definitions can reference sibling models/subckts. Keep
+        # their declaration closure, without copying any top-level stimulus.
+        local_definitions.extend(tree.files[d.source][d.start:d.end] for d in tree.root.models.values() if d.source == str(source))
+        local_definitions.extend(tree.relocated_definition_text(d) for d in tree.root.definitions.values() if d.header.source == str(source))
+    if isinstance(definition, Definition) and definition.parent is not tree.root:
+        root_definition = tree.lookup(model)
+        if root_definition is not None:
+            raise ValidationError('unsupported lexical model promotion: {} shadows a root definition; select an enclosing four-terminal wrapper'.format(model))
+        local_definitions.append(model_block)
+    order = identity['terminal_order']
+    connection = [None] * 4
+    for role, index in zip(('D', 'G', 'S', 'B'), order):
+        connection[index] = role
     mapping = DC_MAPPING
     fixture = [
         "// ISF generated single-MOS noise fixture",
@@ -254,12 +206,13 @@ def generated_fixture(source, target_instance, offset_hz, *, text=None, read_cac
         *parameters,
         "parameters " + " ".join(mapping[name + "_variable"] + "=0" for name in ("vgs", "vds", "vbs", "vs")),
         *include_lines,
+        *local_definitions,
         "{} (G S) vsource dc={} type=dc".format(mapping["vgs_source"], mapping["vgs_variable"]),
         "{} (DEXT S) vsource dc={} type=dc".format(mapping["vds_source"], mapping["vds_variable"]),
         "{} (B S) vsource dc={} type=dc".format(mapping["vbs_source"], mapping["vbs_variable"]),
         "V_ISF_DC_S (S 0) vsource dc={} type=dc".format(mapping["vs_variable"]),
         "{} (DEXT D) vsource dc=0 type=dc".format(mapping["dc_sense_source"]),
-        "{} (D G S B) {} {}".format(mapping["dc_instance"], model, tail),
+        "{} ({}) {} {}".format(mapping["dc_instance"], " ".join(connection), model, tail),
         "{} ({} 0) ccvs rm=1 type=ccvs probe={}".format(
             mapping["dc_transducer"], mapping["output_p"], mapping["dc_sense_source"]),
         *options,
@@ -272,4 +225,29 @@ def generated_fixture(source, target_instance, offset_hz, *, text=None, read_cac
         "saveOptions options save=allpub subcktoppoint=yes",
         "",
     ]
-    return "\n".join(fixture), evidence, model_block
+    fixture_text = "\n".join(fixture)
+    # A fixture is successful only if its root MOS resolves with the same
+    # effective geometry. Catch lost lexical declarations before setup_ok.
+    private = SpectreTopology(destination or Path('/__isf_private_fixture__/input.scs'), text=fixture_text, read_cache=read_cache)
+    copied = private.resolve_instance(DC_MAPPING['dc_instance'])
+    copied_identity = private.mos_identity(copied)
+    expected = tree.effective_mos_parameters(target, identity)
+    actual = private.effective_mos_parameters(copied, copied_identity)
+    for key, value in expected.items():
+        if value is not None and not isinstance(value, (float, int)):
+            intrinsic_path = target['name'] + ('.' + identity['intrinsic_path'] if identity['intrinsic_path'] else '')
+            intrinsic = tree.resolve_instance(intrinsic_path)
+            context = ', '.join(k + '=' + str(v) for k, v in intrinsic.get('scope_parameters', {}).items()
+                                if not isinstance(v, (float, int)))
+            raise ValidationError('unresolved effective {}={} for {}{}'.format(
+                key, value, target['name'], '; enclosing parameters: ' + context if context else ''))
+        if value != actual.get(key):
+            if isinstance(value, (float, int)) and isinstance(actual.get(key), (float, int)) and abs(value - actual[key]) <= max(abs(value), abs(actual[key]), 1e-30) * 1e-12:
+                continue
+            raise ValidationError('fixture lost effective {} for {}: {} -> {}'.format(key, target['name'], value, actual.get(key)))
+    from .private_validation import validate_mos_copy, write_private_netlist
+    validate_mos_copy(tree, target, private, DC_MAPPING['dc_instance'])
+    if destination is not None:
+        write_private_netlist(destination, fixture_text, sources=tree.files, candidate=private,
+                              validate=lambda copied: validate_mos_copy(tree, target, copied, DC_MAPPING['dc_instance']))
+    return fixture_text, evidence, model_block

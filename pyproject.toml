@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vco-isf-explorer"
-version = "1.1.0"
-description = "Portable desktop analysis procedure for VCO harmonic noise and ISF analysis"
+version = "1.2.0"
+description = "Portable desktop workflow for VCO harmonic noise and ISF analysis"
 readme = "README.md"
-license = {text = "MIT"}
+license = {file = "LICENSE"}
 requires-python = ">=3.11"
 dependencies = []
 classifiers = [
-  "Development Status :: 4 - Beta",
+  "Development Status :: 3 - Alpha",
   "Environment :: X11 Applications",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
@@ -21,7 +21,8 @@ classifiers = [
 [project.optional-dependencies]
 live = ["numpy>=1.20"]
 analysis = ["numpy>=1.20"]
-test = ["numpy>=1.20", "Pillow>=9.2"]
+images = ["Pillow>=9"]
+test = ["numpy>=1.20"]
 
 [project.scripts]
 vco-isf = "isf_tool.cli:main"
@@ -33,4 +34,4 @@ vco-isf-web = "isf_tool.server:main"
 include = ["isf_tool*"]
 
 [tool.setuptools.package-data]
-isf_tool = ["ui/*"]
+isf_tool = ["ui/*", "contracts/*.json", "schemas/*.json"]

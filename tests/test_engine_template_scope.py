@@ -136,7 +136,8 @@ class EngineTemplateScopeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             model = root / "model.scs"
-            model.write_text("// synthetic include; no simulator is executed\n", encoding="utf-8")
+            model.write_text("section hot\nmodel nch bsim4\nsubckt generic_nmos (d g s b)\n"
+                "parameters w=2u l=1u m=1\nm0 (d g s b) nch w=w l=l m=m\nends generic_nmos\nendsection hot\n", encoding="utf-8")
             template = root / "template" / "input.scs"
             template.parent.mkdir()
             original = (
@@ -157,10 +158,11 @@ class EngineTemplateScopeTests(unittest.TestCase):
                 "VCOMMON": [0.0, 0.0, 0.0],
             }
             target = root / "generated" / "input.scs"
-            # The model clone is outside this test's scope; isolate it so no
-            # PDK, external program, license or real library is consulted.
-            with mock.patch.object(ENGINE, "injected_nmos_subckt", return_value="// synthetic cloned model"):
-                ENGINE.prepare_replica_netlist(config, wave, target)
+            # A valid synthetic model keeps this fully offline while exercising
+            # the final private parser and selected model-copy validation.
+            config.update(model_file=str(model), device_subckt_file=str(model),
+                          _device_subckt_file=str(model), device_subckt_section='hot')
+            ENGINE.prepare_replica_netlist(config, wave, target)
             text = target.read_text(encoding="utf-8")
             self.assertIn("cornerSettings options temp=85 tnom=27 reltol=1e-3", text)
             self.assertNotIn("temp=27 tnom=27", text)

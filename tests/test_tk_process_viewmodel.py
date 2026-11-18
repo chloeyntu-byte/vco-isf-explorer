@@ -18,7 +18,7 @@ from test_tk_noise_kinds_gui import thermal_fixture
 
 class ProcessViewModelTests(unittest.TestCase):
     def test_engineering_values_units_rounding_and_missing(self):
-        for value, expected in ((357e9, '357 G'), (7.96e-10, '796 p'),
+        for value, expected in ((357e9, '357 G'), (796e-12, '796 p'),
                                 (-2.64e-6, '-2.64 µ'), (0, '0'), (999999.9, '1 M')):
             self.assertEqual(expected, engineering(value))
         self.assertEqual('8.192 pA/√Hz', engineering(8.192e-12, 'A/√Hz'))

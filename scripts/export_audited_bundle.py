@@ -33,6 +33,7 @@ from isf_tool.resources import RUNTIME_ROOT, script_path
 from isf_tool.core.result_presentation import SUMMARY_QUALITY_FIELDS, enrich_result, enrich_summary
 from isf_tool.core.dual_tb import spectre_noise_evidence
 from isf_tool.core.thermal_budget import thermal_evidence
+from isf_tool.core.discovery import spectre_log_status
 
 
 TOOL_ROOT = Path(RUNTIME_ROOT)
@@ -316,7 +317,9 @@ def main(argv=None):
 
     for summary in summary_rows:
         summary.update(spectre_noise_evidence(summary))
-        summary.update(enrich_summary(summary, offset_hz=float(cfg["offset_hz"]), pair_model="symmetric_independent"))
+        summary.update(enrich_summary(summary, offset_hz=float(cfg["offset_hz"]), pair_model=summary.get("pair_model") or "single_device_only"))
+        if cfg.get("replica_source") == "generated" and summary["pair_model"] == "single_device_only":
+            summary.update(replica_source="generated", target_noise_trace=main_traces["target_noise"])
         point = summary["point"]
         summary["operating_parameters"] = copy.deepcopy(operating_point_records.get(point, {}).get("params", {}))
         case = args.run_root / point
@@ -334,8 +337,8 @@ def main(argv=None):
             ):
                 raise RuntimeError("incomplete {} PSF for {}: {}".format(role, point, psf_dir))
             log_text = spectre_out.read_text(encoding="utf-8", errors="replace")
-            zero_errors = bool(re.search(r"spectre\s+completes\s+with\s+0\s+errors?", log_text, re.I))
-            fatal = bool(re.search(r"\bfatal\b|^\s*error\b", log_text, re.I | re.M))
+            completion = spectre_log_status(log_text)
+            zero_errors, fatal = completion["zero_errors"], completion["fatal_or_error"]
             if not zero_errors or fatal:
                 raise RuntimeError("Spectre completion proof failed for {} {}".format(point, role))
             execution_contract = None
@@ -423,9 +426,14 @@ def main(argv=None):
             for node in (output["negative"], output["positive"])
         )
         carrier = positive - negative
-        transfer = legacy.parse_hbxf(
-            cfg, main_psf, main_injection_trace(profile), max_k
-        )
+        if summary.get("flicker_transfer_json"):
+            transfer, evidence = legacy.analysis_flicker_transfer(cfg, main_psf, carrier, max_k)
+            if evidence != json.loads(summary["flicker_transfer_json"]):
+                raise RuntimeError("Flicker transfer evidence changed between analysis and export")
+            summary["flicker_transfer"] = evidence
+        else:
+            # Replay bundles produced before the two-sideband acquisition.
+            transfer = legacy.parse_hbxf(cfg, main_psf, main_injection_trace(profile), max_k)
         main_id_rows = legacy.parse_complex_wave(
             cfg, main_psf / "hb.fd.pss_hb", main_traces["current"]
         )
@@ -448,9 +456,10 @@ def main(argv=None):
                     "main_Id_imag_A": main_id.imag,
                     "spectre_pm_asd_V_rtHz": summary["spectre_fn_pm_asd_V_rtHz"],
                     **noise_evidence_csv_fields(summary),
-                    "second_device_predicted_pm_asd_V_rtHz": summary.get(
+                    "pair_model": summary.get('pair_model') or 'single_device_only',
+                    "second_device_predicted_pm_asd_V_rtHz": (summary.get(
                         "dynamic_pm_asd_V_rtHz"
-                    ),
+                    ) if summary.get('pair_model') == 'symmetric_independent' else None),
                     "spectre_second_device_pm_asd_V_rtHz": summary.get(
                         "spectre_m0_fn_pm_asd_V_rtHz"
                     ),
@@ -687,8 +696,8 @@ def main(argv=None):
         "raw_t0_spread_s": max(raw_t0_spreads) if raw_t0_spreads else 0.0,
         "replica_drive_time_origin_s": 0.0,
         "manual_waveform_shift": False,
-        "device_count": 2,
-        "second_device_model": "symmetric_independent",
+        "device_count": 2 if all(r.get("pair_model") == "symmetric_independent" for r in summary_rows) else 1,
+        "second_device_model": "symmetric_independent" if all(r.get("pair_model") == "symmetric_independent" for r in summary_rows) else None,
         "independent_device_combination": "power",
         "job_id": args.job_id,
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -706,11 +715,21 @@ def main(argv=None):
         "maestro_pair_binding": pair_binding,
         "psf_runs": psf_provenance,
     }
+    metadata["flicker_transfer_by_point"] = {
+        row["point"]: row["flicker_transfer"] for row in summary_rows if row.get("flicker_transfer")
+    }
+    metadata["pair_notice_by_point"] = {
+        row["point"]: row["pair_notice"] for row in summary_rows if row.get("pair_notice")
+    }
     if cfg.get("replica_source") == "generated":
         from isf_tool.core.generated_flicker import FLICKER_SCOPE
         metadata.update(replica_source="generated", flicker_scope=FLICKER_SCOPE,
                         target_noise_trace=main_traces["target_noise"],
                         peer_noise_trace=main_traces.get("peer_noise"))
+    if profile['main'].get('thermal_scope') == 'selected_device':
+        from isf_tool.core.physical_profile import replica_current_phase_sign
+        metadata.update(device_polarity=profile['main']['polarity'],
+                        replica_current_phase_sign=replica_current_phase_sign(profile))
     (args.output / "metadata.json").write_text(
         json.dumps(metadata, indent=2, sort_keys=True, allow_nan=False) + "\n",
         encoding="utf-8",

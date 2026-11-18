@@ -31,51 +31,36 @@ execution choices in `portable_setup.overrides`.  Detection snapshots are not
 manual overrides.  Switching TBs clears old pair-specific settings with a
 visible notice; edited or missing names require fresh inspection and preflight.
 
-## 普通使用：只核对真正会用到的名称
+## Review names and bindings
 
-1. 选择两个 TB 和各自完整 history，点击检测与绑定。
-2. 在高级设置核对输出正端、输出负端、传递幅相系列、目标器件，以及跨 TB 的
-   VGS/VDS/VBS 对应。默认值取自本次所选 history，不要求名字与示例一致。
-3. 名字不对时从对应用途的下拉候选中选择，再“应用并验证”。清空覆盖或选择
-   “恢复自动”可回到自动识别。错误、过期或有歧义的对应不会被隐藏。
-4. 只有要追查来源时才展开“查看所有实际名称”或“显示未使用映射和执行细节
-   （诊断）”。这里不是要求用户逐个填满所有 net/output/variable。
+Select both completed histories, then detect and bind. Review the output
+polarity, transfer series, target and cross-TB VGS/VDS/VBS in **Advanced
+settings**. Correct a mapping and apply validation, or restore automatic
+selection. Show all actual names or diagnostics only when tracing provenance.
 
-`mag_pxf0` 只是可能存在的名称，不是固定要求。可选择 `mag_pxf` / `ph_pxf`
-或 `harm_mag` / `harm_ph` 系列，也兼容单项输出。工具解析原始传递来源后，
-按当前所选差分输出重新测量完整复数响应；原有标量不直接代替算法输入。
-电流注入的物理含义由用户保证，不再额外强制同漏源支路或幅相同源校验。
-历史已明确的反向支路保留符号换算，其余按声明方向使用。没有合适命名输出时，
-可选用明示的私有漏源注入回退；不能读取的手动选择会报错，不会偷偷换源。
-振荡基波幅相由相同差分 HB 输出取得，不需要单独配置 `VH1/ph`。
+Transfer series such as `mag_pxf` and `ph_pxf` or `harm_mag` and `harm_ph`
+locate raw responses. Single output names remain valid. Both magnitude and phase
+come from the selected complex differential response. A documented private
+drain–source fallback is available when appropriate. Stored outputs such as
+`HB_PN_VCO_10k` and `noise` serve as comparisons. VGS/VDS/VBS correspond by
+electrical role even when the two testbenches use different names.
 
-像 `HB_PN_VCO_10k`、`noise` 这样的点噪输出名可供对照，但内置路径读取原始
-噪声数据，不执行任意 Calculator 表达式，也不要求为每个频偏建立一个新 output。
-VCO 的 `HB_TIME_VGS` 与噪声 TB 的 `VGS` 可以名称不同；是否对应依据栅源电压
-等电气含义，而不是字符串相同。
+## Offsets and operating conditions
 
-## 频偏和工况
+Use an explicit list such as `1k, 10k, 1M, 100M`, a linear sweep or a
+logarithmic sweep. Bare values are in Hz. Examples:
 
-在第一页的分析目标选“多个单点”“线性”或“对数”，不需要修改配置文件。
-例如 `1k,10k,1M,100M`；裸数字为 Hz，`k` 为千，`M` 为百万，小写 `m` 不接受。
+- Linear step of 4 kHz from 1 to 10 kHz gives 1, 5, 9 and 10 kHz.
+- Three linear intervals from 1 to 10 kHz give 1, 4, 7 and 10 kHz.
+- One point per decade from 1 kHz to 100 MHz gives 1k, 10k, 100k, 1M, 10M and 100M.
 
-- 线性步长：起点 `1k`、终点 `10k`、步长 `4k` 得到 1、5、9、10 kHz；不能整除
-  时追加终点。
-- 线性间隔数：N 个间隔产生 N+1 点。例如相同起止点、3 个间隔得到 1、4、7、10 kHz。
-- 对数：`1k` 至 `100M`、每 decade 1 点得到 1k、10k、100k、1M、10M、100M。
-  非整 decade 的终点也会包含。
-
-所有频偏必须为有限正数，展开后按 Hz 排序去重，最多 256 点。预览显示实际
-点表和“工况数 × 频偏数”；这是待运行样本数，不是更高的签核工况数。
-每个频偏执行完整标量流程，不从已计算相噪插值。单频偏保持原计算路径。
-
-ADE 逐点参数会从所选运行记录恢复到私有网表，所选 test 的有效值优先于同点
-公共值；同优先级冲突、未求值表达式、实例局部覆盖或不能唯一定位的声明会
-拦截，不会静默忽略。噪声 TB 的偏置扫描维度与非偏置工况分开处理，并核对
-温度及共用模型 section。结果保留实际参数快照，原 TB 和历史网表不被修改。
-
-多频偏可“当前频偏完成后停止”并查看已完成部分。恢复会验证原输入与结果，
-复用已完成的频偏；修改 TB、模型或执行文件后通常需要新任务，不能混入旧任务。
+Offsets are positive, finite, sorted, and deduplicated, with at most 256 points.
+The preview multiplies requested offsets by operating points. Each sample runs
+the full scalar calculation. ADE history restores the effective test-specific
+parameters to the private netlist. Conflicts and unresolved overrides block the
+run. Noise fixture sweeps retain separate bias and non-bias dimensions and
+validate temperature and model section. A sweep can stop after the current
+offset and resume completed evidence after rechecking inputs and results.
 
 ## Optional expert files
 

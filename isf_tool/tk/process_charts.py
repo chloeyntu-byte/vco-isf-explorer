@@ -12,9 +12,7 @@ from tkinter import font as tkfont
 from .charts import DEFAULT_CHART_PALETTE, line_segments, padded_bounds, project_point
 from .viewmodel import engineering, finite_number
 
-from .fieldwork_tk import SERIES
-
-COLORS = SERIES
+from .fieldwork_tk import SERIES as COLORS
 
 
 class ProcessChart(tk.Canvas):
@@ -24,6 +22,7 @@ class ProcessChart(tk.Canvas):
         kwargs.setdefault('height', 220)
         super().__init__(master, **kwargs)
         self.palette = dict(DEFAULT_CHART_PALETTE)
+        self.colors = COLORS
         self.panels = []
         self.selected_key = None
         self.key_positions = {}
@@ -48,6 +47,7 @@ class ProcessChart(tk.Canvas):
 
     def set_palette(self, palette):
         self.palette.update(palette)
+        self.colors = self.palette.get('series', COLORS)
         self.configure(background=self.palette['background'])
         self.schedule()
 
@@ -127,11 +127,12 @@ class ProcessChart(tk.Canvas):
         self._cursor()
 
     def _color(self, series, index):
-        if self.selected_key and (series.get('row_key') == self.selected_key or self.selected_key in series.get('keys', [])):
+        keys = series.get('keys', []) + series.get('highlight_keys', [])
+        if self.selected_key and (series.get('row_key') == self.selected_key or self.selected_key in keys):
             return self.palette['accent']
         if series.get('role')=='total':
             return self.palette['text']
-        return series.get('color', COLORS[index % len(COLORS)])
+        return series.get('color', self.colors[index % len(self.colors)])
 
     def _legend_select(self, panel_index, series):
         key=series.get('row_key')
@@ -259,6 +260,7 @@ class ProcessChart(tk.Canvas):
                 self.create_line(left, y, right, y, fill=self.palette['muted'], dash=(3, 3))
         plot = {'index': index, 'panel': panel, 'rect': rect, 'bounds': bounds_by_side, 'group': group, 'log': log}
         self.plots.append(plot)
+        self._annotations(panel, plot)
         for si, series in enumerate(panel.get('series', [])):
             if series not in visible:
                 continue
@@ -276,7 +278,7 @@ class ProcessChart(tk.Canvas):
                         for a, c in zip(coords, coords[1:]):
                             self.create_polygon(a[0], base, *a, *c, c[0], base, fill=color, stipple='gray25', outline='')
                     if len(coords) > 1 and series.get('style') not in ('stem','bar'):
-                        self.create_line(*[v for p in coords for v in p], fill=color, width=(series.get('width', 1.6)+ (1.5 if self.selected_key and self.selected_key in series.get('keys',[]) else 0)), dash=(5, 3) if series.get('dash') else ())
+                        self.create_line(*[v for p in coords for v in p], fill=color, width=(series.get('width', 1.6)+ (1.5 if self.selected_key and self.selected_key in series.get('keys',[])+series.get('highlight_keys',[]) else 0)), dash=(5, 3) if series.get('dash') else ())
             for sample, p in enumerate(transformed):
                 if p is None or not xlim[0] <= p[0] <= xlim[1]:
                     continue
@@ -302,13 +304,48 @@ class ProcessChart(tk.Canvas):
                 mean = panel['statistics'].get(series['name'], {}).get('mean')
                 if mean is not None:
                     _, ym = project_point((xlim[0], mean), bounds_by_side['left'], rect)
-                    self.create_line(left, ym, right, ym, fill=COLORS[si % len(COLORS)], dash=(5, 4), tags='dc-mean')
+                    self.create_line(left, ym, right, ym, fill=self.colors[si % len(self.colors)], dash=(5, 4), tags='dc-mean')
             stats = '  ·  '.join(f'{name}: DC {engineering(s["mean"])} / RMS {engineering(s["rms"])}' for name, s in panel['statistics'].items())
             if not compact:
                 self._text(left,rect[1]-24,stats,anchor='w',width=right-left,fill=self.palette['muted'],tags='statistics')
         if panel.get('reason'):
             # Full missing-field details are also exposed in the readout / table.
             self._text(right, rect[1] + 5, panel['reason'], anchor='e', width=max(80, right - left), fill=self.palette['muted'], tags='missing-reason')
+
+    def _annotations(self, panel, plot):
+        """Optional metric regions; inputs are display coordinates, not analysis."""
+        rect = plot['rect']
+        left, top, right, bottom = rect
+        lo, hi = plot['bounds']['left'][:2]
+        for i, region in enumerate(panel.get('regions', [])):
+            a, b = max(lo, region['start']), min(hi, region['end'])
+            if b <= a:
+                continue
+            x1 = left+(a-lo)/(hi-lo)*(right-left)
+            x2 = left+(b-lo)/(hi-lo)*(right-left)
+            selected = self.selected_key in region.get('keys', [])
+            color = self.palette['accent'] if selected else self.palette['muted']
+            tag = 'metric-region:'+str(plot['index'])+':'+str(i)
+            self.create_rectangle(x1, top, x2, bottom, fill=color, stipple='gray25' if selected else 'gray12', outline=color, dash=(3,3), tags=(tag,'metric-region'))
+            self._text((x1+x2)/2,top+8,region.get('label',''),fill=color,tags=(tag,'metric-region'))
+            if region.get('keys'):
+                self.tag_bind(tag,'<Button-1>',lambda e,k=region['keys'][0]: self.on_select(k,True) if self.on_select else None)
+        for line in panel.get('mean_lines', []):
+            if line.get('value') is None:
+                continue
+            _,y = project_point((lo,line['value']),plot['bounds']['left'],rect)
+            if top <= y <= bottom:
+                self.create_line(left,y,right,y,fill=self.palette['accent'],dash=(5,4),tags='metric-mean')
+        for marker in panel.get('markers', []):
+            if not lo <= marker['x'] <= hi:
+                continue
+            x,y = project_point((marker['x'],marker['y']),plot['bounds'][marker.get('side','left')],rect)
+            color=self.palette['accent']
+            tag='metric-marker:'+marker['key']
+            radius=6 if marker['key']==self.selected_key else 4
+            self.create_oval(x-radius,y-radius,x+radius,y+radius,outline=color,width=2,tags=(tag,'metric-marker'))
+            self._text(x,min(bottom-8,max(top+18,y-12)),marker['label'],fill=color,tags=(tag,'metric-marker'))
+            self.tag_bind(tag,'<Button-1>',lambda e,k=marker['key']: self.on_select(k,True) if self.on_select else None)
 
     def _phasor(self, index, panel, box):
         x0, y0, x1, y1 = box
@@ -330,13 +367,13 @@ class ProcessChart(tk.Canvas):
         self._text((left + right) / 2, y1 - 12, 'Re{ΣQk} (V/√Hz) · radius ' + engineering(extent, 'V/√Hz'))
         self._text(x0 + 16, (top + bottom) / 2, 'Im{ΣQk} (V/√Hz)', angle=90)
         path = [(cx, cy)] + [project_point((p['real'], p['imag']), b, rect) for p in points]
-        self.create_line(*[v for p in path for v in p], fill=COLORS[0], width=2)
+        self.create_line(*[v for p in path for v in p], fill=self.colors[0], width=2)
         label_boxes = []
         for node_index, (p, (x, y)) in enumerate(zip(points, path[1:])):
-            self.create_oval(x - 3, y - 3, x + 3, y + 3, fill=COLORS[1], outline='')
+            self.create_oval(x - 3, y - 3, x + 3, y + 3, fill=self.colors[1], outline='')
             if self.selected_key == p['key']:
                 self._text(min(x1-28,x+8),max(y0+31,y-10),'k'+str(p['k']),anchor='w')
-            self.hits.append({'key': p['key'], 'x': x, 'y': y, 'value': (p['real'], p['imag']), 'series': {'name': 'ΣQk'}, 'color': COLORS[1], 'plot': {'index': index, 'rect': rect, 'panel': panel}})
+            self.hits.append({'key': p['key'], 'x': x, 'y': y, 'value': (p['real'], p['imag']), 'series': {'name': 'ΣQk'}, 'color': self.colors[1], 'plot': {'index': index, 'rect': rect, 'panel': panel}})
 
     def _sources(self, index, panel, box):
         x0, y0, x1, y1 = box
@@ -356,9 +393,10 @@ class ProcessChart(tk.Canvas):
             return
         low = min(values) - 5
         high = max(values) + 6
-        self._text(x0 + 10, y0 + 31, f'aggregates first / sources ranked by power {len(displayed)}/{len(rows)} rows · blue HBnoise / orange ISF / purple unverified diagnostic', anchor='w', width=x1-x0-20, fill=self.palette['muted'])
+        self._text(x0 + 10, y0 + 28, f'{len(displayed)}/{len(rows)} · aggregates first',
+                   anchor='w', fill=self.palette['muted'])
         for i, row in enumerate(displayed):
-            y = y0 + 48 + i * ((y1 - y0 - 75) / max(1, len(displayed)))
+            y = y0 + 54 + i * ((y1 - y0 - 74) / max(1, len(displayed)))
             label = (str(row.get('label')) if row.get('kind') == 'aggregate'
                      else str(row.get('device')) + '/' + str(row.get('mechanism')))
             while len(label) > 1 and self.small_font.measure(label) > max(10, left - x0 - 14):
@@ -369,10 +407,10 @@ class ProcessChart(tk.Canvas):
                 if value is None:
                     continue
                 x = left + (value - low) / (high - low) * max(1, right - left)
-                self.create_rectangle(left, y + j * 6 - 4, x, y + j * 6 + 1, fill=COLORS[j], outline='')
-                self._text(x + 5, y + j * 11 - 4, engineering(value), anchor='w', fill=COLORS[j])
+                self.create_rectangle(left, y + j * 6 - 4, x, y + j * 6 + 1, fill=self.colors[j], outline='')
+                self._text(x + 5, y + j * 11 - 4, engineering(value), anchor='w', fill=self.colors[j])
                 self.hits.append({'key': row['key'], 'x': x, 'y': y, 'value': (i, value),
-                                  'series': {'name': label + ' · ' + row['scope'], 'unit':'dBc/Hz'}, 'color': COLORS[j], 'plot': {'index': index, 'rect': (left, y - 6, right, y + 12), 'panel': panel}})
+                                  'series': {'name': label + ' · ' + row['scope'], 'unit':'dBc/Hz'}, 'color': self.colors[j], 'plot': {'index': index, 'rect': (left, y - 6, right, y + 12), 'panel': panel}})
         self._text((left + right) / 2, y1 - 13, f'Phase noise (dBc/Hz) · range {engineering(low, digits=3)} … {engineering(high, digits=3)}', fill=self.palette['muted'])
 
     def _cursor(self):

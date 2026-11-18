@@ -1,13 +1,18 @@
 # Contributing
 
-Contributions are welcome under the MIT license (see `LICENSE`).
+This project uses the [MIT license](LICENSE).
 
-Contributions must contain only material you are authorized to publish. Never add
-PDK or vendor process models, OA content, real netlists, RDB/PSF results,
-screenshots showing private paths, license server information, customer topology or
-simulator-derived performance data. Unit tests and examples must use synthetic
-data and must not invoke a real EDA tool.
+Contributions must contain only material the contributor is authorized to
+publish.  Never add process models, PDK/OA content, real netlists, RDB/PSF,
+screenshots with private paths, license information, customer topology, or
+simulator-derived performance data without explicit release approval.
 
-Keep changes small and preserve fail-closed behavior. Before sending a change,
-run the offline checks listed in the README (`python -m unittest discover -s tests`
-and, if you touch the Web UI, the Node tests).
+Run `python -B -m unittest discover -s tests` and `node --test tests/*.js`.
+Run `xvfb-run -a env ISF_GUI_TEST=1 python -B -m unittest discover -s tests`
+for desktop coverage. Set `VCO_TBGEN_ROOT` to the optional sibling checkout
+to exercise the integration contracts. CI also checks that a clean wheel can
+replay the synthetic example. Unit tests use synthetic data and run without EDA.
+
+Maintainers run a separate strict release scan against the entire tree with
+the reviewed exceptions in `.oss-allow`. The private identifier dictionaries
+used by the release scanner are kept outside the public repository and CI.

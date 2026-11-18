@@ -113,6 +113,10 @@ def enrich_summary(row, *, offset_hz=None, pair_model=None):
     output["noise_scope"] = "target_device_flicker"
     output["pair_noise_scope"] = "independent_device_pair_flicker"
     output["pair_model"] = row.get("pair_model") or pair_model
+    if output['pair_model'] == 'single_device_only':
+        output['predicted_pair_pm_asd_V_rtHz'] = None
+        output['predicted_pair_dBc_Hz'] = None
+        output['pair_notice'] = 'Pair symmetry is unverified. The single-device result is retained without a 3.01 dB increase.'
     # Retain explicit flicker pair identity before legacy thermal qualification
     # drops its payload. This is display membership, never thermal eligibility
     # or an invented per-device prediction. Repeated enrichment is lossless.
@@ -125,6 +129,9 @@ def enrich_summary(row, *, offset_hz=None, pair_model=None):
             output["flicker_pair_identity"] = dict(target_noise_trace=target,
                 peer_noise_trace=peer, pair_model="symmetric_independent")
     output["thermal_noise"] = thermal_evidence(output)
+    if row.get('device_instance'):
+        output['pair_notice'] = ('Symmetric peer qualified' if output.get('flicker_pair_identity') else
+                                 'Symmetric peer did not qualify' if row.get('requested_peer_instance') else '')
     output["thermal_dBc_Hz"] = calculated_noise_dbc(output, noise_kind="thermal")
     output["predicted_total_dBc_Hz"] = calculated_noise_dbc(output, noise_kind="both")
     return output
@@ -158,10 +165,11 @@ def enrich_harmonic(row, summary):
     output["harmonic_equivalent_dBc_Hz"] = dBc_from_pm_asd(magnitude, carrier) if magnitude is not None and carrier is not None else None
     output["cumulative_dBc_Hz"] = dBc_from_pm_asd(cumulative, carrier) if cumulative is not None and carrier is not None else None
     output["cumulative_error_dB"] = error_dB(cumulative, reference) if cumulative is not None and reference is not None else None
+    pair_allowed = summary.get('pair_model') != 'single_device_only'
     pair_reference = _value(summary, "spectre_pair_pm_asd_V_rtHz", "spectre_pair_fn_pm_asd_V_rtHz")
-    output["pair_harmonic_equivalent_dBc_Hz"] = dBc_from_pm_asd(math.sqrt(2) * magnitude, carrier) if magnitude is not None and carrier is not None else None
-    output["pair_cumulative_dBc_Hz"] = dBc_from_pm_asd(math.sqrt(2) * cumulative, carrier) if cumulative is not None and carrier is not None else None
-    output["pair_cumulative_error_dB"] = error_dB(math.sqrt(2) * cumulative, pair_reference) if cumulative is not None and pair_reference is not None else None
+    output["pair_harmonic_equivalent_dBc_Hz"] = dBc_from_pm_asd(math.sqrt(2) * magnitude, carrier) if pair_allowed and magnitude is not None and carrier is not None else None
+    output["pair_cumulative_dBc_Hz"] = dBc_from_pm_asd(math.sqrt(2) * cumulative, carrier) if pair_allowed and cumulative is not None and carrier is not None else None
+    output["pair_cumulative_error_dB"] = error_dB(math.sqrt(2) * cumulative, pair_reference) if pair_allowed and cumulative is not None and pair_reference is not None else None
     for key in ("point", "operating_point_id", "offset_Hz", "offset_hz", "corner"):
         output[key] = summary.get(key)
     output["noise_scope"] = "target_device_flicker"
@@ -291,6 +299,22 @@ def phase_noise_series(result, operating_point_id=None, scope="single", noise_ki
         return []
     predicted = "dynamic_dBc_Hz" if scope == "single" else "predicted_pair_dBc_Hz"
     label = "single device flicker" if scope == "single" else "independent device pair flicker"
+    if rows[0].get('device_instance'):
+        label = rows[0]['device_instance']
+        if noise_kind == 'flicker':
+            return [_series('calculated', 'ISF · ' + label, rows, [row[predicted] for row in rows], scope=scope),
+                    _series('spectre', 'HBnoise · whole VCO', rows,
+                            [row.get('spectre_total_dBc_Hz') for row in rows], scope='whole_vco')]
+        series = [_series('thermal', 'ISF thermal · ' + label, rows,
+                          [row['thermal_dBc_Hz'] for row in rows], scope=scope)]
+        if noise_kind == 'both':
+            series.extend((_series('flicker', 'ISF flicker · ' + label, rows,
+                                   [row[predicted] for row in rows], scope=scope),
+                           _series('calculated', 'ISF total · ' + label, rows,
+                                   [row['predicted_total_dBc_Hz'] for row in rows], scope=scope)))
+        series.append(_series('spectre', 'HBnoise · whole VCO', rows,
+                              [row.get('spectre_total_dBc_Hz') for row in rows], scope='whole_vco'))
+        return series
     if noise_kind not in {"flicker", "thermal", "both"}:
         raise ValueError("invalid noise kind")
     if noise_kind != "flicker":
@@ -324,13 +348,24 @@ def noise_contribution_rows(summary, scope=None, noise_kind="both"):
                        "psd_V2_Hz": psd, "calculated_psd_V2_Hz": calculated_psd,
                        "asd_V_rtHz": asd, "kind": kind})
 
+    if row.get('device_instance'):
+        for mechanism, kind in (('flicker', 'fn'), ('channel_thermal', 'id')):
+            if noise_kind == ('thermal' if kind == 'fn' else 'flicker'):
+                continue
+            values = (row.get('device_closure') or {}).get(mechanism, {})
+            add(row['device_instance'] + ' · ' + kind, row['device_instance'], kind, None,
+                values.get('hbnoise_dbc_hz'), values.get('isf_dbc_hz'))
+            source = row.get('target_noise_trace') or (row.get('thermal_noise') or {}).get('target_noise_trace')
+            output[-1].update(error_db=values.get('error_db'), comparison_group='complementary_device',
+                              source_device=source)
+
     add("VCO simulated total phase noise", "all devices", "all mechanisms · PM-SSB", total_asd,
         row.get("spectre_total_dBc_Hz"))
     generated = row.get("replica_source") == "generated"
-    if (scope != "pair" or generated) and noise_kind != "thermal":
+    if (scope != "pair" or generated) and noise_kind != "thermal" and not row.get('device_instance'):
         add("target single device flicker comparison", row.get("target_noise_trace") or "target device", "fn", _value(row, "spectre_fn_pm_asd_V_rtHz"),
             row.get("spectre_fn_dBc_Hz"), row.get("dynamic_dBc_Hz"))
-    if noise_kind != "thermal":
+    if noise_kind != "thermal" and (not row.get('device_instance') or row.get('flicker_pair_identity')):
         pair_label = "symmetric pair estimate · +3.01 dB" if generated else "symmetric gm pair · flicker comparison"
         add(pair_label, "Target + Peer device", "fn", _value(row, "spectre_pair_pm_asd_V_rtHz"),
             row.get("spectre_pair_dBc_Hz"), row.get("predicted_pair_dBc_Hz"))
@@ -371,8 +406,11 @@ def noise_contribution_rows(summary, scope=None, noise_kind="both"):
         reference_psd = (math.fsum(unique_reference_psd(identity) for identity in predicted_sources)
                          if not reference_issues else None)
         reference_asd = math.sqrt(reference_psd) if reference_psd is not None else None
-        label = "modeled thermal comparison" + (" (reference sources incomplete)" if reference_issues else "")
-        add(label, "gm pair + LC", "thermal", reference_asd,
+        selected_only = thermal.get('scope') == 'selected_device'
+        label = ("Modeled device thermal" if selected_only else "Modeled thermal comparison")
+        if reference_issues:
+            label += " (missing reference)" if selected_only else " (reference sources incomplete)"
+        add(label, row.get('device_instance') or "gm pair + LC", "thermal", reference_asd,
             dBc_from_pm_asd(reference_asd, carrier) if reference_asd is not None and carrier else None,
             row["thermal_dBc_Hz"])
         output[-1].update(reference_complete=not reference_issues, reference_issues=reference_issues)
@@ -440,6 +478,17 @@ def phase_noise_comparison_series(result, operating_point_id=None, noise_kind="f
         raise ValueError("invalid noise kind")
     if not rows:
         return {"prediction": None, "reference": None, "error": None}
+    if rows[0].get('device_instance'):
+        keys = {'flicker': ('flicker',), 'thermal': ('channel_thermal',),
+                'both': ('flicker', 'channel_thermal')}[noise_kind]
+        scope = rows[0]['device_instance'] + ' · ' + ' + '.join(keys)
+        from .complementary import _sum_dbc
+        prediction, reference = ([_sum_dbc([row['device_closure'][key][side] for key in keys])
+                                   for row in rows] for side in ('isf_dbc_hz', 'hbnoise_dbc_hz'))
+        error = [p-r if p is not None and r is not None else None for p, r in zip(prediction, reference)]
+        return {key: _series('matched_' + key, name + ' · ' + scope, rows, values, scope=scope)
+                for key, name, values in (('prediction', 'ISF', prediction), ('reference', 'HBnoise', reference),
+                                          ('error', 'ISF − HBnoise', error))}
     if noise_kind == "flicker":
         scope = "selected gm · fn" if single else "gm pair · fn"
     elif noise_kind == "thermal":
@@ -538,8 +587,8 @@ __all__ = ["SUMMARY_QUALITY_FIELDS", "quality_fields", "enrich_summary", "enrich
 
 
 # Fixed categorical colors are shared by all presentation surfaces/themes.
-BAND_COLORS = ("#33D1DE", "#F2C230", "#EC5AA5", "#93D65E", "#9C8CFF",
-               "#F28C4B", "#7FB5FF", "#E6E6E6", "#7c9eeb", "#ad83a4")
+BAND_COLORS = ("#3996d5", "#e68438", "#a97cdb", "#29a38f", "#db6199",
+               "#a6a238", "#5cbac4", "#c87856", "#7c9eeb", "#ad83a4")
 
 
 def band_color(order):
@@ -551,7 +600,7 @@ def band_color(order):
 
 
 def fit_noise_slope(points):
-    """OLS dB/dec over valid samples in the lowest two decadess (no interpolation)."""
+    """OLS dB/dec over valid samples in the lowest two decades (no interpolation)."""
     pairs = [(math.log10(x), y) for x, y in points
              if _number(x) is not None and x > 0 and _number(y) is not None]
     if len({x for x, _ in pairs}) < 2:

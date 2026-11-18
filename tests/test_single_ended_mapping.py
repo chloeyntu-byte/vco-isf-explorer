@@ -48,7 +48,7 @@ class SingleEndedMappingTests(unittest.TestCase):
         report = self.report()
         role = report['roles']['vco']
         self.assertEqual('DUT', role['mapping']['target_instance'])
-        self.assertEqual('PARTNER', role['mapping']['peer_instance'])
+        self.assertIsNone(role['mapping']['peer_instance'])
         self.assertEqual('COMMON', role['mapping']['source'])
         self.assertEqual('gate_sample', role['mapping']['vgs_output'])
         self.assertEqual('mapped', cross_tb_mapping(role, report['roles']['flicker'])[0]['status'])

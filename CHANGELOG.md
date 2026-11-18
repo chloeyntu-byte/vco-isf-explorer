@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0
+
+- Add Testbench setup for a generated Design Lab project, an existing Maestro setup, or a new library cell.
+- Support explicitly selected complementary and asymmetric MOS pairs with per-device closure, measured symmetry evidence and intrinsic drain-to-source flicker transfer.
+- Add durable jobs, storage previews, structured CLI errors, and matched-result comparison.
+- Add view 08 for ISF metrics and the headless metrics and optimizer APIs and commands.
+- Refresh the bilingual workflows, synthetic replay and RF-FIELDWORK screenshots.
+
 ## 1.1.0 - 2026-11-13
 
 - Desktop and Web interfaces are now fully in English, including charts, dialogs, metrics and troubleshooting. Data formats and export field names remain unchanged; older saved harmonic selections are accepted.

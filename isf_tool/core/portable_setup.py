@@ -22,7 +22,8 @@ from .physical_profile import (
 
 
 def _net(value):
-    return str(value or "").strip().lstrip("/").replace("/", ".")
+    from .spectre_topology import canonical_name
+    return canonical_name(value)
 
 
 def _at(value, path, default=None):
@@ -51,44 +52,20 @@ def _device(report, name):
     return found[0] if len(found) == 1 else {}
 
 
-def _intrinsics(model_path, subckt):
-    if not model_path or not subckt:
-        return None, []
-    stub = {"replica": {"original_subckt": subckt}}
-    path = resolve_device_subckt_file(model_path, stub)
-    if not path:
-        return None, []
-    # PDK reads are bounded and never evaluated.
-    with open(path, encoding="utf-8", errors="replace") as stream:
-        text = stream.read(32 * 1024 * 1024)
-    blocks = re.findall(
-        r"(?ims)^\s*(?:inline\s+)?subckt\s+" + re.escape(subckt)
-        + r"\b.*?^\s*ends(?:\s+" + re.escape(subckt) + r")?\s*$", text,
-    )
-    return path, _intrinsics_in_blocks(blocks, subckt)
+def _intrinsics(model_path, subckt, section=None):
+    from .generated_flicker import model_definition
+    if not model_path or not subckt: return None, []
+    evidence, block = model_definition([('include', model_path, section)], subckt)
+    return evidence['device_subckt_file'], [_intrinsic_binding(evidence['mos'])]
 
 
-def _intrinsics_in_blocks(blocks, subckt):
-    candidates, occupied_names = {}, set()
-    for block in blocks:
-        is_inline = bool(re.match(r"(?i)^\s*inline\s+subckt\b", block))
-        for match in re.finditer(
-            r"(?im)^\s*(\S+)\s*\(\s*([^\n)]+)\)\s+(\S+)([^\n]*)", block
-        ):
-            instance, pins, primitive, params = match.groups()
-            pins = pins.split()
-            occupied_names.update([instance] + pins)
-            if len(pins) == 4 and (instance.lower().startswith("m") or re.search(r"\bl\s*=", params)):
-                candidate = {"instance": instance, "primitive": primitive, "terminals": pins}
-                if is_inline and instance.lower() == subckt.lower():
-                    candidate["inline_alias"] = True
-                candidates[json.dumps(candidate, sort_keys=True)] = candidate
-    for candidate in candidates.values():
-        candidate["occupied_names"] = sorted(occupied_names)
-    return list(candidates.values())
+def _intrinsic_binding(identity):
+    return dict(instance=identity['intrinsic_path'] or 'm0', primitive=identity['primitive'],
+                terminals=identity['intrinsic_terminals'], inline_alias=identity['inline_alias'],
+                occupied_names=identity.get('occupied_names', []))
 
 
-def build_portable_setup(pair_report, app_config=None, environment=None):
+def build_portable_setup(pair_report, app_config=None, environment=None, *, topology=None):
     """Return editable values, evidence and a template, without writing files."""
     config = dict(app_config or {})
     environment = dict(environment or {})
@@ -109,16 +86,19 @@ def build_portable_setup(pair_report, app_config=None, environment=None):
     matching_model_paths = []
     intrinsic_cache = {}
     generated_models, generated_errors = {}, []
+    generated_evidence = {}
     if generated and target:
         history = vco.get("selected_history") or {}
         paths = list(dict.fromkeys(row["path"] for row in history.get("source_netlists", []) if row.get("path")))
         read_cache = {}
         for path in paths:
             try:
-                _, evidence, block = generated_fixture(path, target["name"], 10000.0, read_cache=read_cache)
+                _, evidence, block = generated_fixture(path, target["name"], 10000.0, read_cache=read_cache,
+                    topology=topology if topology is not None and topology.source == str(path) else None)
                 identity = (evidence["model_file"], evidence["device_subckt_file"],
                             evidence["device_subckt_section"])
                 generated_models[identity] = block
+                generated_evidence = evidence
             except (OSError, ValueError, ValidationError) as exc:
                 generated_errors.append({"field": "testbenches.vco.history", "message": str(exc)})
         if len(generated_models) != 1 and not generated_errors:
@@ -126,12 +106,15 @@ def build_portable_setup(pair_report, app_config=None, environment=None):
                                      "message": "Selected operating points must share one verifiable active MOS definition. "})
     if not generated and model_name and len(model_paths) > 1:
         for candidate_path in model_paths:
+            if target.get('mos') and target['mos']['definition_file'] == candidate_path:
+                matching_model_paths.append(candidate_path)
+                continue
             try:
                 evidence = _intrinsics(candidate_path, model_name)
                 intrinsic_cache[(candidate_path, model_name)] = evidence
                 if evidence[0] and evidence[1]:
                     matching_model_paths.append(candidate_path)
-            except (OSError, ValueError):
+            except (OSError, ValueError, ValidationError):
                 pass
     generated_model = next(iter(generated_models)) if len(generated_models) == 1 else (None, None, None)
     model_path = generated_model[0] if generated else _unique(matching_model_paths or model_paths)
@@ -268,10 +251,14 @@ def build_portable_setup(pair_report, app_config=None, environment=None):
     try:
         if generated:
             subckt_path = generated_model[1]
-            intrinsic_candidates = _intrinsics_in_blocks([generated_models[generated_model]], original) if subckt_path else []
+            intrinsic_candidates = [_intrinsic_binding(generated_evidence['mos'])] if subckt_path else []
         else:
-            evidence = intrinsic_cache.get((model_path, original))
-            subckt_path, intrinsic_candidates = evidence if evidence is not None else _intrinsics(model_path, original)
+            identity = dc.get('mos') or target.get('mos')
+            if identity:
+                subckt_path, intrinsic_candidates = identity['definition_file'], [_intrinsic_binding(identity)]
+            else:
+                evidence = intrinsic_cache.get((model_path, original))
+                subckt_path, intrinsic_candidates = evidence if evidence is not None else _intrinsics(model_path, original)
     except (OSError, ValueError) as exc:
         subckt_path, intrinsic_candidates = None, []
         errors.append({"field": "engine.device_subckt_file", "message": str(exc)})
@@ -297,7 +284,15 @@ def build_portable_setup(pair_report, app_config=None, environment=None):
     # Spectre aliases an inline subcircuit's same-named primitive to its
     # external instance. The private dynamic copy is an ordinary subcircuit,
     # so only original VCO/DC traces use this alias.
-    noise_suffix = "" if selected_intrinsic.get("inline_alias") else "." + str(intrinsic_name)
+    mos_binding = generated_evidence.get('mos') or dc.get('mos') or target.get('mos') or {}
+    noise_suffix = "" if selected_intrinsic.get("inline_alias") or mos_binding.get('kind') == 'primitive' else "." + str(intrinsic_name)
+    engine['mos_binding'] = mos_binding
+    profile['replica']['intrinsic']['direct_primitive'] = mos_binding.get('kind') == 'primitive'
+    model_sources = (vco.get('selected_history') or {}).get('source_netlists', []) if generated else (replica.get('selected_history') or {}).get('source_netlists', [])
+    engine['mos_source_netlist'] = model_sources[0]['path'] if model_sources else None
+    engine['mos_instance_path'] = target.get('name') if generated else dc.get('name')
+    profile['replica']['terminal_order'] = mos_binding.get('terminal_order', [0,1,2,3])
+    engine['pair_policy'] = copy.deepcopy(vm.get('pair_policy', {'proven': False}))
     target_noise = str(full_instance) + noise_suffix if full_instance and intrinsic_name else None
     peer_noise = str(peer.get("name")) + noise_suffix if peer and intrinsic_name else None
     if generated and peer and peer.get("model") != target.get("model"):
@@ -305,12 +300,12 @@ def build_portable_setup(pair_report, app_config=None, environment=None):
                        "message": "Generated replica requires a same-model peer device for measured symmetric reference. "})
     field("main.traces.target_noise", "VCO Target device noise contribution path",
           target_noise if generated else vm.get("noise_trace") or target_noise, editable=not generated)
-    field("main.traces.peer_noise", "VCO Peer device noise contribution path", peer_noise, required=not generated,
+    field("main.traces.peer_noise", "VCO peer-device noise contribution path", peer_noise, required=False,
           editable=not generated,
           help="used for existing two-device noise synthesis; select the peer device in Signal mapping. ")
     generated_instance = field("replica.instance", "Dynamic replica device name", "M_ISF_REPLICA", source="Generated (private copy only)")
     field("replica.generated_subckt", "Dynamic replica model name", original + "_isf_dynamic" if original else None, source="Generated (private copy only)")
-    parameters = dc.get("parameter_text" if generated else "parameters")
+    parameters = generated_evidence.get("device_parameters") if generated else dc.get("parameters")
     if isinstance(parameters, Mapping):
         parameters = " ".join("%s=%s" % item for item in parameters.items())
     field("replica.device_parameters", "Dynamic replica device dimensions and parameters", parameters, editable=not generated,
@@ -346,6 +341,9 @@ def build_portable_setup(pair_report, app_config=None, environment=None):
     engine["max_harmonic"] = int(_at(config, "analysis.max_harmonic", 3))
     for key, label, default in (("hb_max_harmonic", "HB Maximum harmonics", 12), ("main_max_sideband", "Maximum noise sidebands", 10), ("dc_noise_samples", "per period DC Noise samples", 24)):
         field("engine." + key, label, default, kind="integer", source="Execution default (overridable)")
+    if vm.get('core_device') is True:
+        profile['main']['thermal_scope'] = 'selected_device'
+        profile['main']['polarity'] = mos_binding.get('polarity')
     engine["vco_mapping"] = copy.deepcopy(vm)
     engine["flicker_mapping"] = copy.deepcopy(rm)
     if generated:
