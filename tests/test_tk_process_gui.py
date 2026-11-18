@@ -205,13 +205,16 @@ finally:
 
     def test_eps_and_png_exports_have_actual_chart_dimensions(self):
         import tempfile
-        from PIL import Image
         self.ui.show(1);self.root.update()
         with tempfile.TemporaryDirectory(prefix='isf-export-ui-') as directory:
             eps=Path(directory)/'chart.eps';png=Path(directory)/'chart.png'
             with mock.patch('isf_tool.tk.results_view.filedialog.asksaveasfilename',return_value=str(eps)):
                 self.ui.export_eps()
             self.assertTrue(eps.read_bytes().startswith(b'%!PS-Adobe'))
+            try:
+                from PIL import Image
+            except ImportError:
+                self.skipTest('PNG export needs the optional Pillow dependency (pip install .[images])')
             with mock.patch('isf_tool.tk.results_view.filedialog.asksaveasfilename',return_value=str(png)):
                 self.ui.export_png()
             with Image.open(png) as image:
