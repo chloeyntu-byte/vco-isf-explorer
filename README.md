@@ -84,9 +84,9 @@ Other open-source tools:
 - [Flux Studio](https://github.com/chloeyntu-byte/flux-studio): parametric RF passives, EMX sweeps, multi-objective search and SNPFit
 - [Tank Scan Lab](https://github.com/chloeyntu-byte/tank-scan-lab): LC tank scans (f0, Rp, gm, startup margin, loss shares), capacitor-array C/Q and resonance
 - [Layout 3D Viewer](https://github.com/chloeyntu-byte/layout-3d-viewer): read IC layouts in 3D, locate pins and trace connections
+- [VCO TB Generator](https://github.com/chloeyntu-byte/vco-testbench-generator): Virtuoso testbenches and Maestro HB/HBNOISE/HBXF setups for LC VCOs; used by VCO ISF Explorer
+- [Crescendo](https://github.com/chloeyntu-byte/crescendo): automatic device-size optimization inside Cadence Maestro
 - [VCO Design Studio](https://github.com/chloeyntu-byte/vco-design-studio): five literature LC VCO topology families, packaged schematics and native export
-- [VCO TB Generator](https://github.com/chloeyntu-byte/vco-testbench-generator): Virtuoso testbench and Maestro HB/HBNOISE/HBXF setup for LC VCOs; required by testbench entries A/B/C
-
 
 ## License
 

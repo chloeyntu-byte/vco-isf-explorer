@@ -76,10 +76,17 @@ vco-isf optim calibrate selected-result-ref.json
 
 ## RF-FIELDWORK
 
-- [实验室主页](https://rf-fieldwork.pages.dev/?lang=zh)
-- [本工具主页](https://rf-fieldwork.pages.dev/isf/?lang=zh)
+- 总站（全部工具、演示片与项目进展）：https://rf-fieldwork.pages.dev/?lang=zh
+- 本工具介绍页（含配音演示片）：https://rf-fieldwork.pages.dev/isf/?lang=zh
 
-其他工具包括 Flux Studio、Tank Scan Lab、Layout 3D Viewer、VCO Design Studio 和 [VCO TB Generator](https://github.com/chloeyntu-byte/vco-testbench-generator)（测试台入口 A/B/C 需要它）。
+其他开源工具：
+
+- [Flux Studio](https://github.com/chloeyntu-byte/flux-studio)：参数化射频无源器件、EMX 扫参、多目标优化与 SNPFit 拟合
+- [Tank Scan Lab](https://github.com/chloeyntu-byte/tank-scan-lab)：LC 谐振腔扫描（f0、Rp、gm、起振裕量、损耗分摊）、电容阵列 C/Q 与谐振
+- [Layout 3D Viewer](https://github.com/chloeyntu-byte/layout-3d-viewer)：三维阅读版图、定位 pin、追踪连接
+- [VCO TB Generator](https://github.com/chloeyntu-byte/vco-testbench-generator)：为 LC VCO 生成 Virtuoso 测试台与 Maestro HB/HBNOISE/HBXF 设置；VCO ISF Explorer 调用它
+- [Crescendo](https://github.com/chloeyntu-byte/crescendo)：在 Cadence Maestro 里自动优化器件尺寸
+- [VCO Design Studio](https://github.com/chloeyntu-byte/vco-design-studio)：五类文献 LC VCO 拓扑、分层原理图与原生导出
 
 ## 许可证
 
