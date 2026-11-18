@@ -499,8 +499,12 @@ class IsfApplication:
             self.load_state_button = ttk.Button(box, text="Load state…", command=self._load_state_dialog)
             self.load_state_button.pack(side="left", padx=(8, 0))
 
-            self.load_example_button = ttk.Button(box, text="Load synthetic example", command=self._load_example)
+            self.load_example_button = ttk.Button(
+                box, text="Load synthetic example", command=lambda: self._load_example(single=True))
             self.load_example_button.pack(side="left", padx=(8, 0))
+            self.load_sweep_button = ttk.Button(
+                box, text="Example sweep", command=lambda: self._load_example(sweep=True))
+            self.load_sweep_button.pack(side="left", padx=(8, 0))
 
         self.header_bar = fw.header(
             self.root, "VCO ISF Explorer", "Phase noise and harmonic contributions",
@@ -3113,12 +3117,24 @@ class IsfApplication:
                 self._run_started(value)
                 self._remember_project_preferences(config, _mapping(report))
 
-            self._submit(
-                "Submit background job",
-                lambda: self.controller.start_run(config, run_root=run_root, bundle_path=bundle_path),
-                started,
-                on_failure=command_failed,
-            )
+            def submit_selection(keys=None):
+                if keys is not None:
+                    config['point_selection'] = keys
+                self._submit(
+                    "Submit background job",
+                    lambda: self.controller.start_run(config, run_root=run_root, bundle_path=bundle_path),
+                    started,
+                    on_failure=command_failed,
+                )
+
+            points = _mapping(report).get('sweep_points', [])
+            if len(points) > 1:
+                from ..core.offsets import expand_offsets
+                from .sweep_view import choose_points
+                choose_points(self.root, points, expand_offsets(config['analysis']),
+                              submit_selection, lambda: command_failed(None))
+            else:
+                submit_selection()
 
         def begin_preflight() -> None:
             self._submit(
@@ -3235,17 +3251,24 @@ class IsfApplication:
         self.current_job = job
         status = str(job.get("status") or "unknown")
         if hasattr(self, "stop_offset_button"):
-            if job.get("is_offset_sweep"):
+            if job.get("is_offset_sweep") or job.get("is_point_sweep"):
+                self.stop_offset_button.configure(text="Stop after current point" if job.get("is_point_sweep")
+                                                  else "Stop after current offset")
                 self.stop_offset_button.pack(side="left", before=self.partial_result_button)
             else:
                 self.stop_offset_button.pack_forget()
-            self.stop_offset_button.configure(state="normal" if job.get("is_offset_sweep") and status in ACTIVE_JOB_STATES and not job.get("cancel_requested") else "disabled")
+            self.stop_offset_button.configure(state="normal" if (job.get("is_offset_sweep") or job.get("is_point_sweep")) and status in ACTIVE_JOB_STATES and not job.get("cancel_requested") else "disabled")
             self.partial_result_button.configure(state="normal" if job.get("result_available") else "disabled")
         progress = float(job.get("progress") or 0)
         self.job_progress["value"] = max(0.0, min(progress, 100.0))
         self.job_status_var.set(f"{job.get('id', self.current_job_id)} · {status} · {job.get('message') or ''}")
+        point_sweep = _mapping(job.get("point_sweep"))
+        if point_sweep:
+            rows = _sequence(point_sweep.get('points'))
+            completed = sum(p.get('status') == 'completed' for p in rows)
+            self.job_status_var.set(self.job_status_var.get() + f" · Completed {completed}/{len(rows)} points")
         sweep = _mapping(job.get("offset_sweep"))
-        if sweep:
+        if sweep and not point_sweep:
             self.job_status_var.set(self.job_status_var.get() + f" · Completed {len(_sequence(sweep.get('completed_offsets_hz')))}/{len(_sequence(sweep.get('offsets_hz')))} offsets")
         lines = []
         for event in _sequence(job.get("events")):
@@ -3415,23 +3438,24 @@ class IsfApplication:
 
         self._import_bundle_path(path)
 
-    def _load_example(self) -> None:
+    def _load_example(self, *, sweep=False, single=False) -> None:
         from ..example_data import build
 
         def loaded(value: Any) -> None:
             self.noise_kind_var.set("both")
             self._replay_imported(value)
-            self._set_window_title("Synthetic ideal LC")
+            self._set_window_title("Synthetic ideal-LC sweep" if sweep else "Synthetic ideal LC")
 
         def generate_and_import() -> dict[str, Any]:
             shipped = Path(__file__).resolve().parents[2] / "examples" / "ideal_lc"
-            if (shipped / "vco_results.csv").is_file():
+            if not (sweep or single) and (shipped / "vco_results.csv").is_file():
                 path = shipped
             else:
-                path = build(str(self.controller.workspace / "examples" / "ideal_lc"))
+                name = "ideal_lc_sweep" if sweep else "ideal_lc_single" if single else "ideal_lc"
+                path = build(str(self.controller.workspace / "examples" / name), sweep=sweep, single=single)
             return self.controller.import_bundle(str(path), "canonical")
 
-        self._submit("Load synthetic example", generate_and_import, loaded)
+        self._submit("Load example sweep" if sweep else "Load synthetic example", generate_and_import, loaded)
 
     def _import_bundle_path(self, path: str) -> None:
         def loaded(value: Any) -> None:
@@ -3520,7 +3544,7 @@ class IsfApplication:
         if self.operating_point_var.get() not in identities:
             self.operating_point_var.set(identities[0] if identities else "")
         self._operating_point_changed()
-        if points:
+        if points or self._operating_points:
             self.notebook.select(self.result_tab)
         else:
             run_kind = str(self.current_result.get("run_kind") or "").lower()
@@ -3546,15 +3570,30 @@ class IsfApplication:
         if not choices:
             selected = next((item for item in self._operating_points if item["id"] == identity), {})
             choices = [{"point": point, "label": "Offset not recorded"} for point in selected.get("points", [])]
-        self._offset_point_choices = {item["label"]: item["point"] for item in choices}
+        if len(self._operating_points) > 1:
+            labels = {offset_label(hz): None for p in self._operating_points for hz in p.get('offsets_hz', [])}
+        else:
+            labels = {}
+        labels.update({item["label"]: item["point"] for item in choices})
+        self._offset_point_choices = labels
         self.result_offset_box.configure(values=tuple(self._offset_point_choices))
         if self.result_offset_var.get() not in self._offset_point_choices:
             self.result_offset_var.set(next(iter(self._offset_point_choices), ""))
         self._result_offset_changed()
 
     def _result_offset_changed(self, _event: Any = None) -> None:
-        self.point_var.set(self._offset_point_choices.get(self.result_offset_var.get(), ""))
+        self.point_var.set(self._offset_point_choices.get(self.result_offset_var.get()) or '')
+        if not self.point_var.get() and ((self.current_result or {}).get('point_sweep')
+                                         or len(self._operating_points) > 1):
+            self.current_result_view = None
+            self.results_view.refresh()
+            return
         self._point_changed()
+
+    def _sweep_offset_hz(self):
+        selected = self.result_offset_var.get()
+        return next((hz for p in self._operating_points for hz in p.get('offsets_hz', [])
+                     if offset_label(hz) == selected), None)
 
     def _bind_metric_columns(self, tree: ttk.Treeview, fields: Sequence[str]) -> None:
         tree._metric_fields = tuple(fields)
@@ -3876,6 +3915,8 @@ class IsfApplication:
         summary = _mapping(_mapping(self.current_result_view).get("selected_summary"))
         return {"job_id": self.current_result_job_id, "point": self.point_var.get(),
                 "operating_point_id": summary.get("operating_point_id"),
+                "point_identity": summary.get("point_identity"),
+                "corner": summary.get("corner"), "operating_parameters": summary.get("operating_parameters"),
                 "offset_Hz": summary.get("offset_Hz"), "f0_Hz": summary.get("f0_Hz"),
                 "noise_kind": self.noise_kind_var.get(), "result_view": self.results_view.view_id,
                 "units": {"offset_Hz": "Hz", "f0_Hz": "Hz", "phase_noise": "dBc/Hz",
@@ -3902,6 +3943,16 @@ class IsfApplication:
             return
         rows = [dict(item, job_id=self.current_result_job_id, offset_unit="Hz", phase_noise_unit="dBc/Hz")
                 for item in _sequence(self.current_result.get("summary")) if isinstance(item, Mapping)]
+        point_rows = (self.current_result.get('point_sweep') or {}).get('points', [])
+        for row in rows:
+            identity = row.get('point_identity') or {}
+            if identity:
+                row.update(point_label=identity['label'], point_status=identity['status'])
+        rows.extend(dict(job_id=self.current_result_job_id, operating_point_id=p['id'],
+                         operating_parameters=p.get('parameters'), corner=p.get('corner'),
+                         maestro_point_id=p.get('point_id'), maestro_history=p.get('history'),
+                         point_label=p['label'], point_status=p['status'], point_error=p.get('error'))
+                    for p in point_rows if p['status'] != 'completed')
         path = filedialog.asksaveasfilename(parent=self.root, title="Export Summary CSV", defaultextension=".csv", filetypes=(("CSV", "*.csv"),))
         if path:
             self._submit("Export Summary CSV", lambda: _write_csv(path, rows), lambda _value: messagebox.showinfo("Export complete", path, parent=self.root))

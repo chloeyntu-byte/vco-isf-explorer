@@ -59,7 +59,11 @@ class BandGuiTests(unittest.TestCase):
             self.root.geometry(size)
             for view in (0,1,2,6,7):
                 self.ui.show(view);self.root.update()
-                self.assertTrue(self.ui.table.winfo_ismapped())
+                if view == 0:
+                    self.assertTrue(self.ui.overview.winfo_ismapped())
+                    continue
+                else:
+                    self.assertTrue(self.ui.table.winfo_ismapped())
                 self.assertTrue(self.ui.chart.plots)
                 for p in self.ui.chart.plots:
                     self.assertGreater(p['rect'][3]-p['rect'][1],15,

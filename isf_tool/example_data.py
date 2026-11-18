@@ -5,7 +5,7 @@ Everything here is an analytic or fictional model, not simulator output:
 * an ideal parallel LC oscillator with a sinusoidal carrier,
 * a transfer function ``H[k]`` that is purely first-harmonic for the ideal
   point (so the ISF is a pure sine) and gains a small second-harmonic part for
-  the two "asymmetric" points,
+  the sweep points,
 * a cyclostationary current-noise modulation ``D[k]`` that decays with k,
 * independent white-noise input bands n=0..2 (gm pair and ideal tank loss),
 * a fictional unmodeled active source, kept outside the prediction,
@@ -49,7 +49,7 @@ def _periodic(coefficients, phase):
     return value
 
 
-def _point(name, op_id, second, shift_db, offset):
+def _point(name, op_id, second, shift_db, offset, f0=F0_HZ, carrier=CARRIER_V, noise_scale=1.0, corner=None):
     # Phase is an integral of injected current: H scales as 1/offset.
     # Combined with the white + 1/f source, output power is 1/f² + 1/f³.
     integrator = 1e4 / offset
@@ -68,7 +68,7 @@ def _point(name, op_id, second, shift_db, offset):
     for k in range(1, MAX_K + 1):
         phase = 0.35 * k
         dyn_norm[k] = 0.45 * math.exp(-0.7 * k) * complex(math.cos(phase), math.sin(phase))
-    source_asd = WHITE_ASD * math.sqrt(1.0 + CORNER_HZ / offset)
+    source_asd = (WHITE_ASD * noise_scale) * math.sqrt(1.0 + CORNER_HZ / offset)
     mdyn = {k: v * source_asd for k, v in dyn_norm.items()}
     # Fictional dynamic correction: twice the quasi-static modulation.
     mdc = {k: .5 * value for k, value in mdyn.items()}
@@ -78,7 +78,7 @@ def _point(name, op_id, second, shift_db, offset):
         id_h[k] = complex(bias * 0.25 * 0.5 ** (k - 1), 0.0)
 
     pred = calculation.calculate_point(
-        transfer, mdc, mdyn, abs(CARRIER_V), offset, f0_hz=F0_HZ, carrier_phasor=CARRIER_V,
+        transfer, mdc, mdyn, abs(carrier), offset, f0_hz=f0, carrier_phasor=carrier,
     )["methods"]["dynamic"]["pm_asd_V_rtHz"]
     reference = pred / (10.0 ** (shift_db / 20.0))
 
@@ -96,8 +96,9 @@ def _point(name, op_id, second, shift_db, offset):
     thermal = dict(schema_version=1, status="available", noise_quantity="PM_SSB",
         scope="gm_pair_and_lc_network", passive_scope="passive_only_lc_roots_v1",
         pm_validation="synthetic analytic example", pair_model="symmetric_independent",
-        target_noise_trace="core_a", peer_noise_trace="core_b", carrier_peak_V=abs(CARRIER_V),
-        offset_Hz=offset, f0_Hz=F0_HZ, predicted_psd_V2_Hz=thermal_power, sources=sources)
+        target_noise_trace="core_a", peer_noise_trace="core_b", carrier_peak_V=abs(carrier),
+        offset_Hz=offset, f0_Hz=f0, requested_max_harmonic=MAX_K,
+        predicted_psd_V2_Hz=thermal_power, sources=sources)
     contributions = [dict(device=d, mechanism="fn", psd_V2_Hz=reference**2)
                      for d in ("core_a", "core_b")]
     contributions += [dict(device=x["device"], mechanism=x["mechanism"], psd_V2_Hz=x["psd_V2_Hz"])
@@ -108,8 +109,8 @@ def _point(name, op_id, second, shift_db, offset):
     vco, replica, work = [], [], []
     for k in range(-MAX_K, MAX_K + 1):
         vco.append({
-            "point": name, "operating_point_id": op_id, "k": k, "corner": "typ", "f0_Hz": F0_HZ, "offset_Hz": offset,
-            "carrier_real_V": CARRIER_V.real, "carrier_imag_V": CARRIER_V.imag,
+            "point": name, "operating_point_id": op_id, "k": k, "corner": corner or "typ", "f0_Hz": f0, "offset_Hz": offset,
+            "carrier_real_V": carrier.real, "carrier_imag_V": carrier.imag,
             "H_real_ohm": transfer[k].real, "H_imag_ohm": transfer[k].imag,
             "spectre_pm_asd_V_rtHz": reference,
             "thermal_noise_json": json.dumps(thermal),
@@ -122,7 +123,7 @@ def _point(name, op_id, second, shift_db, offset):
     for k in range(MAX_K + 1):
         d = mdyn[k]
         replica.append({
-            "point": name, "operating_point_id": op_id, "offset_Hz": offset, "k": k, "Id_real_A": id_h[k].real, "Id_imag_A": id_h[k].imag,
+            "point": name, "operating_point_id": op_id, "corner": corner or "typ", "offset_Hz": offset, "k": k, "Id_real_A": id_h[k].real, "Id_imag_A": id_h[k].imag,
             "Mdc_real_A_rtHz": mdc[k].real, "Mdc_imag_A_rtHz": mdc[k].imag,
             "AM_A_rtHz": d.real if k else 0.0, "PM_A_rtHz": d.imag if k else 0.0,
             "USB_A_rtHz": source_asd if k == 0 else abs(d), "LSB_A_rtHz": 0.0 if k == 0 else abs(d),
@@ -131,16 +132,16 @@ def _point(name, op_id, second, shift_db, offset):
             "HBAC_norm_mag": abs(dyn_norm[k]), "HBAC_norm_phase_deg": math.degrees(math.atan2(d.imag, d.real)),
             "phase_candidate": "+" * MAX_K, "phase_score": 0.0,
         })
-    gamma = calculation.carrier_referenced_gamma_branches(transfer, CARRIER_V, offset, MAX_K)
+    gamma = calculation.carrier_referenced_gamma_branches(transfer, carrier, offset, MAX_K)
     for s in range(SAMPLES + 1):
         ph = 2.0 * math.pi * s / SAMPLES
         isf_i, isf_q = _periodic(gamma["i"], ph), _periodic(gamma["q"], ph)
         dyn = _periodic(mdyn, ph)
         cur = _periodic(id_h, ph)
-        differential = CARRIER_V.real * math.cos(ph)
+        differential = carrier.real * math.cos(ph)
         common_mode = 0.9 + second * 0.2 * math.sin(2 * ph)
         work.append({
-            "point": name, "operating_point_id": op_id, "offset_Hz": offset, "sample": s, "time_s": ph / (2.0 * math.pi * F0_HZ), "wt_rad": ph,
+            "point": name, "operating_point_id": op_id, "offset_Hz": offset, "sample": s, "time_s": ph / (2.0 * math.pi * f0), "wt_rad": ph,
             "VG_V": 0.60 + 0.30 * math.cos(ph), "VD_V": common_mode + differential / 2,
             "VDN_V": common_mode - differential / 2, "Vdiff_V": differential, "VS_V": 0.0, "VB_V": 0.0,
             "ID_main_A": cur * 0.98, "ID_replica_A": cur,
@@ -159,13 +160,27 @@ def _write(path, rows):
         writer.writerows(rows)
 
 
-def build(out):
+def build(out, *, sweep=False, single=False):
     os.makedirs(out, exist_ok=True)
     vco, replica, work = [], [], []
-    for op_id, second, shift in POINTS:
+    by_point = {}
+    cases = [(name, second, shift, {}) for name, second, shift in (POINTS[:1] if single else POINTS)]
+    if sweep:
+        from .core.sweep_points import point_key
+        cases = []
+        for hot, corner in enumerate(('Nominal 27 °C', 'Warm 85 °C')):
+            for index, bias in enumerate((0.9, 1.0, 1.1)):
+                coordinates = {'VBIAS': bias}
+                key = point_key(corner, coordinates)
+                by_point[key] = dict(corner=corner, params=coordinates, swept_variables=coordinates)
+                cases.append((key, .06 + .06 * index + .03 * hot, .3 + .35 * hot,
+                              dict(f0=F0_HZ * (1 + .02 * (index - 1) - .012 * hot),
+                                   carrier=complex(.9 + .07 * (index - 1) - .04 * hot),
+                                   noise_scale=1 + .24 * hot - .08 * (index - 1), corner=corner)))
+    for op_id, second, shift, conditions in cases:
         for offset in OFFSETS_HZ:
             # One canonical "point" is one operating point at one offset.
-            a, b, c = _point("%s@%g" % (op_id, offset), op_id, second, shift, offset)
+            a, b, c = _point("%s@%g" % (op_id, offset), op_id, second, shift, offset, **conditions)
             vco += a
             replica += b
             work += c
@@ -174,7 +189,8 @@ def build(out):
     _write(os.path.join(out, "workpoint.csv"), work)
     metadata = {
         "format": "canonical-two-tb-v2", "run_kind": "replay", "signoff": False,
-        "point_count": len(POINTS) * len(OFFSETS_HZ),
+        "point_count": len(cases) * len(OFFSETS_HZ),
+        "operating_points": by_point,
         "canonical_noise_quantity": "ASD_A_per_sqrt_Hz", "source_noise_quantity": "PSD_A2_per_Hz",
         "psd_square_roots": 1, "current_direction": "drain_to_source", "carrier_amplitude": "differential_peak",
         "output_noise": "PM_SSB", "phase_selection": "HBNOISE_AM_PM_engineering_candidate",
@@ -192,12 +208,12 @@ def build(out):
     return out
 
 
-def result():
+def result(*, sweep=False, single=False):
     """Recompute the bundled analytic canonical model without persistent files."""
     import tempfile
     from .core.dual_tb import recompute_dual_tb
     with tempfile.TemporaryDirectory() as directory:
-        build(directory)
+        build(directory, sweep=sweep, single=single)
         def read(name):
             with open(os.path.join(directory, name), encoding="utf-8") as stream:
                 return list(csv.DictReader(stream))

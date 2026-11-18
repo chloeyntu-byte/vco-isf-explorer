@@ -79,6 +79,8 @@ class TestbenchPage(ttk.Frame):
         actions=ttk.Frame(self);actions.grid(row=8,column=0,columnspan=3,sticky='ew',pady=8)
         ttk.Button(actions,text='Add decimal register…',command=self.add_register).pack(side='left',padx=4)
         ttk.Button(actions,text='Advanced configuration…',command=self.edit_request).pack(side='left')
+        self.sweep_button = ttk.Button(actions, text='Sweep / corners…', command=self.edit_sweep)
+        self.sweep_button.pack(side='left', padx=4)
         ttk.Button(actions,text='Prepare',command=self.prepare).pack(side='left',padx=8)
         self.start_button=ttk.Button(actions,text='Start analysis',style='Primary.TButton',command=self.start,state='disabled');self.start_button.pack(side='left')
         session_actions=ttk.Frame(self);session_actions.grid(row=9,column=0,columnspan=3,sticky='ew')
@@ -100,6 +102,7 @@ class TestbenchPage(ttk.Frame):
             self.source_controls.grid(row=10, column=0, columnspan=3, sticky='ew', pady=4)
             self.browse_button.grid_remove()
             self.source_label.configure(text='Generated directory' if entry == 'design-lab' else 'Maestro setup')
+        self.sweep_button.configure(state='disabled' if entry == 'maestro' else 'normal')
         if entry == 'maestro':
             self.test_controls.pack(side='left')
         else:
@@ -159,7 +162,7 @@ class TestbenchPage(ttk.Frame):
         if hasattr(self,'review_button'):self.review_button.configure(state='disabled')
         self.status.set({
             'design-lab': 'Select a generated Design Lab directory and enter the DUT.',
-            'maestro': 'Select an existing Maestro setup and enter its source test.',
+            'maestro': 'Select a Maestro source test. The new test inherits its sweeps and corners.',
             'cell': 'Load a request or browse for a cell, then confirm its ports.',
         }[self.entry.get()])
 
@@ -271,6 +274,41 @@ class TestbenchPage(ttk.Frame):
             except Exception as exc:self.app._show_error(exc)
         ttk.Button(win,text='Confirm bit order, domain, and code',command=apply).grid(row=7,column=0,columnspan=2)
 
+    def edit_sweep(self):
+        win = tk.Toplevel(self)
+        win.title('Global sweep and corners')
+        tb = self.request.get('tbgen_spec', self.request)
+        configured = next((row for row in tb.get('sweeps', []) if row.get('scope') == 'global'), {})
+        variable = tk.StringVar(value=configured.get('variable', ''))
+        values = tk.StringVar(value=' '.join(map(str, configured.get('values', []))))
+        corners = tk.StringVar(value=json.dumps(tb.get('corners', []), ensure_ascii=False))
+        for row, (caption, state) in enumerate((
+            ('Global variable', variable), ('Discrete values (e.g. 1.1 1.2)', values),
+            ('Corners (JSON: [{"name":"TT","variables":{}}])', corners))):
+            ttk.Label(win, text=caption, padding=5).grid(row=row, column=0, sticky='w')
+            ttk.Entry(win, textvariable=state, width=47).grid(row=row, column=1, padx=8)
+
+        def apply():
+            try:
+                from ..core.spectre_topology import evaluate
+                name, tokens = variable.get().strip(), values.get().replace(',', ' ').split()
+                if bool(name) != bool(tokens) or (tokens and (len(tokens) < 2 or len(tokens) > 16
+                        or len({evaluate(v, {}) for v in tokens}) != len(tokens))):
+                    raise ValueError('Enter one variable name and 2–16 unique numeric values.')
+                rows = json.loads(corners.get())
+                if not isinstance(rows, list):
+                    raise ValueError('Corners must be a JSON array.')
+                tb['sweeps'] = [r for r in tb.get('sweeps', []) if r.get('scope') != 'global']
+                if name:
+                    tb['sweeps'].append(dict(variable=name, values=tokens, scope='global'))
+                tb['corners'] = rows
+                self.invalidate()
+                win.destroy()
+            except (TypeError, ValueError) as exc:
+                self.app._show_error(exc, 'Invalid sweep or corners')
+
+        ttk.Button(win, text='Apply', command=apply).grid(row=3, column=1, sticky='e', padx=8, pady=8)
+
     def edit_request(self):
         win=tk.Toplevel(self);win.title('Drivers, registers, and models (TB Generator spec)');win.geometry('900x600')
         text=tk.Text(win,wrap='word');text.pack(fill='both',expand=True);text.insert('1.0',json.dumps(self.request,ensure_ascii=False,indent=2))
@@ -329,6 +367,16 @@ class TestbenchPage(ttk.Frame):
                 if self.core_mode.get() == 'asymmetric_pair':
                     overrides['gm']['complementary'].update(mode='asymmetric_pair', peer_instance=None)
                     overrides['gm']['peer_instances'] = []
+            if entry == 'design-lab' and tb is req:
+                conditions = {}
+                if 'sweeps' in tb:
+                    conditions['sweeps'] = [dict(id=row['variable'], semantics='cartesian', axes=[row['variable']],
+                                                 native_record=row) for row in tb['sweeps']]
+                if 'corners' in tb:
+                    conditions['corners'] = [dict(id=row['name'], enabled=row.get('enabled', True),
+                                                  native_record=row) for row in tb['corners']]
+                if conditions:
+                    overrides['conditions'] = conditions
             if self.frequency.get():overrides['analysis']['frequency_guess_hz']=float(self.frequency.get())
             fn={'design-lab':api.prepare_from_design_lab,'maestro':api.prepare_from_maestro,'cell':api.prepare_from_cell}[self.entry.get()]
             root=self.tbgen.get() or None;workspace=self.app.controller.workspace
@@ -401,10 +449,18 @@ class TestbenchPage(ttk.Frame):
             if not messagebox.askyesno('Save Maestro settings','This Maestro session has unsaved changes. Save them and add the test?',parent=self):return
             policy='save'
         self.review_settings(r)
-        self.start_button.configure(state='disabled');self.session_button.configure(state='disabled')
-        self.status.set('Waiting for confirmation in Maestro, followed by readback verification…')
-        self.session_prepared=r
-        self.app._submit('Maestro transaction',lambda:api.submit_session_add(api.prepare_session_add(r['spec_path'],spec_hash=r['spec_hash'],context=context,save_policy=policy)),self.session_submitted)
+        self.start_button.configure(state='disabled')
+        self.session_button.configure(state='disabled')
+
+        def submit(ids):
+            self.status.set('Waiting for confirmation in Maestro, followed by readback verification…')
+            self.session_prepared = r
+            self.session_point_ids = ids
+            self.app._submit('Maestro transaction', lambda: api.submit_session_add(api.prepare_session_add(
+                r['spec_path'], spec_hash=r['spec_hash'], context=context, save_policy=policy)),
+                self.session_submitted, on_failure=lambda _: self._enable_run_buttons())
+
+        self._choose_native_points(r, submit)
 
     def session_submitted(self,handle):
         self.session_handle=handle;self.poll_session()
@@ -421,17 +477,54 @@ class TestbenchPage(ttk.Frame):
                 workspace=self.app.controller.workspace
                 def run():
                     api.accept_session_add(self.session_handle)
-                    return api.run(r['spec_path'],spec_hash=r['spec_hash'],workspace=workspace,request_id='session-'+r['spec_hash'])
+                    selection = getattr(self, 'session_point_ids', ())
+                    return api.run(r['spec_path'], spec_hash=r['spec_hash'], workspace=workspace,
+                                   request_id='session-' + digest([r['spec_hash'], list(selection)]),
+                                   point_ids=selection)
                 self.app._submit('Maestro transaction',run,self.started)
             else:
                 self.status.set('Maestro transaction status '+state['status']+'. Analysis did not start.')
         self.app._submit('Maestro transaction',lambda:api.session_add_status(self.session_handle),received)
 
+    def _enable_run_buttons(self):
+        self.start_button.configure(state='normal')
+        if self.prepared and self.session_context(self.prepared):
+            self.session_button.configure(state='normal')
+
+    def _choose_native_points(self, receipt, submit):
+        revision = self.revision
+
+        def send(ids=()):
+            if revision == self.revision:
+                submit(ids)
+
+        def preview(points):
+            if revision != self.revision:
+                return
+            if len(points) > 1:
+                from .sweep_view import choose_points
+                choose_points(self.winfo_toplevel(), points, receipt['spec']['analysis']['offsets_hz'],
+                              send, self._enable_run_buttons)
+            else:
+                send()
+
+        self.app._submit('Preview Maestro points', lambda: api.planned_points(receipt['spec']), preview,
+                         on_failure=lambda _: self._enable_run_buttons())
+
     def start(self):
-        r=self.prepared
-        if not r or r['status']!='ready':return
-        self.start_button.configure(state='disabled');workspace=self.app.controller.workspace
-        self.app._submit('Testbench',lambda:api.run(r['spec_path'],spec_hash=r['spec_hash'],workspace=workspace,request_id='ui-'+r['spec_hash']),self.started)
+        r = self.prepared
+        if not r or r['status'] != 'ready':
+            return
+        workspace = self.app.controller.workspace
+        self.start_button.configure(state='disabled')
+
+        def submit(ids):
+            request_id = 'ui-' + digest([r['spec_hash'], list(ids)])
+            self.app._submit('Testbench', lambda: api.run(r['spec_path'], spec_hash=r['spec_hash'],
+                workspace=workspace, request_id=request_id, point_ids=ids), self.started,
+                on_failure=lambda _: self._enable_run_buttons())
+
+        self._choose_native_points(r, submit)
 
     def started(self,job):self.job=job;self.poll()
     def poll(self):

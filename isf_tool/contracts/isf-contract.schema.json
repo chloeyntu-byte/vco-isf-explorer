@@ -1530,6 +1530,13 @@
         },
         "wait": {
           "type": "boolean"
+        },
+        "point_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -1584,6 +1591,10 @@
               "minimum": 0
             },
             "failed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "thermal_incomplete": {
               "type": "integer",
               "minimum": 0
             }

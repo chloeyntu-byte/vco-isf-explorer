@@ -44,6 +44,7 @@ from .waveform_exchange import inspect_waveform_exchange
 from .run_state import STATE_FILENAME
 from . import api_jobs, ui_state
 from .offset_sweep import SWEEP_STATE, OffsetSweepStopped, is_sweep, run_offset_sweep
+from .sweep_points import POINT_STATE, child_config, history_points, run_points, select_points
 
 
 DEFAULT_CONFIG = {
@@ -627,6 +628,16 @@ class ToolService(object):
             config_snapshot = _deep_merge(config_snapshot, embedded)
         elif "config" not in payload:
             config_snapshot = _deep_merge(config_snapshot, payload)
+        catalogue, points = history_points(config_snapshot)
+        if len(points) > 1 or config_snapshot.get('point_selection') is not None:
+            selection = select_points(points, config_snapshot.get('point_selection'))
+            reports = [self.preflight({'config': child_config(config_snapshot, catalogue, point)})
+                       for point in selection]
+            first = next((report for report in reports if report.get('ok')), reports[0])
+            return dict(first, sweep_points=points, point_preflight=[
+                dict(id=point['id'], ok=report.get('ok', False),
+                     failures=[row for row in report.get('checks', []) if row.get('status') == 'fail'])
+                for point, report in zip(selection, reports)])
         if config_snapshot.get('analysis', {}).get('complementary') is not None:
             return self._core_preflight(config_snapshot)
         return run_preflight(config_snapshot, workspace=self.workspace, **self._environment_options)
@@ -979,7 +990,9 @@ class ToolService(object):
             job["updated_at"] = job["started_at"]
         try:
             recorder.emit("queued", "succeeded", 0, "Job started")
-            if config_snapshot.get('analysis', {}).get('complementary') is not None:
+            if config_snapshot.get('point_batch'):
+                result = run_points(self, job_id, payload, config_snapshot, recorder.emit)
+            elif config_snapshot.get('analysis', {}).get('complementary') is not None:
                 result = run_complementary(self, payload, config_snapshot, recorder.emit)
             elif is_sweep(config_snapshot):
                 result = run_offset_sweep(self, job_id, payload, config_snapshot, recorder.emit)
@@ -1036,8 +1049,23 @@ class ToolService(object):
             config_snapshot = _deep_merge(config_snapshot, embedded)
         payload.pop("config", None)
         config_snapshot = _seal_run_contract(config_snapshot, payload)
+        config_snapshot.pop('point_batch', None)
         complementary = config_snapshot.get('analysis', {}).get('complementary') is not None
-        if complementary:
+        catalogue, points = history_points(config_snapshot)
+        selection = config_snapshot.get('point_selection')
+        point_batch = len(points) > 1 or selection is not None
+        if point_batch:
+            if not self.workspace:
+                raise ValidationError('Maestro point batches require an owned workspace')
+            if catalogue is None:
+                raise ValidationError('Point selection requires a completed Maestro replay history')
+            frozen = config_snapshot['testbenches']['vco'].get('history_fingerprint')
+            if frozen and frozen != catalogue['history_fingerprint']:
+                raise ValidationError('Maestro history changed after inspection')
+            config_snapshot['point_batch'] = dict(points=select_points(points, selection),
+                                                   history_fingerprint=catalogue['history_fingerprint'])
+            config_snapshot.setdefault('execution', {})['resume_enabled'] = True
+        elif complementary:
             if not self.workspace:
                 raise ValidationError('Complementary core requires an owned workspace')
             # Both devices are fully preflighted before the first child can run.
@@ -1062,7 +1090,7 @@ class ToolService(object):
                 and execution.get("require_preflight", False)
             )
         )
-        if require_preflight and not complementary:
+        if require_preflight and not complementary and not point_batch:
             report = run_preflight(config_snapshot, workspace=self.workspace, **self._environment_options)
             if not report.get("ok"):
                 failed = [
@@ -1199,6 +1227,9 @@ class ToolService(object):
 
     def resume_job(self, job_id, payload=None):
         job_id = str(job_id)
+        if self.workspace and api_jobs.manifest(self.workspace, job_id) is not None:
+            from ..api import retry_points
+            return retry_points(job_id, workspace=self.workspace)
         payload = _mapping(payload or {}, "resume payload")
         with self._lock:
             job = self._jobs.get(job_id)
@@ -1240,6 +1271,7 @@ class ToolService(object):
                 "resume is disabled for this job",
                 details={"job_id": job_id},
             )
+        point_batch = config_snapshot.get('point_batch')
         runtime_identity = config_snapshot.get("runtime_identity")
         live_bundled = bool(
             not execution.get("dry_run", True)
@@ -1301,7 +1333,7 @@ class ToolService(object):
                 identity_errors["source_netlists"] = {
                     "reason": "source netlist identities are absent"
                 }
-        if identity_errors:
+        if identity_errors and not point_batch:
             raise ResumeError(
                 "runtime files changed after interruption",
                 code="ISF-E5002",
@@ -1311,7 +1343,8 @@ class ToolService(object):
                 },
             )
         run_root = request_snapshot.get("run_root")
-        checkpoint_name = SWEEP_STATE if is_sweep(config_snapshot) else STATE_FILENAME
+        checkpoint_name = (POINT_STATE if point_batch else
+                           SWEEP_STATE if is_sweep(config_snapshot) else STATE_FILENAME)
         state_path = os.path.join(str(run_root), checkpoint_name) if run_root else None
         if not state_path or not os.path.isfile(state_path):
             raise ResumeError(
@@ -1344,7 +1377,7 @@ class ToolService(object):
             job["finished_at"] = None
             job["updated_at"] = now
             job["background"] = background
-            if not is_sweep(config_snapshot):
+            if not point_batch and not is_sweep(config_snapshot):
                 job["result"] = None
             job["error"] = None
             job["_request"] = copy.deepcopy(request_snapshot)
@@ -1383,10 +1416,10 @@ class ToolService(object):
             if job is None:
                 raise JobNotFoundError("unknown job: %s" % job_id)
             config = job.get('_config_snapshot', {})
-            if config.get('analysis', {}).get('complementary') is not None:
+            if not config.get('point_batch') and config.get('analysis', {}).get('complementary') is not None:
                 raise ValidationError('Stop after current offset is unavailable for complementary jobs')
-            if job.get("status") not in ("queued", "running") or not is_sweep(config):
-                raise ValidationError("This action applies only to running multi-offset jobs")
+            if job.get("status") not in ("queued", "running") or not (config.get("point_batch") or is_sweep(config)):
+                raise ValidationError("This action applies to running sweep jobs")
             job["cancel_requested"] = True
             job["message"] = "will stop after the current offset completes, completed results will be retained"
         self._persist_job(str(job_id))
@@ -1405,6 +1438,8 @@ class ToolService(object):
         value.pop("result", None)
         request_snapshot = value.pop("_request", None)
         config_snapshot = value.pop("_config_snapshot", None) or {}
+        value["point_sweep"] = copy.deepcopy((job.get("result") or {}).get("point_sweep"))
+        value["is_point_sweep"] = bool(config_snapshot.get('point_batch'))
         value["is_offset_sweep"] = (config_snapshot.get('analysis', {}).get('complementary') is None
                                     and is_sweep(config_snapshot))
         value["offset_sweep"] = None
@@ -1425,7 +1460,7 @@ class ToolService(object):
         value["resume_available"] = bool(
             value.get("status") in ("failed", "interrupted")
             and run_root
-            and any(os.path.isfile(os.path.join(str(run_root), name)) for name in (STATE_FILENAME, SWEEP_STATE))
+            and any(os.path.isfile(os.path.join(str(run_root), name)) for name in (STATE_FILENAME, SWEEP_STATE, POINT_STATE))
         )
         stages = []
         stage_index = {}
@@ -1465,7 +1500,7 @@ class ToolService(object):
                             and job["_request"].get("run_root")
                             and any(os.path.isfile(os.path.join(
                                 str(job["_request"]["run_root"]), name))
-                                for name in (STATE_FILENAME, SWEEP_STATE))
+                                for name in (STATE_FILENAME, SWEEP_STATE, POINT_STATE))
                         ),
                     }
                 )
@@ -1491,7 +1526,7 @@ class ToolService(object):
             if job is None:
                 raise JobNotFoundError("unknown job: %s" % job_id)
             if job["status"] in ("failed", "interrupted") and not (
-                isinstance(job.get("result"), Mapping) and job["result"].get("offset_sweep")
+                isinstance(job.get("result"), Mapping) and (job["result"].get("offset_sweep") or job["result"].get("point_sweep"))
             ):
                 raise JobFailedError(
                     "job failed: %s" % job_id, details=copy.deepcopy(job["error"] or {})

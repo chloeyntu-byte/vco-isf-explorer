@@ -38,7 +38,9 @@ def execute(path):
         native=module.run(prepared['materialized'],wait=True)
         row['tbgen_run']=native;_save(path,row,'tbgen.results')
         refs=module.results(native);row['native_results']=refs
-        if refs['status']!='completed':raise RuntimeError(str(refs.get('issues')))
+        if refs['status'] != 'completed' and not any(
+                p.get('completion', {}).get('state') == 'completed' for p in refs['points']):
+            raise RuntimeError(str(refs.get('issues')))
         row['job']['coverage']['expected']=len(refs['points'])
         import hashlib
         setup=Path(prepared['materialized']['setup_dir'])
@@ -60,6 +62,9 @@ def execute_isf(path):
     """Run the ISF stage on the native handoff after resource coordination."""
     path=Path(path);row=read(path);spec=row['spec'];ext=spec['extensions'];native=row['tbgen_run'];refs=row['native_results']
     try:
+        retry_id = row['isf_job_id'] if row.get('stage') == 'isf.retry' else None
+        row['job']['state'] = 'running'
+        _save(path, row, 'isf.run' if retry_id else 'isf.preflight')
         import hashlib
         for item in row.get('native_handoff_files',[]):
             if hashlib.sha256(Path(item['path']).read_bytes()).hexdigest()!=item['sha256']:
@@ -94,29 +99,84 @@ def execute_isf(path):
         runtime=dict(DEFAULT_RUNTIME,**ext['tbgen_spec'].get('runtime',{}))
         config.setdefault('profiles',{}).setdefault('environment',{})['cadence_env']=runtime['environment_script']
         row['native_runtime_profile']=dict(environment_script=runtime['environment_script'],provider='vco_tbgen.native.DEFAULT_RUNTIME+spec.runtime')
-        row['isf_config']=config;_save(path,row,'isf.preflight')
-        if complementary is None:
-            report=service.inspect_maestro_pair(config);row['pair_report']=report
-            if not report.get('ok'):raise RuntimeError('Maestro/replica handoff: '+str(report.get('issues')))
-            role=report['roles']['vco']
-            config['testbenches']['vco'].update(binding_fingerprint=role['binding_fingerprint'],history_fingerprint=role['history_fingerprint'])
-        row['isf_config']=config;row['isf_preflight']=service.preflight(dict(config=config));_save(path,row,'isf.run')
-        # Documented transitional native-history -> owned private rerun. All
-        # exchange/replica/thermal/extraction remain the existing implementation.
-        jobid=service.start_run(dict(config=config,background=False,require_preflight=True))
-        row['isf_job_id']=jobid;job=service.get_job(jobid);row['isf_job']=job
-        if job['status']!='succeeded':raise RuntimeError('ISF: '+str(job.get('error') or job.get('message')))
+        from .core.sweep_points import history_points
+        config['testbenches']['vco']['allow_partial_history'] = refs['status'] != 'completed'
+        if retry_id:
+            jobid = retry_id
+            service.resume_job(jobid, {'background': False})
+        else:
+            report, points = history_points(config)
+            if not points:
+                raise RuntimeError('No verified Maestro point identities for the new test')
+            if row.get('planned_selection'):
+                from vco_tbgen.effective import numeric
+                import math
+
+                def matches(point, condition):
+                    if point['corner'] != condition['corner']:
+                        return False
+                    parameters = point['parameters']
+                    if condition.get('models'):
+                        from vco_tbgen.effective import reported_corner_models
+                        if reported_corner_models(parameters.get('corModelSpec')) != condition['models']:
+                            return False
+                    try:
+                        return all(math.isclose(numeric(parameters[name]), value,
+                                                rel_tol=1e-9, abs_tol=1e-18)
+                                   for name, value in condition.get('effective_values', condition['variables']).items())
+                    except (KeyError, TypeError, ValueError):
+                        return False
+
+                selected = []
+                for condition in row['planned_selection']:
+                    candidates = [p['id'] for p in points if matches(p, condition)]
+                    if len(candidates) != 1:
+                        raise RuntimeError('Cannot uniquely associate native condition ' + condition['label'])
+                    selected.extend(candidates)
+                config['point_selection'] = selected
+            role = config['testbenches']['vco']
+            role.update(binding_fingerprint=report['binding_fingerprint'],
+                        history_fingerprint=report['history_fingerprint'])
+            row['isf_config'] = config
+            _save(path, row, 'isf.run')
+            jobid = service.start_run(dict(config=config, background=False, require_preflight=True))
+        row['isf_job_id'] = jobid
+        job = service.get_job(jobid)
+        row['isf_job'] = job
+        if not job['result_available']:
+            raise RuntimeError('ISF: ' + str(job.get('error') or job.get('message')))
         from .core.maestro_outputs import attach_outputs
         row['result']=attach_outputs(service.get_result(jobid),refs['points'],spec['measurements']['outputs'])
         row['canonical_path']=str(path.parent/'isf-workspace'/'jobs'/jobid/'canonical')
-        summaries=row['result'].get('summary',[])
-        missing_thermal='thermal' in spec['replica']['mechanisms'] and (not summaries or any((item.get('thermal_noise') or {}).get('status')!='available' for item in summaries))
-        if missing_thermal:
-            row['job']['state']='partial';row['job']['coverage']['failed']=len(refs['points'])
-            row['issues'].append(issue('/replica/mechanisms','Flicker result is available but requested thermal qualification is incomplete','MECHANISM_UNAVAILABLE'))
-            _save(path,row,'partial');return 4
-        row['job']['coverage']['completed']=len(refs['points']);row['job']['state']='completed';_save(path,row,'completed')
+        summaries = row['result'].get('summary', [])
+        points = (row['result'].get('point_sweep') or {}).get('points', [])
+        if not points:
+            points = [{'id': s.get('core_operating_point_id') or s['operating_point_id'],
+                       'status': 'completed'} for s in summaries]
+        ids = {p['id'] for p in points}
+        completed = {p['id'] for p in points if p['status'] == 'completed'}
+        thermal_incomplete = set()
+        if 'thermal' in spec['replica']['mechanisms']:
+            thermal_incomplete = completed & {
+                s.get('core_operating_point_id') or s['operating_point_id'] for s in summaries
+                if (s.get('thermal_noise') or {}).get('status') != 'available'
+            }
+        row['job']['coverage'] = dict(expected=len(ids), completed=len(completed),
+                                      failed=len(ids - completed))
+        if thermal_incomplete:
+            row['job']['coverage']['thermal_incomplete'] = len(thermal_incomplete)
+        if ids != completed or thermal_incomplete or job['status'] != 'succeeded':
+            row['job']['state'] = 'partial' if summaries else 'failed'
+            row['issues'] = [issue('isf.run', job.get('message') if job['status'] != 'succeeded'
+                                  else 'Requested thermal qualification is incomplete',
+                                  'POINTS_INCOMPLETE')]
+            _save(path, row, row['job']['state'])
+            return 4
+        row['issues'] = []
+        row['job']['state'] = 'completed'
+        _save(path, row, 'completed')
         return 0
+
     except Exception as exc:return _fail(path,row,exc)
 
 if __name__=='__main__':raise SystemExit(execute_isf(sys.argv[1]) if '--isf-only' in sys.argv else execute(sys.argv[1]))

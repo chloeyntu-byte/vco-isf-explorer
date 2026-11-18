@@ -7,7 +7,7 @@ from . import api
 from .core.testbench import read
 from .cli_errors import Parser, report_error
 
-COMMANDS={'prepare','complete','materialize','run','status','results','ui','browse','describe-cell','capabilities'}
+COMMANDS={'prepare','complete','materialize','run','status','results','points','retry-points','ui','browse','describe-cell','capabilities'}
 
 COMMAND_HELP = {
     'prepare': ('Prepare and review an ISF testbench request', ('input', 'workspace', 'tbgen-root')),
@@ -16,6 +16,8 @@ COMMAND_HELP = {
     'run': ('Start a reviewed job and return its durable job ID', ('input', 'spec', 'spec-hash', 'workspace', 'request-id')),
     'status': ('Read the current status of a durable job ID', ('job', 'workspace')),
     'results': ('Read results and issues for a durable job ID', ('job', 'workspace')),
+    'points': ('List stable planning keys for a prepared testbench', ('spec',)),
+    'retry-points': ('Retry ISF points against their saved native history', ('job', 'workspace')),
     'ui': ('Open the desktop for a workspace and optional reviewed specification', ('spec', 'workspace')),
     'browse': ('Read the Cadence library catalog from a cds.lib', ('cds-lib', 'workspace', 'tbgen-root')),
     'describe-cell': ('Read DUT terminals from a JSON request', ('input', 'cds-lib', 'workspace', 'tbgen-root')),
@@ -32,12 +34,17 @@ def main(arguments):
     for flag in flags:
         parser.add_argument('--' + flag, required=flag in {
             'prepare': ('input', 'workspace'), 'status': ('job', 'workspace'),
-            'results': ('job', 'workspace'), 'ui': ('workspace',),
+            'results': ('job', 'workspace'), 'retry-points': ('job', 'workspace'),
+            'points': ('spec',), 'ui': ('workspace',),
             'complete': ('spec',), 'describe-cell': ('input',),
             'materialize': ('spec', 'spec-hash'),
         }.get(cmd, ()))
     if cmd == 'run':
         parser.add_argument('--wait', action='store_true', help='Wait for a terminal job state')
+    if cmd in ('run', 'results'):
+        parser.add_argument('--point', action='append', help='Point key (repeat to select several)')
+    if cmd == 'results':
+        parser.add_argument('--offset-hz', action='append', type=float, help='Offset in Hz (repeat to select several)')
     parser.add_argument('--json', action='store_true', help='Print the JSON response (default)')
     try:
         args=parser.parse_args(arguments[1:])
@@ -55,8 +62,20 @@ def main(arguments):
             elif cmd=='materialize':response=api.materialize(args.spec,spec_hash=args.spec_hash,workspace=args.workspace)
             elif cmd=='run':
                 req=read(args.input) if args.input else {}
-                response=api.run(req.get('spec_path',args.spec),spec_hash=req.get('spec_hash',args.spec_hash),workspace=args.workspace,request_id=req.get('request_id',args.request_id),run_kind=req.get('run_kind','replay'),wait=req.get('wait',args.wait))
-            elif cmd in ('status','results'):response=getattr(api,cmd)(args.job,workspace=args.workspace)
+                response = api.run(
+                    req.get('spec_path', args.spec), spec_hash=req.get('spec_hash', args.spec_hash),
+                    workspace=args.workspace, request_id=req.get('request_id', args.request_id),
+                    run_kind=req.get('run_kind', 'replay'), wait=req.get('wait', args.wait),
+                    point_ids=args.point or req.get('point_ids', ()))
+            elif cmd == 'points':
+                response = {'status': 'ready', 'points': api.planned_points(args.spec)}
+            elif cmd == 'status':
+                response = api.status(args.job, workspace=args.workspace)
+            elif cmd == 'results':
+                response = api.results(args.job, workspace=args.workspace,
+                                       point_ids=args.point or (), offsets_hz=args.offset_hz or ())
+            elif cmd == 'retry-points':
+                response = api.retry_points(args.job, workspace=args.workspace)
             elif cmd=='ui':
                 response = api.open_ui(args.spec, workspace=args.workspace)
                 if response['status'] == 'failed':

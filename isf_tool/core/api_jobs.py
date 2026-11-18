@@ -27,7 +27,9 @@ def desktop_job(row):
     job = row['job']
     state = job['state']
     available = isinstance(row.get('result'), dict)
-    status = 'succeeded' if state == 'completed' or (state == 'partial' and available) else state
+    retry = bool((row.get('isf_job') or {}).get('resume_available'))
+    status = ('failed' if state == 'partial' and retry else
+              'succeeded' if state == 'completed' or (state == 'partial' and available) else state)
     stage = row.get('stage') or state
     terminal = state in ('completed', 'partial', 'failed')
     progress = 100 if terminal else {
@@ -38,7 +40,7 @@ def desktop_job(row):
     events = [dict(stage=stage, status=status, message=message,
                    progress=progress, timestamp=row.get('updated_at'))]
     return dict(id=job['job_id'], status=status, api_state=state, message=message,
-                progress=progress, result_available=available, resume_available=False,
+                progress=progress, result_available=available, resume_available=terminal and retry,
                 created_at=row.get('created_at'), updated_at=row.get('updated_at'),
                 is_offset_sweep=False, events=events, stages=events,
                 error=next(iter(row.get('issues', [])), None))

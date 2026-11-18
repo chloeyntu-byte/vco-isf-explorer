@@ -25,6 +25,7 @@ except ImportError:  # pragma: no cover
     from collections import Mapping
 
 from .discovery import inspect_rdb
+from .sweep_points import catalogue
 from .errors import DiscoveryError, ValidationError
 from .signal_mapping import cross_tb_mapping, discover_signal_mapping
 from .psf_extract import _read_parameter_tables, _parameters_for_run, _id_token
@@ -368,12 +369,13 @@ def _state_analyses(test):
     if component is None:
         return output
     for analysis in component.findall(".//analyses[@Name='analysis']/analysis"):
-        fields = {}
+        fields, native_fields = {}, {}
         for field in analysis.findall(".//field"):
             name = field.get("Name")
             value = _plain_text(field.text)
             if name and value not in ("", "nil", "()", "(nil)"):
                 fields[name] = value
+                native_fields[name] = field.text.strip()
         enable_values = [
             _plain_text(field.text)
             for field in analysis.findall(".//field[@Name='enable']")
@@ -383,6 +385,7 @@ def _state_analyses(test):
                 "name": str(analysis.get("Name", "")).lower(),
                 "enabled": any(_truthy_skill(value) for value in enable_values),
                 "fields": fields,
+                "native_fields": native_fields,
             }
         )
     return output
@@ -984,20 +987,29 @@ def restore_operating_point_text(text, operating_point):
     operating_point = operating_point or {}
     if operating_point.get('ambiguous_params'):
         raise ValidationError("Ambiguous operating parameter: %s" % ', '.join(sorted(operating_point['ambiguous_params'])))
-    params = operating_point.get('params', {})
+    params = dict(operating_point.get('params', {}))
+    if operating_point.get('effective_temperature') is not None:
+        params.setdefault('temperature', operating_point['effective_temperature'])
     records = operating_point.get('parameter_records', [])
     changes = []
     for name, value in sorted(params.items()):
         if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', str(name)):
             raise ValidationError("Unsupported operating-parameter name: %s" % name)
-        string_value = isinstance(value, str) and value.strip().startswith('"')
-        replacement = json.dumps(_operating_string(value), ensure_ascii=False) if string_value else _operating_scalar(value)
         relevant = [r for r in records if str(r.get('name')) == name]
         priorities = [(2 if r.get('value_source') == 'localParameterValue' else
                        1 if r.get('testID') not in (None, '') else 0, r) for r in relevant]
         effective = [r for priority, r in priorities if priority == max((p for p, _ in priorities), default=0)]
         kinds = {str(r.get('type') or 'desVar').lower() for r in effective} or {'desvar'}
-        temperature = name.lower() in ('temp', 'temperature', 'tnom') and kinds <= {'temp', 'temperature', 'simulatoroption', 'option'}
+        if kinds == {'modelgroup'} and name == 'corModelSpec':
+            if not operating_point.get('verified_model_includes'):
+                raise ValidationError('Maestro model group requires proven per-point includes')
+            continue
+        string_value = isinstance(value, str) and value.strip().startswith('"')
+        replacement = json.dumps(_operating_string(value), ensure_ascii=False) if string_value else _operating_scalar(value)
+        temperature = (name.lower() in ('temp', 'temperature', 'tnom')
+                       and (kinds <= {'temp', 'temperature', 'simulatoroption', 'option'}
+                            or any(r.get('effective_simulator_option') == 'temp' for r in effective)
+                            or name == 'temperature' and name not in operating_point.get('params', {})))
         if string_value and temperature:
             raise ValidationError('Temperature operating parameter cannot be a string: ' + name)
         if not temperature and not kinds <= {'desvar', 'designvariable', 'variable', ''}:
@@ -1043,6 +1055,39 @@ def restore_operating_point_text(text, operating_point):
     return text, changes
 
 
+def _simulated_temperature(psf_dir):
+    """Read the scalar Spectre post-setup option reported for this exact run."""
+    if not psf_dir:
+        return None
+    try:
+        with open(os.path.join(psf_dir, 'spectre.out'), encoding='utf-8', errors='replace') as stream:
+            text = stream.read(1024 * 1024)
+    except OSError:
+        return None
+    matches = re.findall(r'^\s*temp\s*=\s*(\S+)\s*$', text, re.MULTILINE)
+    if matches and len(set(matches)) == 1 and _parse_spice_number(matches[0]) is not None:
+        return _operating_numeric_key(matches[0])
+    return None
+
+
+def _verify_model_includes(raw, environment):
+    """Qualify the IC618 per-point global model-group format against input.scs."""
+    items = str(raw).removesuffix(';').split(';')
+    if not raw or not items:
+        raise ValidationError('Empty Maestro model-group specification')
+    expected = {}
+    for item in items:
+        match = re.fullmatch(r'File=All#Global#(/[^"#;\r\n]+) Section="([A-Za-z0-9_.-]+)"', item)
+        if not match:
+            raise ValidationError('Unsupported Maestro model-group record')
+        path, section = match.groups()
+        expected.setdefault(os.path.realpath(path), set()).add(section)
+    if any(sections != set(environment['model_sections'].get(path, ()))
+           for path, sections in expected.items()):
+        raise ValidationError('Maestro model-group sections do not match the point netlist')
+    return {path: sorted(sections) for path, sections in expected.items()}
+
+
 def _operating_point_for_run(rdb, run, parameter_values, netlist):
     params, records, ambiguous = _parameters_for_run(parameter_values.get(_id_token(run.get('pointID')), []), run.get('testID'))
     contract = {'schema_version': 1, 'rdb': os.path.realpath(rdb),
@@ -1050,7 +1095,22 @@ def _operating_point_for_run(rdb, run, parameter_values, netlist):
                 'test': run.get('test'), 'corner': run.get('corner'),
                 'params': params, 'parameter_records': records, 'ambiguous_params': ambiguous}
     with open(netlist, encoding='utf-8') as stream:
-        preview, changes = restore_operating_point_text(stream.read(), contract)
+        text = stream.read()
+    initial_environment = _operating_environment(text, netlist)
+    if any(record.get('name') == 'corModelSpec' and str(record.get('type') or '').lower() == 'modelgroup'
+           for record in records):
+        contract['verified_model_includes'] = _verify_model_includes(params.get('corModelSpec'), initial_environment)
+    temperature = _simulated_temperature(run.get('psfDir'))
+    if temperature is not None:
+        settings = initial_environment['settings']
+        if settings.get('temp') != temperature:
+            contract['effective_temperature'] = temperature
+        for record in records:
+            if record.get('name') == 'temperature' and record.get('maestro_corner_parameter'):
+                if _operating_numeric_key(record.get('value')) != temperature:
+                    raise ValidationError('Maestro corner temperature differs from Spectre options for point %s' % run.get('pointID'))
+                record['effective_simulator_option'] = 'temp'
+    preview, changes = restore_operating_point_text(text, contract)
     contract['restored_values'] = changes
     contract['environment'] = _operating_environment(preview, netlist)
     contract['effective_netlist_sha256'] = hashlib.sha256(preview.encode('utf-8')).hexdigest()
@@ -1226,7 +1286,7 @@ def match_flicker_operating_source(sources, vco_source, bias_variables=()):
 
 def _history_records(
     maestro_dir, selected_test, include_histories=True, requested_history=None,
-    history_catalog=None, explicit_history_selection=False,
+    history_catalog=None, explicit_history_selection=False, allow_partial=False,
 ):
     if not include_histories:
         return [], None
@@ -1305,6 +1365,8 @@ def _history_records(
                 raise DiscoveryError("Selected RDB is not registered in this Maestro context; refresh this setup or choose a manual source")
             record['rdb_sha256'] = _sha256_file(path)
             inspected = inspect_rdb({"path": path, "verify_completion": True})
+            if inspected.get('truncated_tables'):
+                raise DiscoveryError('RDB coverage is incomplete: ' + ', '.join(inspected['truncated_tables']))
             _, parameter_values = _read_parameter_tables(path)
             record["tests"] = [row.get("name") for row in inspected.get("tests", [])]
             record["declared_raw_dirs"] = list(inspected.get("rawDir", []))
@@ -1318,25 +1380,36 @@ def _history_records(
             record["stale_raw_dirs"] = [
                 item for item in record["raw_dirs"] if not os.path.isdir(str(item))
             ]
+            complete_sources = []
+            known_sources = []
             for run in selected_runs:
-                if not run.get("complete"):
-                    continue
                 psf_dir = run.get("psfDir")
-                if not psf_dir:
-                    continue
-                netlist = os.path.join(os.path.dirname(psf_dir), "netlist", "input.scs")
-                if os.path.isfile(netlist):
-                    record["source_netlists"].append(
-                        {
-                            "path": os.path.realpath(netlist),
-                            "point_id": run.get("pointID"),
-                            "design_point": run.get("designPointNumber"),
-                            "corner": run.get("corner"),
-                            "test": run.get("test"),
-                            "psf_dir": os.path.realpath(psf_dir),
-                            "operating_point": _operating_point_for_run(path, run, parameter_values, netlist),
-                        }
-                    )
+                netlist = os.path.join(os.path.dirname(psf_dir), "netlist", "input.scs") if psf_dir else None
+                source = dict(path=os.path.realpath(netlist) if netlist else None,
+                              point_id=run.get("pointID"), design_point=run.get("designPointNumber"),
+                              corner=run.get("corner"), test=run.get("test"),
+                              psf_dir=os.path.realpath(psf_dir) if psf_dir else None)
+                if run.get('complete') and netlist and os.path.isfile(netlist):
+                    try:
+                        source['operating_point'] = _operating_point_for_run(path, run, parameter_values, netlist)
+                        complete_sources.append(source)
+                    except (OSError, ValidationError) as exc:
+                        if not allow_partial:
+                            raise
+                        source['error'] = str(exc)
+                if 'operating_point' not in source and allow_partial:
+                    params, _, _ = _parameters_for_run(parameter_values.get(_id_token(run.get('pointID')), []), run.get('testID'))
+                    source['operating_point'] = dict(rdb=os.path.realpath(path), point_id=run.get('pointID'),
+                        test_id=run.get('testID'), test=run.get('test'), corner=run.get('corner'), params=params)
+                    source.setdefault('error', 'Native point has no completed PSF and executable netlist')
+                if 'operating_point' in source:
+                    known_sources.append(source)
+            record["source_netlists"] = complete_sources
+            if selected_test and known_sources:
+                record["points"] = catalogue(known_sources)
+                for source, point in zip(known_sources, record["points"]):
+                    source["point_key"] = point["id"]
+                    source["swept_variables"] = point["variables"]
             record["fully_complete"] = bool(
                 record["checked_runs"]
                 and record["complete_runs"] == record["checked_runs"]
@@ -1362,7 +1435,7 @@ def _history_records(
             and (bool(requested_history) or not explicit_history_selection)
             and test_matches
             and history_matches
-            and record["fully_complete"]
+            and (record["fully_complete"] or (allow_partial and record["source_netlists"] and not record["error"]))
         ):
             selected = copy.deepcopy(record)
     return records, selected
@@ -1444,6 +1517,7 @@ def inspect_maestro(payload, role=None, include_histories=True):
         requested_history=options.get("history", options.get("selected_history")),
         history_catalog=options.get("history_catalog"),
         explicit_history_selection=bool(options.get("explicit_history_selection", False)),
+        allow_partial=bool(options.get("allow_partial_history", False)),
     )
     # An explicitly chosen complete history can disambiguate equally plausible
     # setup tests.  Use actual completed per-test netlists, not every test name
@@ -1469,6 +1543,14 @@ def inspect_maestro(payload, role=None, include_histories=True):
         history_fingerprint, history_manifest = _history_binding(selected_history)
         selected_history["history_fingerprint"] = history_fingerprint
         selected_history["history_manifest"] = history_manifest
+    if options.get('point_key'):
+        sources = (selected_history or {}).get('source_netlists', [])
+        matches = [source for source in sources if source.get('point_key') == options['point_key']]
+        if len(matches) != 1:
+            raise ValidationError('Selected point key is absent from the completed Maestro history')
+        selected_history['source_netlists'] = matches
+        if options.get('allow_partial_history'):
+            selected_history['fully_complete'] = True
     fingerprint = None
     binding = None
     mapping = {}
@@ -1481,12 +1563,13 @@ def inspect_maestro(payload, role=None, include_histories=True):
         mapping = _mapping_for_role(
             selected, role, float(options.get("offset_hz", 10000.0))
         )
-        discovered = discover_signal_mapping(
-            selected, role, selected_history,
-            overrides=options.get("mapping_overrides"),
-            offset_hz=float(options.get("offset_hz", 10000.0)),
-        )
-        mapping.update(discovered["mapping"])
+        if not options.get('catalog_only'):
+            discovered = discover_signal_mapping(
+                selected, role, selected_history,
+                overrides=options.get("mapping_overrides"),
+                offset_hz=float(options.get("offset_hz", 10000.0)),
+            )
+        mapping.update(discovered.get("mapping", {}))
         mapping["noise_covers_offset"] = _analysis_covers(
             {"enabled": bool(mapping.get("noise_analysis")),
              "fields": mapping.get("noise_analysis_fields", {})},
@@ -1691,6 +1774,8 @@ def inspect_maestro_pair(payload):
                     "history_catalog": spec.get("history_catalog"),
                     "explicit_history_selection": spec.get("explicit_history_selection", False),
                     "mapping_overrides": spec.get("mapping_overrides"),
+                    "point_key": spec.get("point_key"),
+                    "allow_partial_history": spec.get("allow_partial_history", False),
                     "offset_hz": offset_hz,
                     "include_histories": options.get("include_histories", True),
                 }

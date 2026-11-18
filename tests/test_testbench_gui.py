@@ -82,6 +82,9 @@ class TestbenchGuiTests(unittest.TestCase):
         self.app.maestro_context['maestro_dir']='/private/source'
         with mock.patch.object(self.page,'review_settings'),mock.patch.object(self.app,'_submit') as submit:
             self.page.start_session()
+            preview = submit.call_args.args
+            with mock.patch('isf_tool.tk.testbench_page.api.planned_points', return_value=[]):
+                preview[2](preview[1]())
             with mock.patch('isf_tool.tk.testbench_page.api.prepare_session_add',return_value={'handle':1}) as prepare,mock.patch('isf_tool.tk.testbench_page.api.submit_session_add') as send:
                 submit.call_args.args[1]()
                 self.assertEqual(prepare.call_args.kwargs['context'],self.app.maestro_context)

@@ -230,8 +230,9 @@ def run_complementary(service, payload, config, emit):
     for index, (device, child_config) in enumerate(planned, 1):
         target = device['instance']
         emit('core_device', 'running', 5 + 45 * (index - 1), 'Analyzing ' + target)
-        child = ToolService(str(Path(payload['run_root']) / ('device-%d' % index)),
-                            command_runner=service._runner, **service._environment_options)
+        workspace = Path(payload['run_root']) / ('device-%d' % index)
+        workspace.mkdir(parents=True, exist_ok=True)
+        child = ToolService(str(workspace), command_runner=service._runner, **service._environment_options)
         child_id = child.start_run(dict(config=child_config, background=False, require_preflight=True))
         status = child.get_job(child_id)
         if status['status'] != 'succeeded':

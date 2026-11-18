@@ -9,6 +9,7 @@ from pathlib import Path
 
 from isf_tool.core.dual_tb import recompute_dual_tb
 from isf_tool.core.errors import BundleImportError
+from isf_tool.core.hbac_phase import PHASE_AXIS_COMPARISON, hbac_phase_check
 from isf_tool.core.metrics import metric_catalog, metric_definition
 from isf_tool.core.models import validate_json_compatible
 from isf_tool.core.result_presentation import (
@@ -94,6 +95,53 @@ class CanonicalPresentationTests(unittest.TestCase):
         self.assertEqual(-67.5, harmonic["HBAC_vs_Mdyn_phase_deg"])
         self.assertEqual(67.5, harmonic["hbac_max_phase_delta_deg"])
         self.assertIs(harmonic["pm_magnitude_projection_valid"], False)
+
+    def test_hbac_phase_axes_from_synthetic_replica_results(self):
+        # Fictional cases with opposite first-order polarity and a fifth-order warning.
+        replays = [
+            ([-150.0, -12.0, 25.0], [30.0, 12.0, 25.0], True),
+            ([-140.0, -15.0, 30.0, -175.0, 55.0], [40.0, 15.0, 30.0, 5.0, 55.0], False),
+        ]
+        for signed, expected, passed in replays:
+            with self.subTest(signed=signed):
+                raw = sample_result()
+                summary = raw["summary"][0]
+                summary.update(hbac_secondary_validation_pass=False, hbac_phase_warn_threshold_deg=45,
+                               hbac_max_phase_delta_deg=max(map(abs, signed)))
+                rows = [{"k": 0, "HBAC_vs_Mdyn_phase_deg": 0}]
+                rows.extend({"k": k, "HBAC_vs_Mdyn_phase_deg": phase}
+                            for k, phase in enumerate(signed, 1))
+                raw["points"][summary["point"]]["harmonics"] = rows
+                saved = copy.deepcopy(raw)
+                enriched = enrich_result(raw)
+                self.assertEqual(saved, raw)
+                checked = enriched["summary"][0]
+                self.assertIs(checked["hbac_secondary_validation_pass"], passed)
+                self.assertEqual(checked["hbac_phase_comparison"], PHASE_AXIS_COMPARISON)
+                self.assertAlmostEqual(checked["hbac_max_phase_delta_deg"], max(expected))
+                self.assertEqual(checked["hbac_secondary_validation_code"], "" if passed else "ISF-W3003")
+                self.assertEqual(checked["dynamic_pm_asd_V_rtHz"], summary["dynamic_pm_asd_V_rtHz"])
+                audit = enriched["points"][summary["point"]]["harmonics"][1:]
+                for row, original, distance in zip(audit, signed, expected):
+                    self.assertEqual(row["HBAC_vs_Mdyn_phase_deg"], original)
+                    self.assertAlmostEqual(row["HBAC_axis_phase_delta_deg"], distance)
+
+    def test_hbac_phase_check_without_defined_phase_is_unevaluated(self):
+        check = hbac_phase_check([None, float("nan")], 45)
+        self.assertIsNone(check["hbac_secondary_validation_pass"])
+        self.assertIsNone(check["hbac_max_phase_delta_deg"])
+
+    def test_canonical_hbac_check_ignores_order_zero(self):
+        fixture = canonical_fixture()
+        for row in fixture["vco_results"]:
+            row.update(hbac_secondary_validation_pass="False", hbac_phase_warn_threshold_deg=45)
+        fixture["replica_results"][0]["HBAC_vs_Mdyn_phase_deg"] = 90
+        fixture["replica_results"][1]["HBAC_vs_Mdyn_phase_deg"] = -150.0
+        result = recompute_dual_tb(fixture)
+        summary = result["summary"][0]
+        self.assertIs(summary["hbac_secondary_validation_pass"], True)
+        self.assertAlmostEqual(summary["hbac_max_phase_delta_deg"], 30.0)
+        self.assertAlmostEqual(summary["dynamic_dBc_Hz"], MANUAL_DBC, places=11)
 
     def test_zero_and_missing_values_remain_unavailable(self):
         summary = enrich_summary({"point": "zero", "carrier_peak_V": 1.0,

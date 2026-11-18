@@ -287,3 +287,51 @@ record lists the absent intrinsic traces and contains a notice shown in the
 source contribution view. Incomplete nodal sideband evidence fails extraction.
 The native fixture's D/S branch remains part of the TB Generator evidence and
 the private calculation acquires its own signed transfer.
+
+## Maestro point keys and sweep results
+
+A physical operating point has a stable `pt-…` key. The key is the first 24
+hexadecimal digits of SHA-256 over compact, key-sorted ASCII JSON
+`[corner, effective_RDB_parameters]`. Values use the SQLite representation
+returned by Maestro, including its original string values. The point key
+omits model-group metadata (corModelSpec), the history path, native point ID and offset. The source
+record retains the exact RDB path, native RDB point ID, test and corner.
+Numerical results qualify the sample with a separate `offset_Hz`. For an
+offset sweep the sample key is `<point-key>@<offset-token>Hz`. Older results
+retain their original keys.
+
+- Setup/desktop runs accept `point_selection` in the run configuration. Omit
+  the list for all available points. An explicit list contains unique keys
+  from the chosen history. Partial results include a `point_sweep.points`
+  manifest with point status and error. Resume retains completed children and
+  retries failed or pending children against the frozen history.
+- `api.planned_points(spec)` previews the TB Generator condition grid.
+  `api.run(..., point_ids=[...])` with these planning keys selects ISF points
+  for a new native history. The exact runtime RDB identities replace the
+  planned coordinates in results. The Maestro run itself follows its native
+  test setup and qualifies coverage before the ISF handoff.
+- `api.results(..., point_ids=[...], offsets_hz=[...])` filters numerical
+  results by their actual runtime point or sample keys and offsets.
+  `api.retry_points(job_id, workspace=...)` queues a retry of a failed ISF
+  batch against its existing native history. Job coverage counts completed and
+  failed analyses. When requested thermal evidence is incomplete, coverage
+  includes a separate `thermal_incomplete` count and the job is partial.
+- `metrics --point`, `metrics compare --point/--after-point` and
+  `optim evaluate --point` accept a stable key. Pass `--offset-hz` whenever
+  the key identifies more than one offset. An ambiguous selector fails. Pass an explicit after key to compare two sweep points at the same offset and modeled source scope.
+
+The command line exposes the same planning and runtime selectors:
+
+```sh
+vco-isf points --spec SPEC
+vco-isf run --spec SPEC --spec-hash HASH --workspace W --request-id ID --point PLANNING_KEY
+vco-isf results --job JOB --workspace W --point RESULT_KEY --offset-hz 10000
+vco-isf retry-points --job JOB --workspace W
+```
+
+Repeat `--point` or `--offset-hz` to select multiple values.
+
+The native raw directory and its Spectre completion evidence are authoritative
+for import. Replay copies the exact point's netlist, restores the reported
+parameters and proven simulator temperature, and runs HB, HBnoise, HBXF, DC
+noise sampling and the dynamic replica in the selected point's workspace.

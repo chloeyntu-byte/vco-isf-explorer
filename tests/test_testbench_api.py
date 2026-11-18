@@ -143,6 +143,22 @@ class ApiTests(unittest.TestCase):
             with redirect_stdout(out):actual=main(args)
             self.assertEqual(actual,code);self.assertIsInstance(json.loads(out.getvalue()),dict)
 
+    def test_cli_point_selection_and_results_filter(self):
+        point = 'pt-example'
+        with mock.patch.object(api, 'planned_points', return_value=[{'id': point}]), redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(main(['points', '--spec', 'spec.json']), 0)
+        self.assertEqual(json.loads(out.getvalue())['points'], [{'id': point}])
+        with mock.patch.object(api, 'run', return_value={'state': 'queued'}) as run, redirect_stdout(io.StringIO()):
+            self.assertEqual(main(['run', '--spec', 'spec.json', '--point', point, '--point', 'pt-second']), 0)
+        self.assertEqual(run.call_args.kwargs['point_ids'], [point, 'pt-second'])
+        with mock.patch.object(api, 'results', return_value={'status': 'completed'}) as results, redirect_stdout(io.StringIO()):
+            self.assertEqual(main(['results', '--job', 'job', '--workspace', str(self.root),
+                                   '--point', point, '--offset-hz', '10000']), 0)
+        results.assert_called_once_with('job', workspace=str(self.root), point_ids=[point], offsets_hz=[10000.0])
+        with mock.patch.object(api, 'retry_points', return_value={'status': 'queued'}) as retry, redirect_stdout(io.StringIO()):
+            self.assertEqual(main(['retry-points', '--job', 'job', '--workspace', str(self.root)]), 0)
+        retry.assert_called_once_with('job', workspace=str(self.root))
+
     def test_b_requires_source_bound_confirmation_and_preserves_native_hb(self):
         setup=self.root/'oa'/'PRIVATE'/'TB'/'maestro';setup.mkdir(parents=True)
         for name in ('maestro.sdb','active.state'):(setup/name).write_text('<state/>')
@@ -258,6 +274,60 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(raw[0]['name'],'ISF_HBXF_RAW_INJECTION')
         self.assertEqual(api.complete(r['spec'])['spec_hash'],r['spec_hash'])
 
+    def test_worker_matches_planning_key_to_qualified_runtime_point(self):
+        from isf_tool import api_worker
+
+        spec = self.prepare()['spec']
+        ext = spec['extensions']
+        ext['tbgen_spec']['sweeps'] = [{'variable': 'BIAS', 'values': [1, 2]}]
+        ext['tbgen_spec']['variables'] = {'VDD': 1.5}
+        condition = api.planned_points(spec)[0]
+        self.assertEqual(condition['variables'], {'BIAS': 1.0})
+        self.assertEqual(condition['effective_values'], {'BIAS': 1.0, 'VDD': 1.5})
+        condition['models'] = [['/fixture/device.scs', 'example_section']]
+        path = self.root / 'api-jobs/job/manifest.json'
+        testbench.write(path, dict(
+            spec=spec, tbgen_run={'rdb': 'history.rdb'}, native_results={'status': 'completed', 'points': []},
+            materialized={'materialized': {'spec': ext['tbgen_spec']}}, planned_selection=[condition],
+            issues=[], stage='isf', job={'state': 'running', 'coverage': {'expected': 1, 'completed': 0}}))
+        approved_model = 'File=All#Global#/fixture/device.scs Section="example_section";'
+        points = [
+            dict(id='runtime-point', corner='nominal', parameters=dict(BIAS='1', VDD='1.5', corModelSpec=approved_model)),
+            dict(id='wrong-supply', corner='nominal', parameters=dict(BIAS='1', VDD='1.6', corModelSpec=approved_model)),
+            dict(id='wrong-model', corner='nominal',
+                 parameters=dict(BIAS='1', VDD='1.5', corModelSpec=approved_model.replace('example_section', 'other'))),
+        ]
+        service = mock.Mock()
+        service.start_run.side_effect = RuntimeError('stop before native execution')
+        report = {'binding_fingerprint': 'binding', 'history_fingerprint': 'history'}
+        with mock.patch('isf_tool.core.service.ToolService', return_value=service), mock.patch(
+                'isf_tool.core.sweep_points.history_points', return_value=(report, points)):
+            self.assertEqual(api_worker.execute_isf(path), 4)
+        self.assertEqual(service.start_run.call_args.args[0]['config']['point_selection'], ['runtime-point'])
+
+    def test_worker_distinguishes_analyzed_points_from_thermal_qualification(self):
+        from isf_tool import api_worker
+        spec = self.prepare()['spec']
+        spec['replica']['mechanisms'] = ['flicker', 'thermal']
+        path = self.root / 'api-jobs/job/manifest.json'
+        testbench.write(path, dict(spec=spec, tbgen_run={'rdb': 'history.rdb'},
+            native_results={'status': 'completed', 'points': []},
+            materialized={'materialized': {'spec': spec['extensions']['tbgen_spec']}},
+            issues=[], stage='isf', job={'state': 'running'}))
+        service = mock.Mock()
+        service.start_run.return_value = 'group-job'
+        service.get_job.return_value = {'status': 'succeeded', 'result_available': True}
+        result = {'summary': [{'operating_point_id': 'pt-a', 'thermal_noise': {'status': 'unavailable'}}],
+                  'point_sweep': {'points': [{'id': 'pt-a', 'status': 'completed'}]}}
+        report = {'binding_fingerprint': 'binding', 'history_fingerprint': 'history'}
+        with mock.patch('isf_tool.core.service.ToolService', return_value=service), mock.patch(
+                'isf_tool.core.sweep_points.history_points', return_value=(report, [{'id': 'pt-a'}])), mock.patch(
+                'isf_tool.core.maestro_outputs.attach_outputs', return_value=result):
+            self.assertEqual(api_worker.execute_isf(path), 4)
+        job = json.loads(path.read_text())['job']
+        self.assertEqual(job['state'], 'partial')
+        self.assertEqual(job['coverage'], dict(expected=1, completed=1, failed=0, thermal_incomplete=1))
+
     def test_low_N_worker_forwards_the_reconciled_sidebands(self):
         from isf_tool import api_worker
         for sidebands in (4,10,15,19):
@@ -266,13 +336,15 @@ class ApiTests(unittest.TestCase):
                 spec['analysis'].update(isf_max_harmonic=3,noise_max_sideband=sidebands)
                 spec['extensions']['app_config']={'portable_setup':{'overrides':{'engine.main_max_sideband':1}}}
                 path=self.root/('worker-'+str(sidebands))/'api-jobs/job/manifest.json'
-                testbench.write(path,dict(spec=spec,tbgen_run={'rdb':'history.rdb'},native_results={'points':[]},
+                testbench.write(path,dict(spec=spec,tbgen_run={'rdb':'history.rdb'},native_results={'status':'completed', 'points':[]},
                     materialized={'materialized':{'spec':spec['extensions']['tbgen_spec']}},issues=[],stage='isf',
                     job=dict(state='running',coverage=dict(expected=1,completed=0,failed=0))))
-                service=mock.Mock();service.inspect_maestro_pair.side_effect=RuntimeError('stop before any native execution')
-                with mock.patch('isf_tool.core.service.ToolService',return_value=service):
+                service=mock.Mock();service.start_run.side_effect=RuntimeError('stop before any native execution')
+                report = {'binding_fingerprint':'binding', 'history_fingerprint':'history'}
+                with mock.patch('isf_tool.core.service.ToolService',return_value=service), mock.patch(
+                        'isf_tool.core.sweep_points.history_points',return_value=(report,[{'id':'pt-test'}])):
                     self.assertEqual(api_worker.execute_isf(path),4)
-                forwarded=service.inspect_maestro_pair.call_args.args[0]['portable_setup']['overrides']
+                forwarded=service.start_run.call_args.args[0]['config']['portable_setup']['overrides']
                 self.assertEqual(forwarded['engine.main_max_sideband'],sidebands)
 
 class WorkerStageTests(unittest.TestCase):

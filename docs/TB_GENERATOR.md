@@ -17,7 +17,7 @@ or keep a checkout and point ISF Explorer at it (no install needed):
 export VCO_TBGEN_ROOT=/path/to/vco-testbench-generator
 ```
 
-ISF Explorer resolves the generator in this order: the **TB Generator path** field (desktop) or `--tbgen-root` (CLI) / `tbgen_root=` (Python API), then `VCO_TBGEN_ROOT`, then an installed `vco_tbgen` package. When a path is given, the imported module must come from that path, otherwise preparation stops with a module identity error. This release requires TB Generator 1.x with the `vco_tbgen.isf` module.
+ISF Explorer resolves the generator in this order: the **TB Generator path** field (desktop) or `--tbgen-root` (CLI) / `tbgen_root=` (Python API), then `VCO_TBGEN_ROOT`, then an installed `vco_tbgen` package. When a path is given, the imported module must come from that path, otherwise preparation stops with a module identity error. This release requires TB Generator 1.x with the `vco_tbgen.isf` module. Inherited model-group corners require version 1.1.0 or later.
 
 Check the connection:
 

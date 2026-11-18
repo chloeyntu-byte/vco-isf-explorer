@@ -29,7 +29,7 @@ python -m pip install '.[analysis,images]'
 vco-isf --workspace ./isf-workspace
 ```
 
-Click **Load synthetic example** in the header. The result opens in **Results**. Pick an operating point and offset, then open an analysis view. The same bundle is available under [examples/ideal_lc](examples/ideal_lc). All its waveforms and source powers are generated from formulas. Use **Jobs & preflight** to reopen a replay already imported into this workspace.
+Click **Load synthetic example** for one ideal-LC operating point or **Example sweep** for six points across two fictional corners and three bias values. In **Results**, pick an offset and open an analysis view. A three-point ideal-LC bundle is also available under [examples/ideal_lc](examples/ideal_lc). All example waveforms and source powers are generated from formulas. Use **Jobs & preflight** to reopen an imported replay.
 
 [ISF process](docs/screenshots/01-process.png) · [harmonics](docs/screenshots/02-harmonics.png) · [source contributions](docs/screenshots/04-contributions.png) · [input bands](docs/screenshots/06-bands.png) · [optimization metrics](docs/screenshots/08-metrics.png) · [light theme](docs/screenshots/00-overview-light.png)
 
@@ -42,6 +42,27 @@ Set `VCO_TBGEN_ROOT` to the generator checkout or pass `--tbgen-root` to a prepa
 - **C · New cell** to supply the private library mapping, DUT, supplies, controls, models and output nets.
 
 Confirm the target gm device. Under **Two-device analysis**, choose **Complementary core** or **Asymmetric pair** and select both occurrences. Use **Prepare** to review settings before **Start analysis**. To analyze a completed Maestro history without creating a test, use **Setup** or the [Maestro menu](docs/MAESTRO_PLUGIN.md). See the [integration API](docs/API.md), [bindings](docs/PORTABLE_BINDING.md) and [HB analysis bundle](docs/HB_ANALYSIS_BUNDLE.md).
+
+## Maestro sweeps
+
+Analyze discrete global-variable values, corners, or both. Start a run and use
+[Select Maestro points](docs/screenshots/select-points.png) to review the
+point/offset count and estimated storage before choosing a subset. Resume
+keeps completed analyses and retries failed or remaining points against the
+same history.
+
+Entry B inherits the saved source test's global variables and corners. Use TB
+Generator 1.1.0 for supported saved global model groups with absolute model
+files and named sections. Entries A and C accept discrete sweep and corner
+values through **Sweep / corners…** or the generator request. Maestro runs the
+configured native grid to produce history. The ISF stage runs the points you
+select. The **Setup** route uses results from a completed Maestro history.
+
+The [sweep overview](docs/screenshots/00-sweep.png) compares numeric results
+at one offset. Sort or select a table row, or select a point on the
+phase-noise plot. The [point navigator](docs/screenshots/03-navigator.png)
+shows corner and sweep values across result views. **Group…** browses points
+by corner and variable.
 
 ## CLI and API
 
@@ -60,7 +81,7 @@ Use a completed job or exported result for metrics, and a result with the requir
 
 ## Limitations
 
-- Native compatibility was checked on one Virtuoso IC6.1.8 / Spectre 18.1 installation and a few CMOS processes. Qualify your toolchain, bindings and source evidence before relying on a result.
+- Native sweep support was verified on one IC6.1.8/Spectre 18.1 installation with corners × global-variable sweeps. Qualify your toolchain, bindings and source evidence before relying on a result.
 - The modeled scope covers flicker and thermal noise of the selected gm devices and thermal noise from supported passive LC loss. Whole-oscillator HBnoise can include other sources. Unavailable mechanisms are reported as N/A.
 - Compare matching devices, mechanisms, operating points and offsets. The optimizer gate uses absolute flicker error below 0.5 dB for a symmetric pair, or at most 2 dB per device and mechanism for a manually selected pair. It also checks total closure and numerical quality.
 - ISF verifies and explains simulated changes. A baseline ISF cannot predict the direction of a tuning change. Use HBnoise to qualify phase noise. [Theory and validation](docs/ISF_THEORY.md)
@@ -85,7 +106,6 @@ Other open-source tools:
 - [Tank Scan Lab](https://github.com/chloeyntu-byte/tank-scan-lab): LC tank scans (f0, Rp, gm, startup margin, loss shares), capacitor-array C/Q and resonance
 - [Layout 3D Viewer](https://github.com/chloeyntu-byte/layout-3d-viewer): read IC layouts in 3D, locate pins and trace connections
 - [VCO TB Generator](https://github.com/chloeyntu-byte/vco-testbench-generator): Virtuoso testbenches and Maestro HB/HBNOISE/HBXF setups for LC VCOs; used by VCO ISF Explorer
-- [Crescendo](https://github.com/chloeyntu-byte/crescendo): automatic device-size optimization inside Cadence Maestro
 - [VCO Design Studio](https://github.com/chloeyntu-byte/vco-design-studio): five literature LC VCO topology families, packaged schematics and native export
 
 ## License

@@ -117,6 +117,8 @@ def operating_point_metadata(config, naming):
         contract = copy.deepcopy(point.get("operating_point") or {})
         contract.setdefault("params", {})
         contract.setdefault("corner", point.get("corner"))
+        if point.get('point_key'):
+            contract['swept_variables'] = copy.deepcopy(point['swept_variables'])
         result[name] = contract
     return result
 
@@ -501,6 +503,7 @@ def main(argv=None):
                     "HBAC_norm_mag": harmonic["HBAC_norm_mag"],
                     "HBAC_norm_phase_deg": harmonic["HBAC_norm_phase_deg"],
                     "HBAC_vs_Mdyn_phase_deg": harmonic.get("HBAC_vs_Mdyn_phase_deg"),
+                    "HBAC_axis_phase_delta_deg": harmonic.get("HBAC_axis_phase_delta_deg"),
                     "phase_candidate": summary["chosen_signs"],
                     "phase_score": summary["candidate_score"],
                     "sqrt_Sxi_A_rtHz": summary["sqrt_Sxi_A_rtHz"],

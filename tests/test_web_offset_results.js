@@ -191,6 +191,12 @@ test("DOM render updates dBc scope, partial status, quality and all field tables
   assert.equal(elements["metric-spectre-dbc"].textContent, "-110.000 dBc/Hz");
   assert.match(elements["sweep-result-note"].textContent, /Partial results.*2\/3/);
   assert.match(elements["sample-quality-note"].textContent, /PM approximation: Failed.*Numerical quality: Passed.*HBAC Secondary check: Not provided/);
+  const warned = fixture();
+  Object.assign(warned.summary[0], {hbac_secondary_validation_pass: false, hbac_max_phase_delta_deg: 55.0,
+    hbac_phase_warn_threshold_deg: 45, hbac_phase_comparison: "phase_axis_mod_180"});
+  ui.renderFlickerResults(ui.normalizeResults(warned, "job", "SW0"));
+  assert.match(elements["sample-quality-note"].textContent,
+    /HBAC Secondary check: Warning.*phase-axis deviation 55\.0°.*Primary noise closure is evaluated separately/);
   assert.match(elements["result-metric-tables"].innerHTML, /data-metric-key="Q_real_V_rtHz"/);
   assert.match(elements["result-metric-tables"].innerHTML, />N\/A</);
   elements["noise-kind"].value = "both"; ui.renderFlickerResults(result);

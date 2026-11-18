@@ -14,3 +14,23 @@ class OutputTests(unittest.TestCase):
   self.assertIsNone(output_metrics(s)['pn_dbc_hz'])
   p=dict(corner='TT',outputs={'F':dict(value=float('nan'))},output_qualification={'F':dict(status='verified')})
   self.assertEqual(attach_outputs(dict(summary=[s]),[p],[dict(name='F')])['summary'][0]['maestro_outputs'],{})
+
+ def test_native_outputs_match_exact_psf_and_equivalent_model_encoding(self):
+  from isf_tool.core.testbench import tbgen
+  from isf_tool.core.errors import ValidationError
+  try:
+   tbgen()
+   from vco_tbgen.effective import reported_corner_models
+  except (ImportError, ValidationError):
+   self.skipTest('TB Generator model group support unavailable')
+  summary=dict(corner='ExampleFast',point_identity={'psf_dir':'/fixture/2/psf'},
+               operating_parameters={'VDD':1.25,'corModelSpec':'File=All#Global#/fixture/device.scs Section="example_fast";'})
+  source=dict(corner='ExampleFast',psf_dir='/fixture/2/psf',
+              variables={'VDD':1.25,'corModelSpec':'(("/fixture/device.scs" "example_fast"))'},
+              outputs={'F':dict(value=6e9)},output_qualification={'F':dict(status='verified')})
+  self.assertTrue(reported_corner_models(source['variables']['corModelSpec']))
+  decoy=dict(source,psf_dir='/fixture/1/psf')
+  result=attach_outputs(dict(summary=[summary]),[decoy,source],[dict(name='F',units='Hz')])
+  self.assertEqual(result['summary'][0]['maestro_outputs']['F']['value'],6e9)
+  result=attach_outputs(dict(summary=[summary]),[decoy],[dict(name='F')])
+  self.assertNotIn('maestro_outputs',result['summary'][0])

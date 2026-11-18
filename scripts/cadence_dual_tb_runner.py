@@ -424,6 +424,9 @@ def materialize_maestro_engine(engine, engine_template_path, run_root, app_confi
         template["maestro_point_id"] = source.get("point_id")
         template["maestro_design_point"] = source.get("design_point")
         template['operating_point'] = operating_point['contract']
+        if source.get('point_key'):
+            template['point_key'] = source['point_key']
+            template['swept_variables'] = source.get('swept_variables', {})
         if generated:
             instance = vco_report.get("mapping", {}).get("target_instance")
             flicker_target = source_root / source_dir / "flicker" / "netlist" / "input.scs"

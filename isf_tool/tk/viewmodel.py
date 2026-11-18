@@ -13,6 +13,7 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from ..core.hbac_phase import PHASE_AXIS_COMPARISON
 from ..core.offsets import expand_offsets, frequency_hz
 from ..core.result_presentation import enrich_result, enrich_summary, noise_contribution_rows
 from ..core.thermal_budget import calculated_noise_dbc
@@ -1112,26 +1113,38 @@ def _summary_view(row: Mapping[str, Any], noise_scope: str = "single", noise_kin
     }
 
 
+def hbac_warning_text(summary: Mapping[str, Any]) -> str:
+    if summary.get("hbac_secondary_validation_pass") is not False:
+        return ""
+    delta = finite_number(summary.get("hbac_max_phase_delta_deg"))
+    threshold = finite_number(summary.get("hbac_phase_warn_threshold_deg"))
+    phase = ("phase-axis deviation" if summary.get("hbac_phase_comparison") == PHASE_AXIS_COMPARISON
+             else "recorded phase difference")
+    detail = f" ({delta:.3g}°, threshold {threshold:.3g}°)" if delta is not None and threshold is not None else ""
+    return (f"HBAC secondary warning · {phase}{detail}. The deterministic injection probes "
+            "the replica current path. Primary noise closure is evaluated separately.")
+
+
 def result_quality_text(summary: Mapping[str, Any]) -> str:
     """Explain recorded quality gates without equating a close curve with truth."""
     labels = (("numerical_quality_pass", "Numerical quality"),
-              ("hbac_secondary_validation_pass", "HBAC secondary phase check"),
               ("pm_magnitude_projection_valid", "PM Projection prerequisites"))
     fields = enrich_summary(summary)
     statuses = [label + ": " + ("Passed" if fields.get(key) is True else
                                "Failed" if fields.get(key) is False else "Not provided")
                 for key, label in labels]
+    hbac = fields.get("hbac_secondary_validation_pass")
+    statuses.append("HBAC secondary phase check: " + (
+        "Passed" if hbac is True else "Warning" if hbac is False else "Not provided"))
     failed = any(fields.get(key) is False for key, _label in labels)
     text = ("Quality checks failed; Completion does not imply validation. " if failed else
             "Secondary checks do not constitute independent validation; similar curves alone do not prove calculation validity. ")
     text += " " + "; ".join(statuses) + ". "
     if summary.get("numerical_quality_issues"):
         text += " Numerical warnings: " + str(summary["numerical_quality_issues"]) + ". "
-    if fields.get("hbac_secondary_validation_pass") is False:
-        delta = finite_number(summary.get("hbac_max_phase_delta_deg"))
-        threshold = finite_number(summary.get("hbac_phase_warn_threshold_deg"))
-        if delta is not None and threshold is not None:
-            text += f" HBAC maximum phase difference {delta:.3g}°, threshold {threshold:.3g}°. "
+    warning = hbac_warning_text(fields)
+    if warning:
+        text += " " + warning + " "
     thermal = fields.get("thermal_noise") or {}
     if thermal.get("status") == "unavailable":
         text += " Thermal Incomplete: " + str(thermal.get("reason") or "Not collected") + ". "
@@ -1497,7 +1510,8 @@ def load_thermal_coefficients(result, point, job_directory=None):
                 paths.append(path if path.is_absolute() else Path(job_directory or '.') / path)
     if job_directory is not None:
         identity = str(summary.get('operating_point_id') or point)
-        directory = Path(job_directory).resolve()
+        recorded = (summary.get('point_identity') or {}).get('sample_evidence', {}).get(point)
+        directory = Path(recorded or job_directory).resolve()
         sweep = result.get('offset_sweep')
         if sweep:
             offset = finite_number(summary.get('offset_Hz', summary.get('offset_hz')))

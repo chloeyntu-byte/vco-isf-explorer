@@ -3,6 +3,7 @@
 import copy
 import unittest
 
+from isf_tool.core.hbac_phase import PHASE_AXIS_COMPARISON
 from isf_tool.tk.viewmodel import build_result_view, result_quality_text
 
 
@@ -83,6 +84,16 @@ class TotalNoiseViewTests(unittest.TestCase):
         self.assertIn("MODEL_RESULTS_DECLARED_INCORRECT", note)
         self.assertIn("Not provided", result_quality_text({}))
         self.assertIn("similar curves alone do not prove", result_quality_text({"numerical_quality_pass": True}))
+
+    def test_hbac_only_warning_leaves_primary_quality_checks_passed(self):
+        row = dict(numerical_quality_pass=True, pm_magnitude_projection_valid=True,
+                   hbac_secondary_validation_pass=False, hbac_max_phase_delta_deg=55.0,
+                   hbac_phase_warn_threshold_deg=45, hbac_phase_comparison=PHASE_AXIS_COMPARISON)
+        note = result_quality_text(row)
+        self.assertIn("HBAC secondary phase check: Warning", note)
+        self.assertIn("phase-axis deviation (55°, threshold 45°)", note)
+        self.assertIn("Primary noise closure is evaluated separately", note)
+        self.assertNotIn("Quality checks failed", note)
 
     def test_invalid_scope_is_not_silently_mislabeled(self):
         with self.assertRaises(ValueError):

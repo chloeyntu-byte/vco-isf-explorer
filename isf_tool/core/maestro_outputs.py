@@ -1,6 +1,7 @@
 """Read verified named Maestro outputs without changing ISF calculations."""
 import copy
 import math
+import os
 
 
 def finite(value):
@@ -10,14 +11,31 @@ def finite(value):
 def attach_outputs(result, points, definitions):
     result = copy.deepcopy(result)
     metadata = {d['name']:d for d in definitions}
-    for summary in result.get('summary', []):
+    summaries = list(result.get('summary', []))
+    summaries.extend(summary for tables in result.get('points', {}).values()
+                     for summary in tables.get('summary', []))
+    for summary in summaries:
+        psf_dir = (summary.get('point_identity') or {}).get('psf_dir')
         candidates = []
         for point in points:
             if point.get('corner') != summary.get('corner'):continue
+            if psf_dir and (not point.get('psf_dir')
+                            or os.path.realpath(point['psf_dir']) != os.path.realpath(psf_dir)):
+                continue
+            if summary.get('maestro_history') and point.get('rdb'):
+                if os.path.realpath(point['rdb']) != os.path.realpath(summary['maestro_history']):
+                    continue
+            if summary.get('maestro_test') and summary['maestro_test'] != point.get('test'):
+                continue
             variables=point.get('variables', {})
             matches=True
             for key,value in summary.get('operating_parameters', {}).items():
                 actual=variables.get(key)
+                if key == 'corModelSpec' and actual != value:
+                    from vco_tbgen.effective import reported_corner_models
+                    models = reported_corner_models(value)
+                    matches = matches and bool(models) and reported_corner_models(actual) == models
+                    continue
                 from .spectre_topology import evaluate
                 try:actual_number=evaluate(str(actual),{})
                 except ValueError:actual_number=actual

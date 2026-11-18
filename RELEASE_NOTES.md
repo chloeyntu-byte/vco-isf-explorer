@@ -1,28 +1,22 @@
-# VCO ISF Explorer 1.2.0
+# VCO ISF Explorer 1.3.0
 
-Open **Testbench setup** to prepare an ISF test from a generated Design Lab
-project, an existing Maestro setup, or a new cell. The existing-setup entry
-shows what the added test keeps or changes before you confirm it.
+Analyze every operating point in a Maestro global-variable or corner sweep, or
+select a subset before starting. Jobs track each point's progress. Resume
+reuses the saved history and keeps completed results when retrying other
+points. Each result has a stable point key and a separate offset.
 
-**Two-device analysis** lets you select both MOS occurrences and choose
-**Complementary core** or **Asymmetric pair**. Inspect the estimates and closure
-for each selected device. Symmetric-pair extrapolation requires measured
-half-period terminal agreement. Flicker transfer projects PM from both sidebands
-at the intrinsic drain-to-source port when that port is available.
+**00 Overview** shows the carrier, noise totals, closure and the modeled
+flicker/thermal split for a single point. For a sweep, sort the table or select
+a point from the phase-noise plot. The navigator carries the selection across
+result views and can group points by corner and variable.
 
-**Results** now includes nine views (00–08), with a dedicated optimization metrics
-view, matched-result comparisons, and table or plot export. Durable jobs retain
-evidence across sessions. Storage estimates, archive previews, preflight and
-troubleshooting are available from the desktop.
+Try **Load synthetic example** for one ideal-LC point or **Example sweep** for
+six points across two fictional corners and three bias values. Both run
+offline in the desktop. See [screenshots and quick start](README.md).
 
-Use `vco-isf metrics` to inspect or compare saved results. Use
-`vco-isf optim evaluate`, `gate` and `calibrate` for headless evaluation and
-qualification. Structured CLI errors can be consumed by scripts.
+Use `vco-isf points` to list planning keys, `run --point` to select them,
+`results --point` to filter by actual result keys, and `retry-points` to resume
+failed ISF points from the same history. See [point keys and API](docs/API.md#maestro-point-keys-and-sweep-results).
 
-Start without EDA using **Load synthetic example** in the dark or light theme.
-Native preparation requires the separate VCO TB Generator and your own Cadence,
-Spectre and PDK. [Requirements and quick start](README.md)
-
-ISF attribution is scoped to the selected gm devices and supported passive LC
-thermal loss. Compare matched sources and verify closure. ISF explains simulated
-changes, and a baseline alone cannot predict tuning direction. [Theory](docs/ISF_THEORY.md)
+Native sweep support was verified on one IC6.1.8/Spectre 18.1 installation with corners × global-variable sweeps.
+Use VCO TB Generator 1.1.0 for inherited global model groups.

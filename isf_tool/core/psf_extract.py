@@ -104,6 +104,8 @@ def _read_parameter_tables(rdb_path):
         parameters = all_rows(parameter_table)
         values = all_rows(value_table)
         local_values = all_rows(table_by_lower['localparametervalue']) if 'localparametervalue' in table_by_lower else []
+        corner_records = all_rows(table_by_lower['cornerparameter']) if 'cornerparameter' in table_by_lower else []
+        point_records = all_rows(table_by_lower['point']) if corner_records else []
         models = all_rows(table_by_lower['model']) if 'model' in table_by_lower else []
         # A modelGroup can change include sections without changing input.scs.
         # Until that ADE contract is decoded, never silently run its template.
@@ -134,6 +136,10 @@ def _read_parameter_tables(rdb_path):
             )
         by_parameter_id[token] = row
 
+    point_corners = {_id_token(_row_value(row, 'pointID')): _id_token(_row_value(row, 'cornerID'))
+                     for row in point_records}
+    corner_parameters = {(_id_token(_row_value(row, 'cornerID')), _id_token(_row_value(row, 'parameterID')))
+                         for row in corner_records}
     by_point = {}
     for row, is_local in [(row, False) for row in values] + [(row, True) for row in local_values]:
         point_id = _row_value(row, "pointID")
@@ -151,6 +157,9 @@ def _read_parameter_tables(rdb_path):
             )
         record = dict(metadata)
         record["value"] = _row_value(row, "value")
+        if str(record.get('name')) == 'temperature' and (
+                point_corners.get(_id_token(point_id)), _id_token(parameter_id)) in corner_parameters:
+            record['maestro_corner_parameter'] = True
         if is_local:
             local_test = _row_value(row, "testID")
             if _is_global_test_scope(local_test):

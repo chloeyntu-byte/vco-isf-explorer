@@ -37,15 +37,17 @@ def _evidence(summary):
 
 
 def compare(before, after, *, point=None, after_point=None, offset_hz=None, device=None):
-    """Report after minus before for the same operating conditions and scope."""
+    """Report after minus before at one offset and modeled source scope."""
     selected = [select_point(data, point=selector, offset_hz=offset_hz, device=device)
                 for data, selector in ((before, point), (after, after_point or point))]
     summaries = [enrich_summary(item[2]) for item in selected]
     a, b = summaries
-    match_fields = ('operating_point_id', 'corner', 'operating_parameters', 'offset_Hz')
-    if (not a['operating_point_id'] or a['offset_Hz'] is None or
-            any(a.get(field) != b.get(field) for field in match_fields)):
-        raise ValueError('Compare samples with the same operating point, conditions, and offset')
+    match_fields = ('operating_point_id', 'corner', 'operating_parameters')
+    explicit_different_point = after_point is not None and a['operating_point_id'] != b['operating_point_id']
+    if (not a['operating_point_id'] or not b['operating_point_id']
+            or a['offset_Hz'] is None or a['offset_Hz'] != b['offset_Hz']
+            or (not explicit_different_point and any(a.get(k) != b.get(k) for k in match_fields))):
+        raise ValueError('Compare samples at the same operating point and offset, or select both keys explicitly.')
     if _scope(a) != _scope(b):
         raise ValueError('Compare samples with matching modeled source scopes')
     metrics = [compute_metrics(data, point=sample[0], offset_hz=summaries[i]['offset_Hz'], device=device)
@@ -61,6 +63,8 @@ def compare(before, after, *, point=None, after_point=None, offset_hz=None, devi
     errors = [_evidence(summary) for summary in summaries]
     for kind in ('flicker', 'thermal'):
         add(f'Matched {kind} ISF − HBnoise', 'dB', errors[0][kind], errors[1][kind])
+    add('Oscillation frequency', 'Hz', *(m['f0_hz'] for m in metrics))
+    add('Modeled ISF phase noise', 'dBc/Hz', *(m['closure']['modeled_total_dbc_hz'] for m in metrics))
     add('Whole-VCO HBnoise phase noise', 'dBc/Hz',
         *(m['closure']['spectre_total_dbc_hz'] for m in metrics))
     for label, unit, section, key in (

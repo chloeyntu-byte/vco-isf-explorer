@@ -3,11 +3,12 @@
 
 Usage::
 
-    python3 examples/generate_example.py [output_directory]
+    python3 examples/generate_example.py [--single | --sweep] [output_directory]
 
 The bundle is an analytic ideal-LC model (see ``isf_tool/example_data.py``);
 it contains no simulator or PDK data.
 """
+import argparse
 import os
 import sys
 
@@ -18,8 +19,14 @@ from isf_tool.example_data import build  # noqa: E402
 
 
 def main(argv=None):
-    argv = sys.argv[1:] if argv is None else argv
-    print(build(argv[0] if argv else os.path.join(HERE, "ideal_lc")))
+    parser = argparse.ArgumentParser(description=__doc__)
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--single", action="store_true", help="one ideal-LC point")
+    modes.add_argument("--sweep", action="store_true", help="six points across two fictional corners")
+    parser.add_argument("output_directory", nargs="?")
+    args = parser.parse_args(argv)
+    name = "ideal_lc_sweep" if args.sweep else "ideal_lc_single" if args.single else "ideal_lc"
+    print(build(args.output_directory or os.path.join(HERE, name), sweep=args.sweep, single=args.single))
     return 0
 
 

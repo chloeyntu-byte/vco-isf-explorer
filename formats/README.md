@@ -101,8 +101,19 @@ For `k>=1`, AM/PM data defines the default engineering phase candidates
 `phase_candidate` and `phase_score` record the engineering-selected branch.
 The final VCO phase-noise reference must never select a branch.  HBAC and PAC
 do not replace AM/PM selection or override it.  A policy may choose whether an
-HBAC comparison is a pass/fail gate, but signoff rows still require the two
+HBAC comparison is required for signoff. Signoff rows always carry the two
 finite `HBAC_norm_*` measurements as auditable secondary evidence.
+
+The replica diagnostic compares the axes of `HBAC[k]/HBAC[0]` and `Mdyn[k]`
+for nonzero orders with defined phase. The intrinsic-injection-to-drain-probe
+transfer can have either polarity at an individual mixing order.
+`HBAC_vs_Mdyn_phase_deg` retains the wrapped signed difference.
+`HBAC_axis_phase_delta_deg` is the distance to the nearest parallel or
+antiparallel direction (0–90°). This distance cannot resolve a signed
+quadrant. The summary sets `hbac_phase_comparison` to `phase_axis_mod_180`
+and records the maximum axis deviation and threshold. Older results with a
+recorded threshold and per-order differences can be re-evaluated from those
+fields. Primary noise closure uses its own HBNOISE reference.
 
 Legacy AM/PM-only rows may reconstruct `Mdyn`, but only for a non-signoff
 `plan`/`replay`.  Missing `sqrt_Sxi`, `Dk`, `Mdyn`, or strict convention

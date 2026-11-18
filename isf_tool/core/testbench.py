@@ -132,6 +132,13 @@ def draft(kind, tb, *, source=None, workspace=None, overrides=None, tbgen_root=N
         pdk=dict(binding=None, includes=[dict(_file(m['path'], 'model'), section=m.get('section')) for m in tb.get('models',[])], section_by_corner={}),
         replica=dict(source='generated', mechanisms=['flicker', 'thermal']), execution=dict(backend='maestro', materialization='source_new_test' if kind=='maestro' else 'private_maestro_test', workspace=work, tools_profile=None),
         field_evidence={}, extensions=dict(contract_version=CONTRACT_VERSION, tbgen_spec=tb, tbgen_root=tbgen_root, topology_file=topology_file), completion_plan=[])
+    if kind != 'maestro':
+        spec['conditions']['sweeps'] = [
+            dict(id=row['variable'], semantics='cartesian', axes=[row['variable']],
+                 native_record=copy.deepcopy(row)) for row in tb.get('sweeps', [])]
+        spec['conditions']['corners'] = [
+            dict(id=row['name'], enabled=row.get('enabled', True),
+                 native_record=copy.deepcopy(row)) for row in tb.get('corners', [])]
     from .spectre_topology import evaluate
     parse_spectre_number = lambda value: evaluate(value, {})
     for a in tb['analyses']:
@@ -262,6 +269,9 @@ def complete_spec(value, *, overrides=None, confirmations=()):
     # Keep requested UI values stable; derived minima are visible in the bundle.
     ext['native_offsets_hz']=bundle['shared']['native_offsets_hz']
     if tb['mode']=='create_new':
+        tb['sweeps'] = [copy.deepcopy(row['native_record']) for row in spec['conditions']['sweeps']]
+        tb['corners'] = [dict(copy.deepcopy(row['native_record']), enabled=row['enabled'])
+                         for row in spec['conditions']['corners']]
         # Canonical ISF decisions are authoritative; TB Generator only receives
         # its own fields. ISF gm/replica/numerical settings never leak into it.
         tb['ports']=[dict(name=row['name'],net=spec['dut']['bindings'][row['name']],direction=row.get('direction','inputOutput'),

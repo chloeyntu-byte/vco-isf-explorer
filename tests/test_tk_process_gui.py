@@ -221,6 +221,7 @@ finally:
                 self.assertEqual((self.ui.chart.winfo_width(),self.ui.chart.winfo_height()),image.size)
 
     def test_source_bar_values_and_range_use_engineering_format(self):
+        self.ui.show(4)
         self.ui.chart.key_positions = {}
         self.ui.chart.set_panels([{'kind':'sources', 'title':'SI display', 'rows':[
             {'key':'source:large', 'device':'M0', 'mechanism':'id', 'modeled':True,
@@ -230,25 +231,26 @@ finally:
         self.assertIn('357 G', texts)
         self.assertTrue(any('range 357 G' in t for t in texts))
 
-    def test_overview_allocates_more_height_to_phase_noise_and_bounds_readouts(self):
-        for size, minimum in (('1600x1000', 160), ('1280x800', 80)):
+    def test_overview_core_values_fit_at_supported_sizes(self):
+        for size in ('1600x1000', '1280x800'):
             self.root.geometry(size)
             self.ui.show(0)
             self.root.update()
-            rect = self.ui.chart.plots[0]['rect']
-            self.assertGreater(rect[3]-rect[1], minimum)
-            first = next(iter(self.ui.table.rows))
-            self.ui.select_key(first)
-            self.root.update()
-            for item in self.ui.chart.find_withtag('cursor'):
-                if self.ui.chart.type(item) == 'text':
-                    left, top, right, bottom = self.ui.chart.bbox(item)
-                    self.assertTrue(0 <= left <= right <= self.ui.chart.winfo_width())
-                    self.assertTrue(0 <= top <= bottom <= self.ui.chart.winfo_height())
+            self.assertFalse(self.ui.chart.winfo_ismapped())
+            self.assertTrue(self.ui.overview.winfo_ismapped())
+            for caption, value, label, readout in self.ui.overview.values:
+                self.assertTrue(label.winfo_ismapped(), caption.get())
+                self.assertTrue(value.get(), caption.get())
+                self.assertLessEqual(readout.winfo_rootx() + readout.winfo_width(),
+                                     self.root.winfo_rootx() + self.root.winfo_width())
+            self.assertTrue(any('closure' in caption.get() for caption, *_ in self.ui.overview.values))
 
     def test_all_six_views_switch_without_stale_columns(self):
         for view in (0,1,2,3,4,5,1,0):
             self.ui.show(view);self.root.update()
+            if view == 0:
+                self.assertTrue(self.ui.overview.winfo_ismapped())
+                continue
             self.assertTrue(self.ui.table.tree.get_children())
             for column in self.ui.table.tree['displaycolumns']:
                 self.assertIn(column,[s[0] for s in self.ui.table.specs])

@@ -117,7 +117,7 @@ def prepare_from_maestro(maestro, *, workspace, test=None, history=None, overrid
             analyses.append(dict(kind=kind,enabled=False,parameters={}))
             continue
         options={}
-        for k,v in a.get('fields',{}).items():
+        for k,v in a.get('native_fields', a.get('fields',{})).items():
             if k=='enable':continue
             try:options[k]=literal(v)
             except ValueError:options[k]=v
@@ -139,7 +139,16 @@ def prepare_from_maestro(maestro, *, workspace, test=None, history=None, overrid
     native_test=next((t for t in state.findall('./Test') if t.get('Name')==tb['maestro']['source_test']),None)
     if native_test is not None:
         temps=native_test.findall('./component[@Name="simulatorOptions"]//field[@Name="temp"]')
-        if len(temps)==1:response['spec']['conditions']['temperature_c']=literal(temps[0].text or 'nil')
+        if temps:
+            temperature = literal(temps[-1].text or 'nil')
+            from vco_tbgen.effective import numeric
+            if temperature is not None:
+                try:
+                    numeric(temperature)
+                except ValueError:
+                    response['spec']['extensions']['source_temperature_expression'] = temperature
+                else:
+                    response['spec']['conditions']['temperature_c'] = temperature
     response['spec']['extensions']['inherited_conditions']=dict(global_variables=inspected.get('global_variables',[]),variables=selected.get('variables',[]),temperature_c=response['spec']['conditions']['temperature_c'],source_setup=str(path))
     return complete(response['spec'],overrides=overrides or request.get('overrides'),confirmations=confirmations)
 
@@ -192,17 +201,45 @@ def _workspace_lock(work):
         yield
 
 
-def run(spec_path, *, spec_hash, workspace, request_id, run_kind='replay', wait=False):
+def planned_points(spec):
+    """Preview the native condition grid before running the testbench."""
+    from .core.sweep_points import label, point_key
+    spec = read(spec)
+    ext = spec['extensions']
+    tbgen(ext.get('tbgen_root'))
+    from vco_tbgen.effective import effective_spec, expected_conditions
+    tb = copy.deepcopy(ext['tbgen_spec'])
+    if spec['source']['kind'] == 'maestro':
+        tb['maestro']['test'] = tb['maestro']['source_test']
+        tb = effective_spec(tb, spec['source']['maestro_dir'])
+    conditions = expected_conditions(tb)
+    rows = []
+    dimensions = {name for name in set().union(*(c['variables'].keys() for c in conditions))
+                  if len({c['variables'].get(name) for c in conditions}) > 1}
+    for c in conditions:
+        variables = {k: v for k, v in c['variables'].items() if k in dimensions}
+        rows.append(dict(c, id=point_key(c['corner'], c['variables']),
+                         label=label(c['corner'], variables), variables=variables,
+                         effective_values=c['variables']))
+    return rows
+
+
+def run(spec_path, *, spec_hash, workspace, request_id, run_kind='replay', wait=False, point_ids=()):
     spec=read(spec_path); work=Path(workspace).resolve()
     if digest(spec)!=spec_hash:raise ValidationError('SPEC_CHANGED',code='SOURCE_CHANGED')
     if spec['phase']!='completed':raise ValidationError('spec is not completed')
     if run_kind!='replay':raise ValidationError('Native integration currently supports engineering replay only',code='UNSUPPORTED_CAPABILITY')
     if not isinstance(request_id,str) or not request_id:raise ValidationError('request_id required')
+    point_ids = list(point_ids)
+    planned = planned_points(spec) if point_ids else []
+    if point_ids and (len(set(point_ids)) != len(point_ids) or set(point_ids) - {r['id'] for r in planned}):
+        raise ValidationError('Point selection differs from the prepared native condition grid')
     key=digest(request_id); manifest=work/'api-jobs'/key/'manifest.json'
     with _workspace_lock(work):
         if manifest.exists():
             old=read(manifest)
-            if old['job']['spec_hash']!=spec_hash:raise ValidationError('request_id conflicts with another spec',code='SOURCE_CHANGED')
+            if old['job']['spec_hash'] != spec_hash or old.get('point_ids', []) != point_ids:
+                raise ValidationError('request_id conflicts with another spec or point selection', code='SOURCE_CHANGED')
             return _run_handle(old['job'])
         _prepared_source(spec)
         active=[]
@@ -212,7 +249,8 @@ def run(spec_path, *, spec_hash, workspace, request_id, run_kind='replay', wait=
         if active:raise ValidationError('Workspace has an active job: '+','.join(active))
         job=dict(schema='isf.run.v1',contract_version=CONTRACT_VERSION,job_id=key,state='queued',spec_hash=spec_hash,manifest_path=str(manifest),coverage=dict(expected=0,completed=0,failed=0))
         from .core.models import utc_now
-        write(manifest,dict(created_at=utc_now(),schema='isf.run-manifest.v1',contract_version=CONTRACT_VERSION,request_id=request_id,job=job,spec=spec,stage='queued',issues=[]))
+        write(manifest,dict(created_at=utc_now(),schema='isf.run-manifest.v1',contract_version=CONTRACT_VERSION,request_id=request_id,job=job,spec=spec,stage='queued',issues=[], point_ids=point_ids,
+                            planned_selection=[r for r in planned if r['id'] in point_ids]))
         command=[sys.executable,'-B','-m','isf_tool.api_worker',str(manifest)]
         env=dict(os.environ,PYTHONDONTWRITEBYTECODE='1',PYTHONPATH=str(Path(__file__).resolve().parents[1])+os.pathsep+os.environ.get('PYTHONPATH',''))
         with (manifest.parent/'worker.log').open('w') as log:
@@ -222,6 +260,36 @@ def run(spec_path, *, spec_hash, workspace, request_id, run_kind='replay', wait=
         write(manifest,payload)
     if wait:proc.wait()
     return status(key,workspace=workspace)
+
+
+def retry_points(job_id, *, workspace):
+    """Retry failed ISF children against the same verified native history."""
+    from .core.api_jobs import manifest, manifest_path
+    work = Path(workspace).resolve()
+    with _workspace_lock(work):
+        row = manifest(work, job_id)
+        if (not row or row['job']['state'] not in ('failed', 'partial')
+                or not (row.get('isf_job') or {}).get('resume_available')):
+            raise ValidationError('This run has no retryable ISF points')
+        path = manifest_path(work, job_id)
+        if any(read(p)['job']['state'] in ('queued', 'running')
+               for p in (work / 'api-jobs').glob('*/manifest.json')):
+            raise ValidationError('Workspace has an active testbench job')
+        row['job']['state'] = 'queued'
+        row['stage'] = 'isf.retry'
+        write(path, row)
+        try:
+            with (path.parent / 'worker.log').open('a') as log:
+                env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1',
+                           PYTHONPATH=str(Path(__file__).resolve().parents[1]) + os.pathsep + os.environ.get('PYTHONPATH', ''))
+                subprocess.Popen(row['isf_stage_command'], stdin=subprocess.DEVNULL, env=env,
+                                 stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        except OSError:
+            row['job']['state'] = 'partial' if row.get('result') else 'failed'
+            row['stage'] = row['job']['state']
+            write(path, row)
+            raise
+    return dict(ok=True, job_id=job_id, status='queued')
 
 
 def _run_handle(job):
@@ -246,9 +314,36 @@ def status(job_id, *, workspace):
     return _desktop_run_handle(ToolService(workspace).get_job(job_id), workspace)
 
 
+def _filter_results(result, point_ids, offsets_hz):
+    if not result or not (point_ids or offsets_hz):
+        return result
+    filtered = copy.deepcopy(result)
+    offsets = {float(hz) for hz in offsets_hz}
+    ids = set(point_ids)
+
+    def matches(row):
+        return ((not ids or ids.intersection((row.get('point'), row.get('operating_point_id'),
+                                               row.get('core_operating_point_id'))))
+                and (not offsets or row.get('offset_Hz') in offsets))
+
+    filtered['summary'] = [r for r in filtered['summary'] if matches(r)]
+    keys = {r['point'] for r in filtered['summary']}
+    filtered['points'] = {k: v for k, v in filtered['points'].items() if k in keys}
+    core = filtered.get('complementary_core')
+    if core:
+        selected = {(row.get('core_operating_point_id') or row['operating_point_id'], row['offset_Hz'])
+                    for row in filtered['summary']}
+        core['combined'] = [row for row in core['combined']
+                            if (row['operating_point_id'], row['offset_hz']) in selected]
+    batch = filtered.get('point_sweep')
+    if batch and ids:
+        batch['points'] = [row for row in batch['points'] if row['id'] in ids or
+                           any(r.get('operating_point_id') == row['id'] or
+                               r.get('core_operating_point_id') == row['id'] for r in filtered['summary'])]
+    return filtered
+
+
 def results(job_id, *, workspace, point_ids=(), offsets_hz=()):
-    if point_ids or offsets_hz:
-        raise ValidationError('Result filters are not implemented', code='UNSUPPORTED_CAPABILITY')
     from .core import api_jobs
     from .core.service import ToolService
     row = api_jobs.manifest(workspace, job_id)
@@ -262,13 +357,13 @@ def results(job_id, *, workspace, point_ids=(), offsets_hz=()):
                                            severity='error', field='', message=error.get('message') or 'Job failed')]
         return dict(schema='isf.results.v1', contract_version=CONTRACT_VERSION,
                     job=_desktop_run_handle(job, workspace), canonical_path=str(directory) if directory.is_dir() else None,
-                    result=result, issues=issues)
+                    result=_filter_results(result, point_ids, offsets_hz), issues=issues)
     result = row.get('result')
     if result and row.get('native_results') and row.get('spec', {}).get('measurements'):
         from .core.maestro_outputs import attach_outputs
         result = attach_outputs(result, row['native_results']['points'], row['spec']['measurements']['outputs'])
     return dict(schema='isf.results.v1', contract_version=CONTRACT_VERSION, job=_run_handle(row['job']),
-                canonical_path=row.get('canonical_path'), result=result, issues=row['issues'])
+                canonical_path=row.get('canonical_path'), result=_filter_results(result, point_ids, offsets_hz), issues=row['issues'])
 
 
 def open_ui(spec_path=None, *, workspace, auto_run=False):

@@ -3484,7 +3484,16 @@
         ? " Thermal finite-band budget: independent input bands |m|≤" + inputLimit + "; higher bands are excluded. "
         : " Thermal actual input-band limits not recorded, must not be interpreted as an infinite-band budget. ";
     }
-    var quality = [[summary.pm_magnitude_projection_valid, "PM approximation"], [summary.numerical_quality_pass, "Flicker Numerical quality"], [thermalQuality ? thermalQuality.pass : undefined, "Thermal Numerical quality"], [summary.hbac_secondary_validation_pass, "HBAC Secondary check"]].map(function (entry) { return entry[1] + ": " + (entry[0] === true ? "Passed" : entry[0] === false ? "Failed" : "Not provided"); });
+    var quality = [[summary.pm_magnitude_projection_valid, "PM approximation"], [summary.numerical_quality_pass, "Flicker Numerical quality"], [thermalQuality ? thermalQuality.pass : undefined, "Thermal Numerical quality"], [summary.hbac_secondary_validation_pass, "HBAC Secondary check", "Warning"]].map(function (entry) { return entry[1] + ": " + (entry[0] === true ? "Passed" : entry[0] === false ? (entry[2] || "Failed") : "Not provided"); });
+    if (summary.hbac_secondary_validation_pass === false) {
+      var hbacDelta = finiteOrNull(summary.hbac_max_phase_delta_deg);
+      var hbacLimit = finiteOrNull(summary.hbac_phase_warn_threshold_deg);
+      if (hbacDelta !== null && hbacLimit !== null) {
+        var hbacPhase = summary.hbac_phase_comparison === "phase_axis_mod_180" ? "phase-axis deviation" : "recorded phase difference";
+        quality.push("HBAC " + hbacPhase + " " + hbacDelta.toFixed(1) + "° (threshold " + hbacLimit + "°)");
+      }
+      quality.push("HBAC probes the deterministic replica current path. Primary noise closure is evaluated separately");
+    }
     [[summary.numerical_quality_issues, "Flicker Issues"], [thermalQuality && thermalQuality.issues, "Thermal Issues"]].forEach(function (entry) {
       if (entry[0] && (!Array.isArray(entry[0]) || entry[0].length)) quality.push(entry[1] + ": " + (typeof entry[0] === "object" ? JSON.stringify(entry[0]) : entry[0]));
     });

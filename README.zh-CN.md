@@ -29,7 +29,7 @@ python -m pip install '.[analysis,images]'
 vco-isf --workspace ./isf-workspace
 ```
 
-点击顶栏的 **Load synthetic example**，在 **Results** 中选择工况、频偏和视图。同一数据包位于 [examples/ideal_lc](examples/ideal_lc)，其中的波形和噪声功率均由公式生成。已导入的回放可从 **Jobs & preflight** 重新打开。
+点击顶栏的 **Load synthetic example** 查看一个理想 LC 工况，或点 **Example sweep** 查看两个虚构工艺角、三档偏置的六个工况。在 **Results** 中选择频偏和视图。[examples/ideal_lc](examples/ideal_lc) 另带三个工况的理想 LC 数据包。示例波形和噪声功率均由公式生成。已导入的回放可从 **Jobs & preflight** 重新打开。
 
 [ISF 过程](docs/screenshots/01-process.png) · [谐波](docs/screenshots/02-harmonics.png) · [噪声贡献](docs/screenshots/04-contributions.png) · [输入频带](docs/screenshots/06-bands.png) · [优化指标](docs/screenshots/08-metrics.png) · [浅色主题](docs/screenshots/00-overview-light.png)
 
@@ -42,6 +42,21 @@ vco-isf --workspace ./isf-workspace
 - **C · New cell** 提供私有库映射、DUT、电源、控制、模型和输出节点。
 
 确认目标 gm 器件。要执行双器件分析，在 **Two-device analysis** 中选择 **Complementary core** 或 **Asymmetric pair** 并指定两只器件。先用 **Prepare** 审核，再点 **Start analysis**。已有仿真历史可从 **Setup** 或 [Maestro 菜单](docs/MAESTRO_PLUGIN.md) 直接分析。参见 [API](docs/API.md)、[端口绑定](docs/PORTABLE_BINDING.md)和 [HB 分析组合](docs/HB_ANALYSIS_BUNDLE.md)。
+
+## Maestro 扫参
+
+支持离散的全局变量扫参、工艺角以及两者的组合。开始作业后可在
+[Select Maestro points](docs/screenshots/select-points.png) 中查看工况数、频偏数和空间估算，再选择要分析的工况。
+恢复作业时会保留已完成的分析，并根据同一仿真历史重试失败或尚未执行的工况。
+
+入口 B 继承源测试保存的全局变量和工艺角。继承全局模型组需用 TB Generator 1.1.0，
+模型文件须为绝对路径并指定 section。入口 A 和 C 可通过 **Sweep / corners…**
+或生成器请求指定离散扫参值和工艺角。Maestro 运行原生配置中的工况网格以生成历史，
+随后 ISF 分析所选工况。**Setup** 也可使用已经完成的 Maestro 仿真历史。
+
+[扫参总览](docs/screenshots/00-sweep.png) 对比同一频偏下的数值结果。可排序并选择表格行，
+也可在相噪曲线上点选工况。[工况导航](docs/screenshots/03-navigator.png) 跨视图显示当前工艺角及扫参值。
+点击 **Group…** 可按工艺角和变量浏览。
 
 ## 命令行与 API
 
@@ -60,7 +75,7 @@ vco-isf optim calibrate selected-result-ref.json
 
 ## 限制
 
-- 原生兼容性在一套 Virtuoso IC6.1.8 / Spectre 18.1 环境及少量 CMOS 工艺上验证过。使用结果前请验证本机工具链、绑定及证据。
+- 原生扫参在一套 IC6.1.8/Spectre 18.1 环境中验证过，覆盖工艺角与全局变量的组合扫参。使用结果前请验证本机工具链、绑定及证据。
 - 模型覆盖选定 gm 器件的闪烁和热噪声，以及支持的无源 LC 损耗热噪声。整振荡器的 HBnoise 可能包含其他噪声源。无法计算的机制显示 N/A。
 - 比较时须匹配器件、机制、工况和频偏。优化判据要求对称对管闪烁噪声绝对误差小于 0.5 dB，手动双器件分析每只器件的每种机制绝对误差不超过 2 dB，同时检查总量闭合与数值质量。
 - ISF 可以验证和解释已仿真的变化。单点基线无法预测调参方向，最终相噪仍由 HBnoise 验证。参见[理论与验证](docs/ISF_THEORY.md)。
@@ -85,7 +100,6 @@ vco-isf optim calibrate selected-result-ref.json
 - [Tank Scan Lab](https://github.com/chloeyntu-byte/tank-scan-lab)：LC 谐振腔扫描（f0、Rp、gm、起振裕量、损耗分摊）、电容阵列 C/Q 与谐振
 - [Layout 3D Viewer](https://github.com/chloeyntu-byte/layout-3d-viewer)：三维阅读版图、定位 pin、追踪连接
 - [VCO TB Generator](https://github.com/chloeyntu-byte/vco-testbench-generator)：为 LC VCO 生成 Virtuoso 测试台与 Maestro HB/HBNOISE/HBXF 设置；VCO ISF Explorer 调用它
-- [Crescendo](https://github.com/chloeyntu-byte/crescendo)：在 Cadence Maestro 里自动优化器件尺寸
 - [VCO Design Studio](https://github.com/chloeyntu-byte/vco-design-studio)：五类文献 LC VCO 拓扑、分层原理图与原生导出
 
 ## 许可证

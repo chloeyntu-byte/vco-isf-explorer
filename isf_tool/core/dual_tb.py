@@ -1015,13 +1015,16 @@ def recompute_dual_tb(canonical):
             abs(mdyn[0]) ** 2
             + 2.0 * sum(abs(value) ** 2 for harmonic, value in mdyn.items() if harmonic > 0)
         )
+        operating_id = first.get("operating_point_id") or point_name
+        operating_contract = (metadata.get("operating_points") or {}).get(operating_id, {})
         summary = {
             "point": point_name,
-            "operating_point_id": first.get("operating_point_id") or point_name,
-            "operating_parameters": (
-                (metadata.get("operating_points") or {}).get(first.get("operating_point_id") or point_name, {}).get("params", {})
-            ),
-            "corner": first.get("corner"),
+            "operating_point_id": operating_id,
+            "operating_parameters": operating_contract.get("params", {}),
+            "maestro_point_id": operating_contract.get("point_id"),
+            "maestro_history": operating_contract.get("rdb"),
+            "maestro_test": operating_contract.get("test"),
+            "corner": operating_contract.get("corner", first.get("corner")),
             "f0_Hz": f0_hz,
             "offset_Hz": offset_hz,
             "carrier_peak_V": carrier,

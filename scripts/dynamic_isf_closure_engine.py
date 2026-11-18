@@ -49,6 +49,7 @@ from isf_tool.core.physical_profile import (
     resolve_device_subckt_file,
     resolve_physical_profile,
 )
+from isf_tool.core.hbac_phase import hbac_axis_delta, hbac_phase_check
 from isf_tool.core.limits import MAX_PHASE_CANDIDATE_HARMONICS
 from isf_tool.core.waveform_exchange import (
     export_waveforms, set_root_parameters, validate_waveform_assets, prepare_dc_bias_sources,
@@ -379,6 +380,11 @@ def _legacy_point_name(point):
 
 
 def point_name(point):
+    if point.get('point_key'):
+        key = point['point_key']
+        if not re.fullmatch(r'pt-[a-f0-9]{24}', key):
+            raise ValueError('Invalid Maestro point key')
+        return key
     k_value = float(point["k"])
     if not math.isfinite(k_value):
         raise RuntimeError("point k must be finite")
@@ -2257,6 +2263,13 @@ def analyze_point(cfg, point, run_root, previous_selected=None):
         if k > 0:
             q += h[-k] * np.conj(mdyn_pos[k])
         cumulative += q
+        # Keep the signed comparison for audit. The intrinsic-to-external
+        # current transfer can invert individual mixing products, even after
+        # normalization by HBAC[0], so the check compares axes modulo 180°.
+        signed_hbac_delta = (
+            math.degrees(wrap_phase(np.angle(hbac_norm[k]) - np.angle(mdyn_pos[k])))
+            if abs(hbac_norm[k]) and abs(mdyn_pos[k]) else None
+        )
         harmonic_rows.append(
             {
                 "k": k,
@@ -2280,7 +2293,8 @@ def analyze_point(cfg, point, run_root, previous_selected=None):
                 "Dk_imag": dval.imag,
                 "HBAC_norm_mag": abs(hbac_norm[k]),
                 "HBAC_norm_phase_deg": phase_deg(hbac_norm[k]),
-                "HBAC_vs_Mdyn_phase_deg": math.degrees(wrap_phase(np.angle(hbac_norm[k]) - np.angle(mdyn_pos[k]))) if abs(hbac_norm[k]) and abs(mdyn_pos[k]) else float("nan"),
+                "HBAC_vs_Mdyn_phase_deg": signed_hbac_delta,
+                "HBAC_axis_phase_delta_deg": hbac_axis_delta(signed_hbac_delta) if k > 0 else None,
                 "Qk_real_V_rtHz": q.real,
                 "Qk_imag_V_rtHz": q.imag,
                 "cum_real_V_rtHz": cumulative.real,
@@ -2292,16 +2306,9 @@ def analyze_point(cfg, point, run_root, previous_selected=None):
         list(harmonic_rows[0].keys()),
         harmonic_rows,
     )
-    hbac_deltas = [
-        abs(float(row["HBAC_vs_Mdyn_phase_deg"]))
-        for row in harmonic_rows
-        if int(row["k"]) > 0
-        and math.isfinite(float(row["HBAC_vs_Mdyn_phase_deg"]))
-    ]
-    hbac_max_delta = max(hbac_deltas) if hbac_deltas else float("nan")
-    hbac_threshold = float(cfg.get("hbac_phase_warn_deg", 45.0))
-    hbac_validation_pass = bool(
-        hbac_deltas and hbac_max_delta <= hbac_threshold
+    hbac_diagnostic = hbac_phase_check(
+        (row["HBAC_vs_Mdyn_phase_deg"] for row in harmonic_rows if row["k"] > 0),
+        float(cfg.get("hbac_phase_warn_deg", 45.0)),
     )
     write_phasor_svg(
         case_dir / "cumulative_phasor.svg",
@@ -2403,12 +2410,7 @@ def analyze_point(cfg, point, run_root, previous_selected=None):
         "numerical_quality_pass": numerical_quality["pass"],
         "numerical_quality_code": numerical_quality["code"],
         "numerical_quality_issues": ";".join(numerical_quality["issues"]),
-        "hbac_secondary_validation_pass": hbac_validation_pass,
-        "hbac_secondary_validation_code": (
-            "" if hbac_validation_pass else "ISF-W3003"
-        ),
-        "hbac_max_phase_delta_deg": hbac_max_delta,
-        "hbac_phase_warn_threshold_deg": hbac_threshold,
+        **hbac_diagnostic,
     }
     from isf_tool.core.thermal_budget import load_thermal_evidence
     budget = load_thermal_evidence(cfg, case_dir, dict(summary, offset_Hz=offset))
@@ -2465,7 +2467,7 @@ def write_report(cfg, run_root, rows):
         "- All harmonics share one normalization `sqrt(Sxi)`, defined as replica k=0 USB intrinsic-flicker ASD. `Dk=Mk/sqrt(Sxi)`.",
         "- HBXF mapping: input k*f0+offset to output f0+offset uses sideband index k-1, including signed negative frequencies.",
         "- ISF coefficients use the fixed carrier phasor and both signed HBXF sidebands; they are independent of m(t)/Mdyn. The positive-sideband-only 4*pi approximation and historical 8*pi value are audit diagnostics only.",
-        "- Replica HBAC uses a unit deterministic PAC source at intrinsic di-si as a secondary phase diagnostic; it does not independently renormalize any harmonic.",
+        "- Replica HBAC uses a unit deterministic PAC source at intrinsic D/S. The phase-axis diagnostic compares the normalized transfer and Mdyn modulo 180° and retains the signed residual for audit.",
         "",
         "## Results",
         "",
@@ -2483,7 +2485,7 @@ def write_report(cfg, run_root, rows):
                 hbac_quality=(
                     "PASS"
                     if row["hbac_secondary_validation_pass"]
-                    else row["hbac_secondary_validation_code"]
+                    else row["hbac_secondary_validation_code"] or "Not evaluated"
                 ),
                 pm_quality=(
                     "PASS"

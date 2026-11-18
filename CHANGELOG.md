@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0
+
+- Analyze selected Maestro points from global-variable sweeps, corners or both. Stable keys identify points across job receipts, exports, CLI and Python calls.
+- Track each point independently and retry failed or remaining points against the saved history.
+- Add numeric 00 Overview, a sortable sweep table, a phase-noise plot against a numeric axis, and a point navigator across result views.
+- Add a six-point synthetic **Example sweep**, update the single-point example, and refresh the dark and light screenshots.
+- Report HBAC axis deviation as secondary evidence for the replica transfer.
+
 ## 1.2.0
 
 - Add Testbench setup for a generated Design Lab project, an existing Maestro setup, or a new library cell.

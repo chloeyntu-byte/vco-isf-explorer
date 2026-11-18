@@ -326,10 +326,10 @@
     {
       "code": "ISF-W3003",
       "severity": "warning",
-      "title": "HBAC secondary phase-validation deviation",
-      "summary": "The relative phase difference between HBAC/PAC deterministic injection and HBNOISE AM/PM engineering candidates exceeds the configured threshold.",
+      "title": "HBAC secondary phase diagnostic",
+      "summary": "The HBAC deterministic current-transfer phase deviates from the HBNOISE AM/PM candidate phase beyond the diagnostic threshold. The phase-axis comparison allows a 180° polarity difference. Primary noise closure is evaluated separately.",
       "causes": ["AM/PM Candidate quadrant is ambiguous", "Injection location and actual internal flicker source not fully equivalent", "High-order phase or time-reference mismatch"],
-      "actions": ["Retain every candidate in phase_candidates.csv", "Review injection location, sidebands and the common time reference", "Do not select quadrants using final VCO noise; HBAC remains a secondary diagnostic by default"]
+      "actions": ["Retain every candidate in phase_candidates.csv", "Review injection location, sidebands and the common time reference", "Use the signed phase residual for polarity inspection and preserve the selected AM/PM candidate"]
     },
     {
       "code": "ISF-W3004",

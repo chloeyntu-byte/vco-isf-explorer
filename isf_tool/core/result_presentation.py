@@ -13,6 +13,7 @@ import math
 from collections.abc import Mapping
 
 from ..calculation import dBc_from_pm_asd, error_dB
+from .hbac_phase import PHASE_AXIS_COMPARISON, hbac_axis_delta, hbac_phase_check
 from .thermal_budget import calculated_noise_dbc, thermal_evidence
 
 
@@ -22,7 +23,7 @@ SUMMARY_QUALITY_FIELDS = (
     "spectre_fn_am_asd_V_rtHz", "predicted_carrier_projection_loss_dB",
     "numerical_quality_pass", "numerical_quality_code", "numerical_quality_issues",
     "hbac_secondary_validation_pass", "hbac_secondary_validation_code",
-    "hbac_max_phase_delta_deg", "hbac_phase_warn_threshold_deg",
+    "hbac_max_phase_delta_deg", "hbac_phase_warn_threshold_deg", "hbac_phase_comparison",
 )
 _BOOL_QUALITY = {
     "pm_magnitude_projection_valid", "numerical_quality_pass",
@@ -145,6 +146,22 @@ def _complex_aliases(row, names):
     return present[0] if present else None
 
 
+def _update_legacy_hbac_check(summary, points):
+    # Recompute only recorded checks with per-order evidence. This also leaves
+    # replay bundles without a recorded threshold explicitly unevaluated.
+    threshold = summary.get("hbac_phase_warn_threshold_deg")
+    if summary.get("hbac_phase_comparison") or threshold is None:
+        return
+    offset = summary["offset_Hz"]
+    harmonics = points.get(str(summary.get("point") or ""), {}).get("harmonics", [])
+    signed_deltas = (row.get("HBAC_vs_Mdyn_phase_deg") for row in harmonics
+                     if (_number(row.get("k")) or 0) > 0
+                     and _value(row, "offset_Hz", "offset_hz") in (None, offset))
+    check = hbac_phase_check(signed_deltas, threshold)
+    if check["hbac_secondary_validation_pass"] is not None:
+        summary.update(check)
+
+
 def enrich_harmonic(row, summary):
     """Add equivalent single-order/cumulative noise, never an incoherent sum."""
     output = copy.deepcopy(dict(row))
@@ -175,6 +192,9 @@ def enrich_harmonic(row, summary):
     output["noise_scope"] = "target_device_flicker"
     output["harmonic_combination"] = "coherent_complex_sum"
     output.update(quality_fields(summary))
+    if (summary.get("hbac_phase_comparison") == PHASE_AXIS_COMPARISON
+            and (_number(row.get("k")) or 0) > 0):
+        output["HBAC_axis_phase_delta_deg"] = hbac_axis_delta(row.get("HBAC_vs_Mdyn_phase_deg"))
     return output
 
 
@@ -218,6 +238,7 @@ def enrich_result(result):
         summary = enrich_summary(row, offset_hz=owned_offset, pair_model=pair_model)
         if generated:
             summary.update(replica_source="generated", target_noise_trace=summary.get("target_noise_trace") or metadata.get("target_noise_trace"))
+        _update_legacy_hbac_check(summary, source.get("points", {}))
         output["summary"].append(summary)
     summaries_by_point = {}
     for row in output["summary"]:
@@ -267,12 +288,82 @@ def _grouped_samples(result):
 
 def operating_points(result):
     """Return result-owned identities/parameters without parsing point names."""
-    _source, groups = _grouped_samples(result)
-    return [{"id": identity, "label": identity, "corner": rows[0].get("corner"),
-             "parameters": copy.deepcopy(rows[0].get("operating_parameters") or {}),
-             "offsets_hz": [row["offset_Hz"] for row in rows if row["offset_Hz"] is not None],
-             "points": [str(row.get("point") or "") for row in rows]}
-            for identity, rows in sorted(groups.items())]
+    source, groups = _grouped_samples(result)
+    metadata = _result_metadata(source).get('operating_points') or {}
+    batch = (source.get('point_sweep') or {}).get('points', [])
+    from .sweep_points import label
+    output = {}
+    for identity, rows in sorted(groups.items()):
+        first = rows[0]
+        contract = metadata.get(identity) or {}
+        display = first.get('point_identity') or {}
+        variables = display.get('variables', contract.get('swept_variables', {}))
+        corner = first.get('corner')
+        output[identity] = dict(id=identity, label=display.get('label') or
+                                (label(corner, variables) if identity.startswith('pt-') else identity),
+                                corner=corner, variables=copy.deepcopy(variables),
+                                parameters=copy.deepcopy(first.get('operating_parameters') or {}),
+                                history=first.get('maestro_history'), point_id=first.get('maestro_point_id'),
+                                core_id=first.get('core_operating_point_id'), device=first.get('device_instance'),
+                                offsets_hz=[r['offset_Hz'] for r in rows if r['offset_Hz'] is not None],
+                                points=[str(r.get('point') or '') for r in rows], status='completed')
+    batch_rows = {row['id']: row for row in batch}
+    for item in output.values():
+        parent = batch_rows.get(item['core_id'])
+        if parent:
+            item.update(label=parent['label'] + ' · ' + item['device'], variables=parent['variables'])
+    represented = {item['core_id'] or item['id'] for item in output.values()}
+    if source.get('complementary_core'):
+        return list(output.values()) + [row for row in batch if row['id'] not in represented]
+    return [dict(output.get(p['id'], {}), **p) for p in batch] + [
+        p for p in output.values() if p['id'] not in batch_rows]
+
+
+def sweep_summary(result, points, offset):
+    """Build an exact-offset cross-point table with explicit missing values."""
+    from .thermal_budget import calculated_noise_dbc
+    source = _unwrap(result)
+    metadata = _result_metadata(source)
+    combined = {row['operating_point_id']: row
+                for row in (source.get('complementary_core') or {}).get('combined', [])
+                if row['offset_hz'] == offset}
+    rows = {}
+    for raw in source.get('summary', []):
+        if _value(raw, 'offset_Hz', 'offset_hz') != offset:
+            continue
+        summary = enrich_summary(raw, pair_model=metadata.get('second_device_model'))
+        _update_legacy_hbac_check(summary, source.get('points', {}))
+        key = summary.get('core_operating_point_id') or summary['operating_point_id']
+        rows.setdefault(key, summary)
+        rows[summary['operating_point_id']] = summary
+    answer = []
+    for point in points:
+        summary = rows.get(point['id'], {})
+        predicted = summary.get('predicted_total_dBc_Hz')
+        reference = summary.get('spectre_total_dBc_Hz')
+        pair = summary.get('predicted_pair_dBc_Hz')
+        pair_ref = summary.get('spectre_pair_dBc_Hz')
+        flicker = calculated_noise_dbc(summary, noise_kind='flicker')
+        thermal = summary.get('thermal_dBc_Hz')
+        pair_error = pair-pair_ref if pair is not None and pair_ref is not None else None
+        if point['id'] in combined:
+            core = combined[point['id']]
+            predicted, reference = core['modeled_total_dbc_hz'], core['spectre_total_dbc_hz']
+            flicker, thermal = core['modeled_flicker_dbc_hz'], core['modeled_thermal_dbc_hz']
+            pair_error = core['closure']['flicker']['error_db']
+        frac = 100 / (1 + 10 ** ((thermal - flicker) / 10)) if (
+            thermal is not None and flicker is not None and abs(thermal - flicker) < 3000) else None
+        sources = [r for r in noise_contribution_rows(summary, noise_kind='both')
+                   if r.get('kind') == 'source' and r.get('simulated_dbc') is not None]
+        sources.sort(key=lambda row: row['simulated_dbc'], reverse=True)
+        answer.append(dict(point, key=point['id'], f0=summary.get('f0_Hz'), isf=predicted,
+                           hbnoise=reference, delta=predicted-reference if predicted is not None and reference is not None else None,
+                           pair_error=pair_error,
+                           flicker_pct=frac, thermal_pct=100-frac if frac is not None else None,
+                           top_source=sources[0]['label'] if sources else None,
+                           status=point.get('status', 'completed') if summary or point.get('status') != 'completed'
+                           else 'Offset unavailable', sample=summary, sources=sources[:5]))
+    return answer
 
 
 def _select_group(groups, identity):

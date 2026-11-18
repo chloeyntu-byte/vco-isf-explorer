@@ -109,7 +109,7 @@ class EnglishNativeTests(unittest.TestCase):
         app = self.app
         app.current_job_id = 'synthetic'
         app.current_job = {'id': 'synthetic', 'status': 'succeeded'}
-        app._result_loaded(result(), 'synthetic')
+        app._result_loaded(result(sweep=True), 'synthetic')
         app._open_catalog()
         for tab in app.notebook.tabs():
             app.notebook.select(tab)
@@ -127,7 +127,12 @@ class EnglishNativeTests(unittest.TestCase):
                 app.results_view.show(view)
                 self.root.update()
                 self.assert_english()
-                self.assertTrue(app.results_view.chart.find_all() or view == 5)
+                if view == 0:
+                    overview = app.results_view.overview
+                    self.assertTrue(overview.table.tree.winfo_ismapped())
+                    self.assertTrue(overview.chart.find_all())
+                elif view != 5:
+                    self.assertTrue(app.results_view.chart.find_all())
         for button in app.results_view.nav_buttons:
             self.assertGreaterEqual(button.winfo_width(), app.body_font.measure(button.cget("text")) + 12)
         app.results_view.overlay.set(True)

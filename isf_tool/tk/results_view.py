@@ -10,6 +10,7 @@ from . import fieldwork_tk as fw
 from ..core.offsets import offset_label
 from .charts import LineChart, PhasorChart, ContributionBars
 from .process_charts import ProcessChart
+from .sweep_view import Overview
 from .viewmodel import (engineering, finite_number, process_projection, harmonic_projection,
                         offset_projection, contribution_projection, noise_scope_note, load_thermal_coefficients, stored_thermal_diagnostic, thermal_workpoint_series, stored_thermal_series, offset_table_projection, band_noise_projection, thermal_band_projection, isf_overlay_projection, HARMONIC_NOTE)
 
@@ -90,6 +91,10 @@ class LinkedTable(ttk.Frame):
     @staticmethod
     def display_value(row, field, label):
         value = row.get(field)
+        if field.startswith('var '):
+            return str(value) if value is not None else '—'
+        if label.endswith(' dB') and finite_number(value) is not None:
+            return f'{float(value):+.2f}'
         if field in ('offset', 'offset_hz', 'offset_Hz') and finite_number(value) is not None:
             return offset_label(value)
         unit = 'dB' if '(dB)' in label or (field == 'value' and row.get('unit') == 'dB') else ''
@@ -189,11 +194,19 @@ class ResultsView(ttk.Frame):
         toolbar = ttk.Frame(self)
         toolbar.grid(row=0, column=0, sticky='ew', pady=(0, 4))
         ttk.Button(toolbar, text='Views', command=self.toggle_nav).pack(side='left', padx=(0, 8))
-        ttk.Label(toolbar, text='Operating point').pack(side='left')
-        app.operating_point_box = ttk.Combobox(toolbar, textvariable=app.operating_point_var, state='readonly', width=24)
-        app.operating_point_box.pack(side='left', padx=(4, 8))
-        app.operating_point_box.bind('<<ComboboxSelected>>', app._operating_point_changed)
-        ttk.Label(toolbar, text='Offset').pack(side='left')
+        self.point_nav = ttk.Frame(toolbar)
+        ttk.Label(self.point_nav, text='Point').pack(side='left')
+        self.prev_point = ttk.Button(self.point_nav, text='‹', width=3, command=lambda: self.step_point(-1))
+        self.prev_point.pack(side='left', padx=(5, 0))
+        self.point_label = tk.StringVar()
+        app.operating_point_box = ttk.Combobox(self.point_nav, textvariable=self.point_label, state='readonly', width=26)
+        app.operating_point_box.pack(side='left', padx=3)
+        app.operating_point_box.bind('<<ComboboxSelected>>', self._choose_point)
+        self.next_point = ttk.Button(self.point_nav, text='›', width=3, command=lambda: self.step_point(1))
+        self.next_point.pack(side='left', padx=(0, 5))
+        ttk.Button(self.point_nav, text='Group…', command=self.browse_points).pack(side='left', padx=(0, 8))
+        self._offset_label = ttk.Label(toolbar, text='Offset')
+        self._offset_label.pack(side='left')
         app.result_offset_box = ttk.Combobox(toolbar, textvariable=app.result_offset_var, state='readonly', width=13)
         app.result_offset_box.pack(side='left', padx=(4, 8))
         app.result_offset_box.bind('<<ComboboxSelected>>', app._result_offset_changed)
@@ -214,6 +227,7 @@ class ResultsView(ttk.Frame):
         self.chips = []
         chiprow = ttk.Frame(self)
         chiprow.grid(row=1, column=0, sticky='ew', pady=(0, 4))
+        self.chiprow = chiprow
         for i in range(6):
             chiprow.columnconfigure(i, weight=1, uniform='chip')
             var = tk.StringVar(value='—')
@@ -224,9 +238,11 @@ class ResultsView(ttk.Frame):
         self.controls.grid(row=2, column=0, sticky='ew', pady=(0, 3))
         self.title = tk.StringVar(value='00 / Overview')
         ttk.Label(self.controls, textvariable=self.title, font=app.heading_font).pack(side='left', padx=(0, 10))
-        ttk.Button(self.controls, text='Reset', command=lambda: self.chart.reset()).pack(side='right')
-        ttk.Button(self.controls, text='Table', command=self.toggle_drawer).pack(side='right', padx=4)
-        ttk.Button(self.controls, text='All columns / Adaptive', command=lambda: self.table.show_all_columns()).pack(side='right', padx=4)
+        self.chart_actions = ttk.Frame(self.controls)
+        self.chart_actions.pack(side='right')
+        ttk.Button(self.chart_actions, text='Reset', command=lambda: self.chart.reset()).pack(side='right')
+        ttk.Button(self.chart_actions, text='Table', command=self.toggle_drawer).pack(side='right', padx=4)
+        ttk.Button(self.chart_actions, text='All columns / Adaptive', command=lambda: self.table.show_all_columns()).pack(side='right', padx=4)
         self.overlay = tk.BooleanVar(value=False)
         self.overlay_check = ttk.Checkbutton(self.controls, text='Overlay · Fig.14', variable=self.overlay, command=self.refresh)
         self.reference_slopes = tk.BooleanVar(value=True)
@@ -253,6 +269,10 @@ class ResultsView(ttk.Frame):
         helpbox.pack(anchor='w',pady=14)
         for line in ('Ctrl+wheel: zoom','Middle-drag: pan','Click legend: Selected / toggle visibility','Hover/click: link','Ctrl+C: copy table row'):
             ttk.Label(helpbox,text=line,style='Help.TLabel').pack(anchor='w',pady=3)
+        self.overview = Overview(body, LinkedTable, self.select_point, self.show)
+        self.overview.grid(row=0, column=1, sticky='nsew')
+        self.point_identity = tk.StringVar()
+        ttk.Label(self.controls, textvariable=self.point_identity, style='Help.TLabel').pack(side='left')
         self.pane = ttk.Panedwindow(body, orient='vertical')
         self.pane.grid(row=0, column=1, sticky='nsew')
         self.plot_frame = ttk.Frame(self.pane)
@@ -367,12 +387,20 @@ class ResultsView(ttk.Frame):
 
     def set_palette(self, palette):
         self.chart.set_palette(palette)
+        self.overview.chart.set_palette(palette)
         self.app.style.configure('Chip.TLabel', background=palette['grid'], foreground=palette['text'])
         style = self.app.style
         family = self.app.body_font.actual('family')
         style.configure('Result.TLabel', font=(family, 10), background=palette['background'], foreground=palette['text'])
         style.configure('ResultHelp.TLabel', font=(family, 10), background=palette['background'], foreground=palette['muted'])
         style.configure('Chip.TLabel', font=(family, 10))
+        style.configure('OverviewCard.TFrame', background=palette['grid'])
+        for name, size, weight, color in (
+            ('Title', 10, 'bold', 'muted'), ('Value', 15, 'bold', 'text'),
+            ('Detail', 10, 'normal', 'muted'),
+        ):
+            style.configure(f'OverviewCard{name}.TLabel', background=palette['grid'],
+                            foreground=palette[color], font=(family, size, weight))
         style.configure('Result.TButton', font=(family, 10), padding=(8, 4))
         style.configure('ResultActive.TButton', font=(family,10,'bold'), padding=(8,4), background=palette['grid'], foreground=palette['accent'])
         style.configure('Result.TCheckbutton', font=(family, 10), padding=4)
@@ -384,7 +412,7 @@ class ResultsView(ttk.Frame):
         def compact(widget):
             for child in widget.winfo_children():
                 kind = child.winfo_class()
-                if kind == 'TLabel' and child.cget('style') not in ('Chip.TLabel', 'Section.TLabel'):
+                if kind == 'TLabel' and not child.cget('style').startswith(('Chip.', 'OverviewCard', 'Section.')):
                     child.configure(style='ResultHelp.TLabel' if 'Help' in child.cget('style') else 'Result.TLabel')
                 elif kind in ('TButton', 'TCheckbutton', 'TMenubutton'):
                     child.configure(style='Result.' + kind)
@@ -414,6 +442,8 @@ class ResultsView(ttk.Frame):
         self._drawer_visible = not self._drawer_visible
 
     def clear(self):
+        self.overview.clear()
+        self.point_nav.pack_forget()
         self.diagnostic_frame.grid_remove()
         self.optimization_metrics = None
         self.chart.set_panels([], reset=True)
@@ -432,6 +462,78 @@ class ResultsView(ttk.Frame):
         self.chart.hidden.clear()
         self.refresh()
 
+    def select_point(self, identity):
+        device_points = [row for row in self.app._operating_points if row.get('core_id') == identity]
+        if device_points:
+            active = self.app.operating_point_var.get()
+            identity = next((p['id'] for p in device_points if p['id'] == active), device_points[0]['id'])
+        if identity != self.app.operating_point_var.get():
+            self.app.operating_point_var.set(identity)
+            self.app._operating_point_changed()
+
+    def _choose_point(self, _event=None):
+        index = self.app.operating_point_box.current()
+        if index >= 0:
+            self.select_point(self._point_order[index]['id'])
+
+    def step_point(self, direction):
+        index = self.app.operating_point_box.current() + direction
+        if 0 <= index < len(self._point_order):
+            self.app.operating_point_box.current(index)
+            self._choose_point()
+
+    def browse_points(self):
+        window = tk.Toplevel(self)
+        window.transient(self.winfo_toplevel())
+        window.title('Points by corner and sweep value')
+        tree = ttk.Treeview(window, show='tree', height=14)
+        tree.pack(fill='both', expand=True, padx=8, pady=8)
+        groups, leaves = {}, {}
+        for point in self._point_order:
+            path = (point.get('corner') or 'nominal',)
+            path += tuple(f'{k}={v}' for k, v in sorted(point.get('variables', {}).items()))
+            parent = ''
+            for depth, text in enumerate(path, 1):
+                prefix = path[:depth]
+                if prefix not in groups:
+                    groups[prefix] = tree.insert(parent, 'end', text=text, open=True)
+                parent = groups[prefix]
+            leaf = tree.insert(parent, 'end', text=('Point ' + str(point['point_id'])
+                               if point.get('point_id') is not None else point['label']))
+            leaves[leaf] = point['id']
+            if point['id'] == self.app.operating_point_var.get():
+                tree.selection_set(leaf)
+                tree.see(leaf)
+
+        def choose(_event=None):
+            selection = tree.selection()
+            if selection and selection[0] in leaves:
+                self.select_point(leaves[selection[0]])
+                window.destroy()
+
+        ttk.Button(window, text='Open point', command=choose).pack(pady=(0, 8))
+        tree.bind('<Double-1>', choose)
+        tree.bind('<Return>', choose)
+        tree.focus_set()
+
+    def sync_points(self):
+        app = self.app
+        self._point_order = sorted(app._operating_points, key=lambda row: (
+            row.get('corner') or '', tuple((name, str(value)) for name, value in row.get('variables', {}).items()), row['label']))
+        selected = next((i for i, p in enumerate(self._point_order)
+                         if p['id'] == app.operating_point_var.get()), -1)
+        if len(self._point_order) > 1:
+            self.point_nav.pack(side='left', before=self._offset_label)
+            app.operating_point_box.configure(values=[p['label'] for p in self._point_order])
+            if selected >= 0:
+                app.operating_point_box.current(selected)
+            self.prev_point.configure(state='normal' if selected > 0 else 'disabled')
+            self.next_point.configure(state='normal' if selected < len(self._point_order) - 1 else 'disabled')
+            self.point_identity.set(self._point_order[selected]['label'] if selected >= 0 and self.view_id else '')
+        else:
+            self.point_nav.pack_forget()
+            self.point_identity.set('')
+
     def _thermal_data(self, result, point):
         identity = (self.app.current_result_job_id, point)
         if identity != self._thermal_identity:
@@ -449,8 +551,35 @@ class ResultsView(ttk.Frame):
 
     def refresh(self):
         app, view = self.app, self.app.current_result_view
-        if not view or not app.current_result:
+        if not app.current_result:
             return
+        self.sync_points()
+        if not self.view_id or not view:
+            self.pane.grid_remove()
+            self.chiprow.grid_remove()
+            self.chart_actions.pack_forget()
+            self.overview.grid()
+            self.title.set(f'{self.view_id:02} / {VIEWS[self.view_id]}')
+            for widget in (self.decompose_check, self.log_check, self.source_box, self.overlay_check, self.slopes_check):
+                widget.pack_forget()
+            display_points = app._operating_points
+            identity = app.operating_point_var.get()
+            batch = (app.current_result.get('point_sweep') or {}).get('points')
+            if batch and app.current_result.get('complementary_core'):
+                display_points = batch
+                device = next((p for p in app._operating_points if p['id'] == identity), {})
+                identity = device.get('core_id') or identity
+            self.overview.render(app.current_result, display_points,
+                                 identity, app._sweep_offset_hz(), self.show)
+            self.readout.set('PN in dBc/Hz · Select a point in the table or plot' if len(app._operating_points) > 1 else '')
+            self.compare_button.configure(state='normal' if view else 'disabled')
+            for i, button in enumerate(self.nav_buttons):
+                button.configure(style='ResultActive.TButton' if i == self.view_id else 'Result.TButton')
+            return
+        self.overview.grid_remove()
+        self.pane.grid()
+        self.chiprow.grid()
+        self.chart_actions.pack(side='right')
         point, kind = app.point_var.get(), app.noise_kind_var.get()
         self.compare_button.configure(state='normal')
         identity = (app.current_result_job_id, app.operating_point_var.get() if self.view_id in (0,3,6) else point, kind, self.view_id, app.log_offset_var.get())
@@ -515,7 +644,7 @@ class ResultsView(ttk.Frame):
             self.log_check.pack(side='left')
         if self.view_id == 1:
             self.overlay_check.pack(side='left')
-        if self.view_id in (0,6):
+        if self.view_id == 6:
             self.slopes_check.pack(side='left')
         if self.view_id == 3:
             self.decompose_check.pack(side='left')
@@ -542,17 +671,7 @@ class ResultsView(ttk.Frame):
                     p['reason'] = ''
         phasor = {'kind': 'phasor', 'title': 'ΣQk complex plane · raw single-device values', 'phasors': harmonic['phasors']}
         source_panel = {'kind': 'sources', 'title': 'Noise contributions · comparisons & sources', 'rows': contrib['rows']}
-        if self.view_id == 0:
-            panels = [dict(bands['panels'][0], layout=(0, 0, .62, .62), open=6),
-                      dict(source_panel, layout=(.62, 0, 1, .62), open=4),
-                      dict(phasor, layout=(0, .62, .55, 1), open=2)]
-            compact = (None, (.55, .62, 1, 1))
-            for i, p in enumerate((process['panels'][2], process['panels'][3])):
-                panels.append(dict(p, layout=(.55, .62 + i*.19, 1, .81+i*.19), statistics={}, open=1,
-                                   compact_below=450, compact_layout=compact[i]))
-            rows, specs = self._offset_table(offsets)
-            note = bands['note'] + ' · click a thumbnail to expand'
-        elif self.view_id == 1:
+        if self.view_id == 1:
             panels = process['panels']
             columns = ('sample', 'phase', 'VG_V', 'VD_V', 'VS_V', 'VB_V', 'ID_main_A', 'ID_replica_A', 'm_DC_A_rtHz', 'm_dyn_A_rtHz', 'isf_i', 'isf_q', 'product_i', 'product_q')
             labels = ('sample', 'φ (period)', 'VG (V)', 'VD (V)', 'VS (V)', 'VB (V)', 'ID_main (A)', 'ID_replica (A)', 'm_DC (A/√Hz)', 'm_dyn (A/√Hz)', 'Γ-I (C^-1)', 'Γ-Q (C^-1)', 'ΓI×m (s^-1/√Hz)', 'ΓQ×m (s^-1/√Hz)')
@@ -639,7 +758,7 @@ class ResultsView(ttk.Frame):
             self.candidates.fill(candidates, [('rank','rank'), ('chosen','chosen'), ('signs','signs'), ('score','score'), ('phase_cost','phase cost'), ('delay_cost','delay cost'), ('continuity_cost','continuity')])
             rows, specs = self._offset_table(offsets)
             note = 'Completion does not imply validation; REPLAY does not grant SIGNOFF. double-click a metric for its definition; raw structured values support hover / Copy. '
-        if self.view_id in (0,3) and len(offsets['rows'])==1:
+        if self.view_id == 3 and len(offsets['rows'])==1:
             note += ' · This operating point has only 1 offsets, no interpolation of sweep curves'
         if self.view_id == 4:
             raw = view.get('selected_summary', {})
@@ -706,7 +825,7 @@ class ResultsView(ttk.Frame):
                 self.readout.set(text)
             if self.view_id == 4:
                 self.chart.schedule()  # selected low-ranked source enters viewport
-            if clicked and self.view_id in (0,3) and key.startswith('offset:'):
+            if clicked and self.view_id == 3 and key.startswith('offset:'):
                 point = key[len('offset:'):]
                 if point != self.app.point_var.get():
                     label = next((k for k,v in self.app._offset_point_choices.items() if v == point), None)
@@ -775,12 +894,22 @@ class ResultsView(ttk.Frame):
         except (ValueError, OSError, ImportError) as exc:
             messagebox.showerror('Export failed',str(exc),parent=self)
 
+    def _exportable_chart(self):
+        chart = self.overview.chart if self.view_id == 0 else self.chart
+        if not chart.winfo_ismapped() or not chart.panels:
+            messagebox.showinfo('No chart', 'Open an analysis view or a numeric sweep plot to export a chart.', parent=self)
+            return None
+        return chart
+
     def export_eps(self):
+        chart = self._exportable_chart()
+        if chart is None:
+            return
         path = filedialog.asksaveasfilename(parent=self, title='Export current process chart', defaultextension='.eps', filetypes=(('EPS', '*.eps'),))
         if path:
             try:
-                content = self.chart.postscript(colormode='color', width=self.chart.winfo_width(),
-                                                height=self.chart.winfo_height())
+                content = chart.postscript(colormode='color', width=chart.winfo_width(),
+                                           height=chart.winfo_height())
                 first, rest = content.split('\n', 1)
                 metadata = json.dumps(self.app._export_sample(), ensure_ascii=True)
                 Path(path).write_text(f'{first}\n%%ISFSample: {metadata}\n{rest}', encoding='utf-8')
@@ -788,6 +917,9 @@ class ResultsView(ttk.Frame):
                 messagebox.showerror('Export failed', str(exc), parent=self)
 
     def export_png(self):
+        chart = self._exportable_chart()
+        if chart is None:
+            return
         try:
             from PIL import ImageGrab, PngImagePlugin
         except ImportError:
@@ -798,10 +930,10 @@ class ResultsView(ttk.Frame):
         path = filedialog.asksaveasfilename(parent=self, title='Export current process chart', defaultextension='.png', filetypes=(('PNG', '*.png'),))
         if path:
             try:
-                x,y = self.chart.winfo_rootx(), self.chart.winfo_rooty()
+                x,y = chart.winfo_rootx(), chart.winfo_rooty()
                 info = PngImagePlugin.PngInfo()
                 info.add_itxt('ISF sample', json.dumps(self.app._export_sample(), ensure_ascii=False))
-                box = (x, y, x + self.chart.winfo_width(), y + self.chart.winfo_height())
+                box = (x, y, x + chart.winfo_width(), y + chart.winfo_height())
                 ImageGrab.grab(bbox=box).save(path, pnginfo=info)
             except (OSError, tk.TclError) as exc:
                 messagebox.showerror('Export failed', str(exc), parent=self)
