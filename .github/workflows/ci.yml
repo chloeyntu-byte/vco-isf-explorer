@@ -81,7 +81,7 @@ jobs:
           from isf_tool.core.service import ToolService
           from isf_tool.example_data import build
 
-          assert version("vco-isf-explorer") == "1.2.0"
+          assert version("vco-isf-explorer") == "1.3.0"
           service = ToolService("example-workspace")
           job = service.import_as_job({"path": build("ideal-lc"), "format": "canonical"})
           result = service.get_result(job["job_id"])

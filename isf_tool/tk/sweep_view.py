@@ -193,6 +193,7 @@ class Overview(ttk.Frame):
         self.chart = ProcessChart(self.sweep, on_select=lambda key, clicked: select(key) if clicked else None)
         self.chart.configure(width=225, height=185)
         self.chart.grid(row=0, column=1, sticky='nsew', padx=(8, 0))
+        self.sweep.bind('<Configure>', self._layout_sweep)
         self.headlines = ttk.Frame(self, padding=(0, 4, 0, 10))
         self.cards = []
         for column in range(5):
@@ -222,6 +223,17 @@ class Overview(ttk.Frame):
             self.links.append(link)
         self.core.bind('<Configure>', self._wrap)
         self.rows, self.specs = [], []
+
+    def _layout_sweep(self, _event=None):
+        if self.chart.winfo_manager() != 'grid':
+            return
+        tree = self.table.tree
+        scrollbar_width = max(0, self.table.winfo_width() - tree.winfo_width())
+        side_by_side_width = tree.winfo_reqwidth() + scrollbar_width + self.chart.winfo_reqwidth() + 8
+        if self.sweep.winfo_width() >= side_by_side_width:
+            self.chart.grid_configure(row=0, column=1, padx=(8, 0), pady=0)
+        else:
+            self.chart.grid_configure(row=1, column=0, padx=0, pady=(8, 0))
 
     def _wrap(self, event):
         width = max(150, event.width - 375)
@@ -295,6 +307,7 @@ class Overview(ttk.Frame):
                 self.chart.set_panels([dict(title='Phase noise at ' + offset_label(offset),
                     xlabel=axes[0], ylabel='dBc/Hz', series=series, legend_full=True)], reset=False)
                 self.chart.highlight(identity)
+                self._layout_sweep()
             else:
                 self.chart.grid_remove()
         else:
